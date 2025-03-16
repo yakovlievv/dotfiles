@@ -8,6 +8,23 @@ return {
     },
     config = function()
         require("neo-tree").setup({
+            enable_git_status = true,
+            git_status_async = true,
+            default_component_configs = {
+                git_status = {
+                    symbols = {
+                        added     = "✚",
+                        modified  = "",
+                        deleted   = "✖",
+                        renamed   = "➜",
+                        untracked = "",
+                        ignored   = "",
+                        unstaged  = "",
+                        staged    = "", -- icon for staged files
+                        conflict  = "",
+                    },
+                },
+            },
             filesystem = {
                 filtered_items = {
                     visible = true,
