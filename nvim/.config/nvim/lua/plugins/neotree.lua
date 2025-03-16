@@ -13,14 +13,14 @@ return {
             default_component_configs = {
                 git_status = {
                     symbols = {
-                        added     = "✚",
+                        added     = "",
                         modified  = "",
-                        deleted   = "✖",
+                        deleted   = "󰆴",
                         renamed   = "➜",
                         untracked = "",
                         ignored   = "",
                         unstaged  = "",
-                        staged    = "", -- icon for staged files
+                        staged    = "",
                         conflict  = "",
                     },
                 },
