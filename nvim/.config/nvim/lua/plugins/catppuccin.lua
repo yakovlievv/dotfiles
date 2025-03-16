@@ -9,10 +9,6 @@ return {
             integrations = {
                 neotree = true,
                 treesitter = true,
-                telescope = {
-                    enabled = true,
-                    style = "transparent",
-                },
             },
         })
         vim.cmd("colorscheme catppuccin")

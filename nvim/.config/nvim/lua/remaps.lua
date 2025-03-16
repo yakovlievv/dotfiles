@@ -3,7 +3,6 @@
 -------------------------------
 -- MODULES & REQUIREMENTS
 -------------------------------
-local builtin = require('telescope.builtin')
 
 local harpoon_ok, harpoon = pcall(require, 'harpoon')
 if not harpoon_ok then
@@ -16,6 +15,12 @@ if not automaton_ok then
 end
 
 -------------------------------
+-- VIM FUGITIVE
+-------------------------------
+vim.keymap.set('n', '<leader>gs', vim.cmd.Git)
+
+
+-------------------------------
 -- UNDO TREE
 -------------------------------
 vim.keymap.set('n', '<leader>u', vim.cmd.UndotreeToggle)
@@ -23,8 +28,11 @@ vim.keymap.set('n', '<leader>u', vim.cmd.UndotreeToggle)
 -------------------------------
 -- TELESCOPE
 -------------------------------
-vim.keymap.set('n', '<leader>ff', builtin.find_files, {})
-vim.keymap.set('n', '<leader>fg', builtin.live_grep, {})
+local builtin = require('telescope.builtin')
+vim.keymap.set('n', '<leader>ff', builtin.find_files, { desc = 'Telescope find files' })
+vim.keymap.set('n', '<leader>fg', builtin.live_grep, { desc = 'Telescope live grep' })
+vim.keymap.set('n', '<leader>fb', builtin.buffers, { desc = 'Telescope buffers' })
+vim.keymap.set('n', '<leader>fh', builtin.help_tags, { desc = 'Telescope help tags' })
 
 -------------------------------
 -- NEOTREE
