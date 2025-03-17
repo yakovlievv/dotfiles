@@ -1,16 +1,23 @@
 {
     "position": "top",
-    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-left": ["custom/logo", "hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
     "modules-right": [
             "hyprland/language",
             "pulseaudio",
             "bluetooth",
             "cpu",
-            "temperature"
+            "temperature",
+            "custom/swaync",
+            "custom/wlogout"
     ],
+    "custom/logo": {
+        "format": "<span size='150%' rise='-2000'>󰣇</span>",
+        "on-click": "wofi --show drun"
+
+    },
     "hyprland/workspaces": {
-        "format": "",
+        "format": "",   
         "persistent-workspaces": {
             "*": 5
         }
@@ -34,15 +41,24 @@
         "interval": 1,
         "format": "{usage}% <span size='150%' rise='-2000'></span>",
         "tooltip": false,
-        "interval": 5,
+        "interval": 5
     },
     "temperature": {
-        "format": "{temperatureC}°C ",
+        "format": "{temperatureC}°C "
     },
     "hyprland/language": {
         "tooltip": false,
-        "format-en": "en",
-        "format-uk": "uk",
-        "format-ru": "ru"
+        "format-en": "󰌌 en",
+        "format-uk": "󰌌 uk",
+        "format-ru": "󰌌 ru"
+    },
+    "custom/wlogout": {
+        "format": "<span size='150%' rise='-2000'></span>",
+        "on-click": "wlogout"
+
+    },
+    "custom/swaync": {
+        "format":  "<span size='150%' rise='-2000'></span>",
+        "on-click": "swaync-client -t"
     }
 }
