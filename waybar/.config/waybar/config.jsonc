@@ -48,9 +48,9 @@
     },
     "hyprland/language": {
         "tooltip": false,
-        "format-en": "󰌌 en",
-        "format-uk": "󰌌 uk",
-        "format-ru": "󰌌 ru"
+        "format-en": "<span size='125%' rise='-2000'>󰌌</span> en",
+        "format-uk": "<span size='125%' rise='-2000'>󰌌</span> uk",
+        "format-ru": "<span size='125%' rise='-2000'>󰌌</span> ru"
     },
     "custom/wlogout": {
         "format": "<span size='150%' rise='-2000'></span>",
