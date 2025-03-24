@@ -114,7 +114,7 @@ vim.keymap.set("n", "<leader>el", "oif err != nil {<CR>}<Esc>O.logger.Error(\"er
 -------------------------------
 -- Cellular Automaton Animation
 if automaton_ok then
-  vim.keymap.set("n", "<leader>ca", function()
+  vim.keymap.set("n", "<leader>mr", function()
       cellular_automaton.start_animation("make_it_rain")
   end)
 end
