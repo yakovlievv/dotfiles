@@ -1,18 +1,9 @@
 -- Neovim Keymaps Configuration
-
 -------------------------------
 -- MODULES & REQUIREMENTS
 -------------------------------
-
 local harpoon_ok, harpoon = pcall(require, "harpoon")
-if not harpoon_ok then
-    print("Harpoon not installed!")
-end
-
 local automaton_ok, cellular_automaton = pcall(require, "cellular-automaton")
-if not automaton_ok then
-    print("Cellular Automaton not installed!")
-end
 
 -------------------------------
 -- VIM FUGITIVE
@@ -29,7 +20,7 @@ vim.keymap.set("n", "<leader>u", vim.cmd.UndotreeToggle)
 -------------------------------
 local builtin = require("telescope.builtin")
 vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Telescope find files" })
-vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Telescope live grep" })
+vim.keymap.set("n", "<leader>fG", builtin.live_grep, { desc = "Telescope live grep" })
 vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Telescope buffers" })
 vim.keymap.set("n", "<leader>fh", builtin.help_tags, { desc = "Telescope help tags" })
 vim.keymap.set("n", "<leader>fc", builtin.command_history)
@@ -45,7 +36,7 @@ vim.keymap.set("n", "<leader>fga", builtin.git_stash)
 -------------------------------
 vim.keymap.set("n", "<leader>ee", ":Neotree filesystem reveal left<CR>", {})
 vim.keymap.set("n", "<leader>ec", ":Neotree close<CR>", { silent = true })
-
+ 
 -------------------------------
 -- HARPOON
 -------------------------------
@@ -85,12 +76,12 @@ end
 -------------------------------
 vim.keymap.set("n", "<leader>zig", "<cmd>LspRestart<cr>")
 -- vim.keymap.set("n", "<leader>f", vim.lsp.buf.format)
-
+--
 -------------------------------
 -- GENERAL EDITOR
 -------------------------------
 -- NORMAL MODE
-vim.keymap.set({ "i", "v", "s", "t" }, "<C-Space>", "<Esc>", { noremap = true, silent = true })
+vim.keymap.set({ 'i', 'c', 't' }, '<C-Space>', '<Esc>', { noremap = true, silent = true })
 
 -- LINE MOVEMENT (Visual Mode)
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
