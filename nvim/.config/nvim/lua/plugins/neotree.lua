@@ -17,7 +17,6 @@ return {
             "nvim-lua/plenary.nvim",
             "nvim-tree/nvim-web-devicons",
             "MunifTanjim/nui.nvim",
-            {"3rd/image.nvim", opts = {}},
         },
         config = function()
             vim.diagnostic.config({
@@ -139,7 +138,7 @@ return {
                         ["<cr>"] = "open",
                         ["L"] = "open",
                         ["<esc>"] = "cancel",
-                        ["P"] = { "toggle_preview", config = { use_float = true, use_image_nvim = true } },
+                        ["P"] = { "toggle_preview", config = { use_float = true, use_image_nvim = false } },
                         ["<C-l>"] = "focus_preview",
                         ["S"] = "open_split",
                         ["s"] = "open_vsplit",
