@@ -11,11 +11,14 @@ SAVEHIST=50000
 setopt inc_append_history
 
 # Some useful aliases
-alias cls="clear"
+alias cl="clear"
 alias ll="ls -lah"
 alias vim="nvim"
-alias zshconfig="nvim ~/.zshrc"
-alias ohmyzsh="nvim ~/.oh-my-zsh"
+alias vi="nvim" 
+alias nf="neofetch"
+alias ya="yazi" 
+
+
 # Set language
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
