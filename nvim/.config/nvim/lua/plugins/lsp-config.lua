@@ -7,14 +7,12 @@ return {
     },
     {
         "williamboman/mason-lspconfig.nvim",
-        config = function()
-            require("mason-lspconfig").setup({
-                ensure_intalled = { "lua_ls, pyright" }
-            })
-        end
     },
     {
         "neovim/nvim-lspconfig",
+        dependencies = {
+            'hrsh7th/cmp-nvim-lsp'
+        },
         config = function()
             local lspconfig = require("lspconfig")
             local capabilities = require('cmp_nvim_lsp').default_capabilities()
