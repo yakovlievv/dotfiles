@@ -1,7 +1,19 @@
 {
     "position": "top",
     "modules-left": ["custom/logo", "hyprland/workspaces", "hyprland/window"],
-    "modules-center": ["clock"],
+    "modules-center": ["custom/clock1", "custom/clock2", "custom/clock3"],
+    "custom/clock1": {
+        "exec": "date '+%A'",
+        "interval": 60
+    },
+    "custom/clock2": {
+        "exec": "date '+  %H:%M:%S  '",
+        "interval": 1
+    },
+    "custom/clock3": {
+        "exec": "date '+%D'",
+        "interval": 60
+    },
     "modules-right": [
             "hyprland/language",
             "pulseaudio",
