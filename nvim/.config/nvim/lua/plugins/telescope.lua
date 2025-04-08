@@ -8,7 +8,21 @@ return {
       "sharkdp/fd",
     },
     config = function()
+            local builtin = require("telescope.builtin")
+
+            vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Telescope find files" })
+            vim.keymap.set("n", "<leader>fG", builtin.live_grep, { desc = "Telescope live grep" })
+            vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Telescope buffers" })
+            vim.keymap.set("n", "<leader>fh", builtin.help_tags, { desc = "Telescope help tags" })
+            vim.keymap.set("n", "<leader>fc", builtin.command_history)
+            vim.keymap.set("n", "<leader>fC", builtin.colorscheme)
+            vim.keymap.set("n", "<leader>fd", builtin.diagnostics)
+            vim.keymap.set("n", "<leader>fgc", builtin.git_commits)
+            vim.keymap.set("n", "<leader>fgb", builtin.git_branches)
+            vim.keymap.set("n", "<leader>fgs", builtin.git_status)
+            vim.keymap.set("n", "<leader>fga", builtin.git_stash)
       require("telescope").setup({
+
         defaults = {
           -- Configure ripgrep to include hidden files but ignore the .git directory
           vimgrep_arguments = {

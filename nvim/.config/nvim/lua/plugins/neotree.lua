@@ -29,7 +29,8 @@ return {
                     },
                 }
             })
-
+            vim.keymap.set("n", "<leader>e", ":Neotree filesystem reveal left<CR>", {silent = true})
+            vim.keymap.set("n", "<leader>E", ":Neotree close<CR>", { silent = true })
             require("neo-tree").setup({
                 close_if_last_window = false, -- Close Neo-tree if it is the last window left in the tab
                 popup_border_style = "rounded",
