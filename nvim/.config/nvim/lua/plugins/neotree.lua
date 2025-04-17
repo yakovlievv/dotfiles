@@ -293,6 +293,11 @@ return {
             position = "float",
             mappings = {
               ["A"] = "git_add_all",
+              ["g"] = {
+                "show_help",
+                nowait = false,
+                config = { title = "Order by", prefix_key = "g" },
+              },
               ["gu"] = "git_unstage_file",
               ["ga"] = "git_add_file",
               ["gr"] = "git_revert_file",
