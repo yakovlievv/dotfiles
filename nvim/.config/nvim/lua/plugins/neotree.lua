@@ -225,7 +225,7 @@ return {
             mappings = {
               ["<bs>"] = "navigate_up",
               ["."] = "set_root",
-              ["<C-h>"] = "toggle_hidden",
+              ["<C-i>"] = "toggle_hidden",
               ["/"] = "fuzzy_finder",
               ["D"] = "fuzzy_finder_directory",
               ["#"] = "fuzzy_sorter", -- fuzzy sorting using the fzy algorithm
