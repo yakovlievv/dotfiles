@@ -20,7 +20,7 @@ alias ll="ls -lah"
 alias nf="neofetch"
 alias ya="yazi" 
 alias vim=nvim
-alias vi=nvim
+alias vi="nvim"
 
 bindkey -v
 
