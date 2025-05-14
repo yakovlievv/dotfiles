@@ -16,30 +16,26 @@ window#waybar {
 }
 
 .module {
-    margin-top: 5px;
-    padding: 0px 5px; 
-    background-color: @base;
-    border-radius: 10px;
+    margin-top: 6px;
+    padding: 0px 5px;
+    background-color: @mantle;
+    border-radius:7px;
 }
 
 button:hover {
     color: @lavender;
 }
 
-
-/* Custom Logo */
 #custom-logo {
     color: @blue;
-    background-color: @base;
-    margin-left: 15px;
+    margin-left: 6px;
     padding: 0 16px;
 }
 
 /* Workspaces */
 #workspaces {
-    background-color: @base;
     padding: 0 15px;
-    margin-left: 15px;
+    margin-left: 6px;
 }
 
 #workspaces button {
@@ -53,33 +49,32 @@ button:hover {
 
 /* Window & Clock */
 #window {
-    background-color: @base;
     opacity: 0.5;
-    margin-left: 15px;
+    margin-left: 6px;
     padding: 0 20px;
 }
-
-#custom-clock1{
+#custom-separator {
+    border-radius: 0px;
     margin-top: 5px;
+    color: @surface0;
+}
+#clock.clk1 {
     color: @lavender;
-    background-color: @base;
     padding: 0 0 0 20px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
-    margin-left:15px;
+    margin: 5px 0px 0px 15px;
 }
 
-#custom-clock2{
+#clock.clk2 {
     margin-top: 5px;
     color: @lavender;
-    background-color: @base;
     border-radius:0px;
 }
 
-#custom-clock3{
+#clock.clk3 {
     margin-top: 5px;
     color: @lavender;
-    background-color: @base;
     padding: 0 20px 0 0;
     border-top-left-radius: 0px;
     border-bottom-left-radius: 0px;
@@ -88,15 +83,11 @@ button:hover {
 #language {
     color: @peach;
     padding: 0 15px;
-    background-color: @base;
-    border-radius: 10px;
-    margin-right: 15px;
+    margin-right: 6px;
 }
 
 /* Pulseaudio */
 #pulseaudio {
-    background-color: @base;
-    border-radius: 10px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
     color: @green;
@@ -106,10 +97,8 @@ button:hover {
 /* Bluetooth */
 #bluetooth {
     color: @sky;
-    background-color: @base;
     padding: 0 15px;
-    margin-right: 15px;
-    border-radius: 10px;
+    margin-right: 6px;
     border-top-left-radius: 0px;
     border-bottom-left-radius: 0px;
 }
@@ -118,19 +107,15 @@ button:hover {
 #cpu {
     color: @red;
     padding: 0 15px;
-    background-color: @base;
-    border-radius: 10px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
 }
 
 /* Temperature */
 #temperature {
-    background-color: @base;
     color: @blue;
     padding: 0 15px;
-    margin-right: 20px;
-    border-radius: 10px;
+    margin-right: 6px;
     border-top-left-radius: 0px;
     border-bottom-left-radius: 0px;
 }
@@ -138,19 +123,15 @@ button:hover {
 /* Custom Logout */
 #custom-wlogout {
     color: @red;
-    background-color: @base;
     padding: 0 15px;
-    border-radius: 10px;
     border-top-left-radius: 0px;
     border-bottom-left-radius: 0px;
-    margin-right: 15px
+    margin-right: 6px
 }
 /* Custom Swaync */
 #custom-swaync {
     color: @blue;
     padding: 0 15px;
-    background-color: @base;
-    border-radius: 10px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
 }
