@@ -1,18 +1,27 @@
 {
     "position": "top",
     "modules-left": ["custom/logo", "hyprland/workspaces", "hyprland/window"],
-    "modules-center": ["custom/clock1", "custom/clock2", "custom/clock3"],
-    "custom/clock1": {
-        "exec": "date '+%A'",
-        "interval": 60
+    "modules-center": ["clock#clk1", "custom/separator", "clock#clk2", "custom/separator", "clock#clk3"],
+    "clock#clk1": {
+        "format":"{:%A}",
+        "interval": 60,
+        "tooltip": false
     },
-    "custom/clock2": {
-        "exec": "date '+  %H:%M:%S  '",
-        "interval": 1
+    "custom/separator": {
+        "format": " | ",
+        "tooltip": false
+
     },
-    "custom/clock3": {
-        "exec": "date '+%D'",
-        "interval": 60
+    "clock#clk2": {
+        "format":"{:%H:%M}",
+        "interval": 1,
+        "tooltip": false
+    },
+    "clock#clk3": {
+        "format":"{:%d/%m/%y}",
+        "exec": "date '+'",
+        "interval": 60,
+        "tooltip": false
     },
     "modules-right": [
             "hyprland/language",
@@ -25,7 +34,8 @@
     ],
     "custom/logo": {
         "format": "<span size='150%' rise='-2000'>󰣇</span>",
-        "on-click": "wofi --show drun"
+        "on-click": "wofi --show drun",
+        "tooltip": false
 
     },
     "hyprland/workspaces": {
@@ -34,9 +44,6 @@
             "*": 5
         }
     },
-    "clock": {
-        "format": "<span size='150%' rise='-2000'></span> {:%H:%M  %A  %D} <span size='150%' rise='-2000'></span>"
-    },
 
     "pulseaudio": {
         "format": "{icon} {volume}%",
@@ -44,10 +51,15 @@
         "format-icons": {
             "default": ["<span size='150%' rise='-2000'></span>", "<span size='150%' rise='-2000'></span>", "<span size='150%' rise='-2000'></span>"]
         },
-        "on-click": "pavucontrol"
+        "on-click": "pavucontrol",
+        "tooltip": false
+    },
+    "hyprland/window": {
+        "icon": true,
     },
     "bluetooth": {
-        "tooltip": false
+        "tooltip": false,
+        "on-click": "blueman-manager",
     },
     "cpu": {
         "interval": 1,
@@ -56,7 +68,8 @@
         "interval": 5
     },
     "temperature": {
-        "format": "{temperatureC}°C "
+        "format": "{temperatureC}°C ",
+        "tooltip": false,
     },
     "hyprland/language": {
         "tooltip": false,
@@ -66,11 +79,12 @@
     },
     "custom/wlogout": {
         "format": "<span size='150%' rise='-2000'></span>",
-        "on-click": "wlogout"
-
+        "on-click": "wlogout",
+        "tooltip": false,
     },
     "custom/swaync": {
         "format":  "<span size='150%' rise='-2000'></span>",
-        "on-click": "swaync-client -t"
+        "on-click": "swaync-client -t",
+        "tooltip": false,
     }
 }
