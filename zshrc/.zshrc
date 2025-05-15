@@ -1,6 +1,10 @@
 eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"
 
+source ~/.config/zsh/zsh-syntax-highlighting-theme/themes/catppuccin_mocha-zsh-syntax-highlighting.zsh
+source ~/.config/zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source ~/.config/zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
+
 export FZF_DEFAULT_OPTS=" \
   --color=fg:#CDD6F4,header:#F38BA8,info:#CBA6F7,pointer:#F5E0DC \
   --color=marker:#B4BEFE,fg+:#CDD6F4,prompt:#CBA6F7,hl+:#F38BA8 \
@@ -37,7 +41,5 @@ export FZF_DEFAULT_OPTS="\
   --color=selected-bg:#45475A \
   --color=border:#313244,label:#CDD6F4 --height 50% --layout=default --border" 
 export MANPAGER="sh -c 'sed -u -e \"s/\\x1B\[[0-9;]*m//g; s/.\\x08//g\" | bat -p -lman'"
-source ~/.config/zsh/catppuccin_mocha-zsh-syntax-highlighting.zsh
-source ~/.config/zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-source ~/.config/zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
+
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
