@@ -39,7 +39,7 @@ alias vi="nvim"
 alias gs="git status"
 alias gc="git commit -m"
 alias ga="git add"
-alias gc="git clone"
+alias gp="git push"
 bindkey -v
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
