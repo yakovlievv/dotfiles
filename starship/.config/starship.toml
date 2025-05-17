@@ -1,13 +1,13 @@
 # Get editor completions based on the config schema
 add_newline = false
 "$schema" = 'https://starship.rs/config-schema.json'
-format = "$all"
+format = " $all"
 palette = "catppuccin_mocha"
 
 [character]
-success_symbol = "[󰄛 ❯](lavender)"
-error_symbol = "[󰄛 ❯](red)"
-vimcmd_symbol = "[󰄛 ❮](subtext1)"
+success_symbol = "[ 󰄛 ❯](lavender)"
+error_symbol = "[ 󰄛 ❯](red)"
+vimcmd_symbol = "[ 󰄛 ❮](subtext1)"
 
 [git_branch]
 style = "bold mauve"
