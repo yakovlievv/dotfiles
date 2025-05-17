@@ -19,3 +19,10 @@ git clone --depth=1 https://github.com/catppuccin/zsh-syntax-highlighting.git ~/
 git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions ~/.config/zsh/zsh-autosuggestions
 ```
 
+4. tmux-catppuccin theme
+
+```zsh
+mkdir -p ~/.config/tmux/plugins/catppuccin
+git clone -b v2.1.3 --depth=1 https://github.com/catppuccin/tmux.git ~/.config/tmux/plugins/catppuccin
+```
+
