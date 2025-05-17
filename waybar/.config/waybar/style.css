@@ -73,7 +73,7 @@ button:hover {
 }
 
 #clock.clk3 {
-    margin-top: 5px;
+    margin: 5px 15px 0px 0px;
     color: @lavender;
     padding: 0 20px 0 0;
     border-top-left-radius: 0px;
