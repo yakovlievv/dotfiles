@@ -1,3 +1,15 @@
 [submodule "nvim/.config/nvim"]
 	path = nvim/.config/nvim
 	url = git@github.com:yakovlievv/nvim.git
+[submodule "zshrc/.config/zsh/zsh-autosuggestions"]
+	path = zshrc/.config/zsh/zsh-autosuggestions
+	url = https://github.com/zsh-users/zsh-autosuggestions.git
+[submodule "zshrc/.config/zsh/zsh-syntax-highlighting"]
+	path = zshrc/.config/zsh/zsh-syntax-highlighting
+	url = https://github.com/zsh-users/zsh-syntax-highlighting.git
+[submodule "tmux/.config/tmux/plugins/tpm"]
+	path = tmux/.config/tmux/plugins/tpm
+	url = https://github.com/tmux-plugins/tpm.git
+[submodule "zshrc/.config/zsh/zsh-catppuccin"]
+	path = zshrc/.config/zsh/zsh-catppuccin
+	url = https://github.com/catppuccin/zsh-syntax-highlighting.git
