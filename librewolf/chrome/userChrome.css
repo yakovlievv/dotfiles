@@ -1,0 +1,42 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* SPDX-FileCopyrightText: 2024 awwpotato */
+
+@import url("browser/main.css");
+@import url("vars.css");
+
+:root {
+  @media not -moz-pref( "uc.tweak.no-panel-hint") {
+    --uc-panel-hint: color-mix(
+      in oklab,
+      var(--toolbarbutton-icon-fill) 25%,
+      transparent
+    );
+  }
+
+  --uc-bg-opaque: light-dark(rgb(239, 239, 242), rgb(27, 26, 32));
+  @media (-moz-platform: linux) {
+    --uc-bg-opaque: ActiveCaption;
+  }
+
+  --uc-content-bg: transparent;
+  &[lwtheme="true"] {
+    --uc-bg-opaque: var(--lwt-accent-color);
+    @media not -moz-pref( "uc.tweak.translucency") {
+      --uc-content-bg: var(--newtab-background-color);
+    }
+  }
+
+  --uc-bg: var(--uc-bg-opaque);
+  --uc-bg-tran: var(--uc-bg-opaque);
+  --uc-bg-translucency: color-mix(
+    in oklab,
+    var(--uc-bg-opaque) 90%,
+    transparent
+  );
+  @media not -moz-pref( "uc.tweak.no-blur") {
+    --uc-bg-tran: var(--uc-bg-translucency);
+  }
+  @media -moz-pref( "uc.tweak.translucency") {
+    --uc-bg: var(--uc-bg-translucency);
+  }
+}
