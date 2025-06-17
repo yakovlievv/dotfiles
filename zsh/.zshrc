@@ -17,7 +17,7 @@ SAVEHIST=50000
 setopt inc_append_history
 
 # ┌─ Plugins:
-source ~/.config/zsh/zsh-catppuccin/catppuccin_mocha-zsh-syntax-highlighting.zsh
+source ~/.config/zsh/catppuccin_theme.zsh
 source ~/.config/zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 source ~/.config/zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
 
