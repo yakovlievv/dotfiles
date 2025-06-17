@@ -1,3 +1,0 @@
-[submodule "zshrc/.config/zsh/zsh-catppuccin"]
-	path = zshrc/.config/zsh/zsh-catppuccin
-	url = https://github.com/catppuccin/zsh-syntax-highlighting.git
