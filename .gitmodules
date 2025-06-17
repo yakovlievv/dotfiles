@@ -1,6 +1,3 @@
-[submodule "tmux/.config/tmux/plugins/tpm"]
-	path = tmux/.config/tmux/plugins/tpm
-	url = https://github.com/tmux-plugins/tpm.git
 [submodule "zshrc/.config/zsh/zsh-catppuccin"]
 	path = zshrc/.config/zsh/zsh-catppuccin
 	url = https://github.com/catppuccin/zsh-syntax-highlighting.git
