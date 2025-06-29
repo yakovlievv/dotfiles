@@ -1,0 +1,7 @@
+
+set recolor             true
+set recolor-keephue     true
+set recolor-darkcolor   "#1e1e2e"
+set recolor-lightcolor  "#cdd6f4"
+set default-bg          "#1e1e2e"
+set default-fg          "#cdd6f4"
