@@ -16,6 +16,7 @@
     - Sidebery
 4. Put the chrome directory and user.js file in your active profile directory
 5. Reload librewolf
+6. To set up userstyles go set up catppuccin userstyles, and then take each userstyle from userstyles directory and replace the code in the stylus extension settings.
 
 ### right now there is a problem with the user.js file so i'll just give you all the changed preferences so you can fuck around with it as much as you want
 
