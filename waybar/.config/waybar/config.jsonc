@@ -2,7 +2,7 @@
     "position": "top",
     "modules-left": ["custom/logo", "hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock#clk1", "custom/separator", "clock#clk2", "custom/separator", "clock#clk3"],
-    "clock#clk1": {
+    "clock#clk2": {
         "format":"{:%A}",
         "interval": 60,
         "tooltip": false
@@ -12,13 +12,13 @@
         "tooltip": false
 
     },
-    "clock#clk2": {
+    "clock#clk1": {
         "format":"{:%H:%M}",
         "interval": 1,
         "tooltip": false
     },
     "clock#clk3": {
-        "format":"{:%d/%m/%y}",
+        "format":"{:%d/%m}",
         "exec": "date '+'",
         "interval": 60,
         "tooltip": false
