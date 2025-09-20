@@ -68,7 +68,8 @@ bindkey -v
 # Swap ^C ^c
 bindkey -r '\ec'
 bindkey '^F' fzf-cd-widget
-
+bindkey '^Y' autosuggest-accept
+bindkey '^E' autosuggest-accept-word
 # ┌─ FZF source
 # if installed via github
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
