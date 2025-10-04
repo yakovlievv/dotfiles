@@ -10,6 +10,15 @@ export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
 export PATH="$HOME/scripts:$PATH"
 
+# ┌─ Linux-specific settings:
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    echo "i'm on linux"
+
+# ┌─ Macos-specific settings:
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "i'm on macos"
+
+fi
 
 # ┌─ Functions:
 yazi-cd() { # Change directories with yazi
@@ -25,6 +34,10 @@ yazi-cd() { # Change directories with yazi
   fi
 
   rm -f "$temp_file"
+}
+
+batdiff() {
+    git diff --name-only --relative --diff-filter=d -z | xargs -0 bat --diff --style=full
 }
 
 # ┌─ History:
@@ -52,6 +65,8 @@ export FZF_DEFAULT_OPTS=" \
 export MANPAGER="sh -c 'sed -u -e \"s/\\x1B\[[0-9;]*m//g; s/.\\x08//g\" | bat -p -lman'"
 
 # ┌─ Aliases:
+# alias -g -- -h='-h 2>&1 | bat --language=help --style=plain'
+alias -g -- --help='--help 2>&1 | bat --language=help --style=plain'
 alias cl="clear"
 alias nf="neofetch"
 alias ya="yazi"
@@ -62,6 +77,7 @@ alias ga="git add"
 alias gp="git push"
 alias tm='tmux has-session -t default 2>/dev/null || tmux new-session -s default; tmux attach -t default'
 alias yz="yazi-cd"
+alias gd="batdiff"
 
 # ┌─ Bindings:
 bindkey -v
@@ -70,6 +86,7 @@ bindkey -r '\ec'
 bindkey '^F' fzf-cd-widget
 bindkey '^Y' autosuggest-accept
 bindkey '^E' autosuggest-accept-word
+
 # ┌─ FZF source
 # if installed via github
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
@@ -79,5 +96,3 @@ bindkey '^E' autosuggest-accept-word
 # If installed via pacman
 [ -f /usr/share/fzf/key-bindings.zsh ] && source /usr/share/fzf/key-bindings.zsh
 [ -f /usr/share/fzf/completion.zsh ] && source /usr/share/fzf/completion.zsh
-
-
