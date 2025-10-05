@@ -1,13 +1,33 @@
 eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"
 
-# ┌─ History and settings:
+# ┌─ History
 SAVEHIST=100000
 HISTSIZE=100000
 HISTFILE="$XDG_CACHE_HOME/zsh/history"
-setopt append_history inc_append_history share_history
-export KEYTIMEOUT=20
+
+# ┌─ zsh tab completion
+zmodload zsh/complist
+autoload -U compinit && compinit
+autoload -U colors && colors
+zstyle ':completion:*' menu select
 zstyle ':completion:*' cache-path "$XDG_CACHE_HOME/zsh"
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS} ma=0\;33
+zstyle ':completion:*' squeeze-slashes false
+# zstyle ':completion:*' special-dirs true 
+
+# ┌─ some options
+export KEYTIMEOUT=20
+setopt append_history inc_append_history share_history
+setopt auto_menu menu_complete # autocmp first menu match
+setopt autocd # type a dir to cd
+setopt auto_param_slash # when a dir is completed, add a / instead of a trailing space
+setopt no_case_glob no_case_match # make cmp case insensitive
+setopt globdots # include dotfiles
+setopt extended_glob # match ~ # ^
+setopt interactive_comments # allow comments in shell
+unsetopt prompt_sp # don't autoclean blanklines
+stty stop undef # disable accidental ctrl s
 
 # ┌─ Macos-specific settings:
 if [[ "$OSTYPE" == "darwin"* ]]; then

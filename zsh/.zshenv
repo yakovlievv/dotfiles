@@ -10,17 +10,18 @@ export XDG_STATE_HOME="$HOME/.local/state"
 export XDG_BIN_HOME="$HOME/.local/bin"
 export XDG_CACHE_HOME="$HOME/.cache"
 
-# bootstrap .zshrc to ~/.config/zsh/.zshrc, any other zsh config files can also reside here
-export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 export PATH="$XDG_BIN_HOME:$PATH"
 
 # moving other files to correct paths
+export GIT_CONFIG_GLOBAL="$XDG_CONFIG_HOME/.gitconfig"
+export PRETTIER_CONFIG="$XDG_CONFIG_HOME/prettierrc"
 export LESSHISTFILE="$XDG_CACHE_HOME/less_history"
 export PYTHON_HISTORY="$XDG_DATA_HOME/python/history"
 export WGETRC="$XDG_CONFIG_HOME/wget/wgetrc"
 export PYTHONSTARTUP="$XDG_CONFIG_HOME/python/pythonrc"
 export GNUPGHOME="$XDG_DATA_HOME/gnupg"
 export CARGO_HOME="$XDG_DATA_HOME/cargo"
+export RUSTUP_HOME="$XDG_DATA_HOME/rustup"
 export GOPATH="$XDG_DATA_HOME/go"
 export GOBIN="$GOPATH/bin"
 export GOMODCACHE="$XDG_CACHE_HOME/go/mod"
@@ -32,3 +33,7 @@ export _JAVA_AWT_WM_NONREPARENTING=1
 export PARALLEL_HOME="$XDG_CONFIG_HOME/parallel"
 export FFMPEG_DATADIR="$XDG_CONFIG_HOME/ffmpeg"
 export WINEPREFIX="$XDG_DATA_HOME/wineprefixes/default"
+
+# bootstrap .zshrc to ~/.config/zsh/.zshrc, any other zsh config files can also reside here
+export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
+. "/Users/yakovlievv/.local/share/cargo/env"
