@@ -1,6 +1,5 @@
 export EDITOR="nvim"
 export SUDO_EDITOR="nvim"
-
 export TERM="xterm-256color"
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
@@ -15,10 +14,21 @@ export XDG_CACHE_HOME="$HOME/.cache"
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 export PATH="$XDG_BIN_HOME:$PATH"
 
-# ┌─ Macos-specific settings:
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-    export PATH="/opt/local/bin:/opt/local/sbin:$PATH"
-fi
-
-. "$HOME/.cargo/env"
+# moving other files to correct paths
+export LESSHISTFILE="$XDG_CACHE_HOME/less_history"
+export PYTHON_HISTORY="$XDG_DATA_HOME/python/history"
+export WGETRC="$XDG_CONFIG_HOME/wget/wgetrc"
+export PYTHONSTARTUP="$XDG_CONFIG_HOME/python/pythonrc"
+export GNUPGHOME="$XDG_DATA_HOME/gnupg"
+export CARGO_HOME="$XDG_DATA_HOME/cargo"
+export GOPATH="$XDG_DATA_HOME/go"
+export GOBIN="$GOPATH/bin"
+export GOMODCACHE="$XDG_CACHE_HOME/go/mod"
+export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME/npm/npmrc"
+export GRADLE_USER_HOME="$XDG_DATA_HOME/gradle"
+export NUGET_PACKAGES="$XDG_CACHE_HOME/NuGetPackages"
+export _JAVA_OPTIONS=-Djava.util.prefs.userRoot="$XDG_CONFIG_HOME/java"
+export _JAVA_AWT_WM_NONREPARENTING=1
+export PARALLEL_HOME="$XDG_CONFIG_HOME/parallel"
+export FFMPEG_DATADIR="$XDG_CONFIG_HOME/ffmpeg"
+export WINEPREFIX="$XDG_DATA_HOME/wineprefixes/default"
