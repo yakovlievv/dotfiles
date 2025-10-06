@@ -13,7 +13,7 @@ export XDG_CACHE_HOME="$HOME/.cache"
 export PATH="$XDG_BIN_HOME:$PATH"
 
 # moving other files to correct paths
-export GIT_CONFIG_GLOBAL="$XDG_CONFIG_HOME/.gitconfig"
+export GIT_CONFIG_GLOBAL="$XDG_CONFIG_HOME/git/config"
 export PRETTIER_CONFIG="$XDG_CONFIG_HOME/prettierrc"
 export LESSHISTFILE="$XDG_CACHE_HOME/less_history"
 export PYTHON_HISTORY="$XDG_DATA_HOME/python/history"

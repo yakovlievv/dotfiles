@@ -1,11 +1,17 @@
 ## installation list:
 
+- git
+- ripgrep
+- fd
+- tree
 - tmux
 - neovim
 - bat
+- bat-extras
 - wget
 - cargo
 - npm
+- fzf
 
 ### Using bat:
 
