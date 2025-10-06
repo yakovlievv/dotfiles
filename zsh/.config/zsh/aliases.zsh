@@ -9,12 +9,21 @@ alias cl="clear"
 alias nf="neofetch"
 alias ya="yazi"
 alias vi="nvim"
-alias gs="git status"
-alias gc="git commit -m"
-alias ga="git add"
-alias gp="git push"
-alias tm='tmux has-session -t default 2>/dev/null || tmux new-session -s default; tmux attach -t default'
-alias yz="yazi-cd"
+
+# git
+alias gs="git status --short"
+alias gl="git log"
 alias gd="batdiff"
+
+alias ga="git add"
+alias gc="git commit -m"
+
+alias gp="git push"
+alias gp="git pull"
+
+alias gcl="git clone"
+
+alias tm='tmux has-session -t default 2>/dev/null || tmux new-session -s default "echo; neofetch; zsh"; tmux attach -t default'
+alias yz="yazi-cd"
 alias man="batman"
 alias ls="ls --color"

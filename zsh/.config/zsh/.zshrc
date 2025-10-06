@@ -18,6 +18,7 @@ zstyle ':completion:*' squeeze-slashes false
 
 # ┌─ some options
 export KEYTIMEOUT=20
+export HOMEBREW_NO_ENV_HINTS=1
 setopt append_history inc_append_history share_history
 setopt auto_menu menu_complete # autocmp first menu match
 setopt autocd # type a dir to cd
