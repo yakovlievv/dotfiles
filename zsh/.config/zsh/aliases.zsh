@@ -7,7 +7,7 @@ alias -g -- --help='--help 2>&1 | bat --language=help --style=plain'
 
 # run utilities
 alias nf="neofetch"
-alias ya="yazi"
+alias yz="yazi"
 alias vi="nvim"
 
 # git
@@ -27,14 +27,13 @@ alias gcl="git clone"
 alias man="batman"
 
 alias ls="eza --icons --group-directories-first"
-alias lsmax="eza --icons -lah --git --group-directories-first"
+alias lsmax="eza --icons -lah --git --group-directories-first --total-size"
 
 alias tree="eza --tree --icons --level=3"
 # alias treepage="tree --color=always| less -R"
 
 alias cd="z"
 alias cdi="zi"
-
 
 # utilities
 alias cl="clear"
