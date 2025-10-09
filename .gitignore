@@ -1,4 +1,5 @@
 zsh/.config/zsh/plugins/*
 tmux/.config/tmux/plugins/*
+zsh/.config/zsh/.zcompdump
 
 !zsh/.config/zsh/plugins/catppuccin_theme
