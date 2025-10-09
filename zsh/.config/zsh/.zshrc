@@ -59,6 +59,11 @@ for plugin in $ZDOTDIR/plugins/*(/); do
     [[ -f "$plugin/$plugin_name.zsh" ]] && source "$plugin/$plugin_name.zsh" || echo "Plugin $plugin_name not found"
 done
 
+# blank line after each command
+# precmd() {
+#   echo ""
+# }
+
 # ┌─ Bindings:
 bindkey -v
 bindkey -r '\ec'

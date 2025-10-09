@@ -3,4 +3,8 @@
 	email = yakovlievv25@gmail.com
 
 [url "git@github.com:yakovleivv/"]
-    insteadOf = "my:"
+    insteadOf = "ya:"
+
+[url "git@github.com:"]
+    insteadOf = "gh:"
+
