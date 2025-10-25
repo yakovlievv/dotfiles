@@ -33,6 +33,8 @@ export _JAVA_AWT_WM_NONREPARENTING=1
 export PARALLEL_HOME="$XDG_CONFIG_HOME/parallel"
 export FFMPEG_DATADIR="$XDG_CONFIG_HOME/ffmpeg"
 export WINEPREFIX="$XDG_DATA_HOME/wineprefixes/default"
+export CLANG_FORMAT_STYLE=file
+export CLANG_FORMAT_CONFIG_FILE="$HOME/.config/clang-format"
 
 # bootstrap .zshrc to ~/.config/zsh/.zshrc, any other zsh config files can also reside here
 export ZCOMP_DUMP="$XDG_CACHE_HOME/zsh/zcompdump"
