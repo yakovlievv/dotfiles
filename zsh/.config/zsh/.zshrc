@@ -40,6 +40,11 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     fi
     source <(fzf --zsh)
 
+    # Source zsh-autosuggestions
+    source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+
+    # Source zsh-syntax-highlighting
+    echo "source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" >> ${ZDOTDIR:-$HOME}/.zshrc
 fi
 
 # ┌─ Fzf settings:
@@ -51,14 +56,9 @@ export FZF_DEFAULT_OPTS=" \
     --color=border:#6C7086,label:#CDD6F4"
 
 # ┌─ Source other files:
+source "${ZDOTDIR}/catppuccin_theme.zsh"
 source "$ZDOTDIR/functions.zsh"
 source "$ZDOTDIR/aliases.zsh"
-
-# ┌─ Plugin loader:
-for plugin in $ZDOTDIR/plugins/*(/); do
-    plugin_name=$(basename "$plugin")
-    [[ -f "$plugin/$plugin_name.zsh" ]] && source "$plugin/$plugin_name.zsh" || echo "Plugin $plugin_name not found"
-done
 
 # blank line after each command
 # precmd() {
@@ -71,3 +71,6 @@ bindkey -r '\ec'
 bindkey '^F' fzf-cd-widget
 bindkey '^Y' autosuggest-accept
 bindkey '^E' autosuggest-accept-word
+source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
