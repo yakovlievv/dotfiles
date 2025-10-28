@@ -6,7 +6,7 @@ alias -g -- -h='-h 2>&1 | bat --language=help --style=plain'
 alias -g -- --help='--help 2>&1 | bat --language=help --style=plain'
 
 # run utilities
-alias nf="neofetch"
+alias ff="fastfetch"
 alias yz="yazi"
 alias vi="nvim"
 
@@ -37,4 +37,4 @@ alias cdi="zi"
 
 # utilities
 alias cl="clear"
-alias tm='tmux has-session -t default 2>/dev/null || tmux new-session -s default "echo; neofetch; zsh"; tmux attach -t default'
+alias tm='tmux has-session -t default 2>/dev/null || tmux new-session -s default "echo; fastfetch; zsh"; tmux attach -t default'
