@@ -1,26 +1,29 @@
+## Installation Guide:
+Before using bootstrap script you have too:
+- Set up ssh for git
+
 ## installation list:
 
-- git
 - ripgrep
 - fd
-- tree
 - tmux
 - neovim
 - bat
 - bat-extras
 - wget
-- cargo
-- npm
 - fzf
+- eza
+- zoxide
+- starship
+- fastfetch
+- less
+- luarocks
+- zsh-syntax-highlighting
+- zsh-autosuggestions
+- kitty
 
-### Using bat:
-
-- First of all you need to have _wget_ installed
-- Secondly after you stow the directory run:
+- cargo
+- node
 
 #### cool settign for bat
 --style="numbers,changes"
-
-```zsh
-bat cache --build
-```
