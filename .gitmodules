@@ -1,6 +1,6 @@
-[submodule "neovim/.config/nvim"]
-	path = neovim/.config/nvim
-	url = git@github.com:yakovlievv/nvim.git
-[submodule "scripts/.local/bin"]
-	path = scripts/.local/bin
-	url = git@github.com:yakovlievv/scripts.git
+[submodule "bin"]
+	path = bin
+	url = https://github.com/yakovlievv/scripts.git
+[submodule "nvim"]
+	path = nvim
+	url = https://github.com/yakovlievv/nvim.git
