@@ -1,5 +1,4 @@
-#!/usr/bin/env zsh
-set -euo pipefail
+#!/usr/bin/bash
 
 # --- SETUP ---
 GREEN='\033[0;32m'
@@ -11,14 +10,15 @@ log()   { echo -e "${GREEN}==>${NC} $1"; }
 warn()  { echo -e "${YELLOW}⚠${NC}  $1"; }
 error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
 
-
 # --- INSTALL DEPENDENCIES ---
-sudo pacman -Syu --nonconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh
-
+sudo pacman -Syu --noconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh
+source $HOME/.zshenv
 bat cache --build
 
 log "Installing Node.js 24..."
+mkdir -p $NVM_DIR
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+\. "$NVM_DIR/nvm.sh"
 nvm install 24
 
 # --- INSTALL TPM ---
