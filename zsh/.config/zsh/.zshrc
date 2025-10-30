@@ -44,9 +44,15 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 
     # Source zsh-syntax-highlighting
-    echo "source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" >> ${ZDOTDIR:-$HOME}/.zshrc
+    source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
+if [[ "$OSTYPE" == "linux"* ]]; then
+    source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+    # Source zsh-syntax-highlighting
+    source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+fi
 # ┌─ Fzf settings:
 export FZF_DEFAULT_OPTS=" \
     --color=spinner:#F5E0DC,hl:#F38BA8 \
@@ -71,9 +77,6 @@ bindkey -r '\ec'
 bindkey '^F' fzf-cd-widget
 bindkey '^Y' autosuggest-accept
 bindkey '^E' autosuggest-accept-word
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 export NVM_DIR="$HOME/.config/nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
