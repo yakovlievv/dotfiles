@@ -52,9 +52,7 @@ if [[ "$OS" == "macos" ]]; then
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
         log "Homebrew installed successfully."
     else
-        log "Homebrew already installed."
-    fi
-    brew install zsh-autosuggestions zsh-syntax-highlighting git less fzf ripgrep fd tmux neovim bat bat-extras wget
+        log "Homebrew already installed." fi brew install zsh-autosuggestions zsh-syntax-highlighting git less fzf ripgrep fd tmux neovim bat bat-extras wget
 
 elif [[ "$OS" == "arch" ]]; then
     log "Installing packages via pacman..."
