@@ -1,5 +1,4 @@
-#!/usr/bin/env zsh
-set -euo pipefail
+#!/usr/bin/bash bash
 
 # --- SETUP ---
 GREEN='\033[0;32m'
