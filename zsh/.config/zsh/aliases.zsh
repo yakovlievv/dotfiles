@@ -7,7 +7,7 @@ alias -g -- --help='--help 2>&1 | bat --language=help --style=plain'
 
 # run utilities
 alias ff="fastfetch"
-alias yz="yazi"
+alias y="yazi"
 alias vi="nvim"
 
 # git
