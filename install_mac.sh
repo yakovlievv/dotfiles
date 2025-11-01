@@ -1,20 +1,13 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 
-# --- SETUP ---
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No color
+NC='\033[0m'
 
 log()   { echo -e "${GREEN}==>${NC} $1"; }
 warn()  { echo -e "${YELLOW}⚠${NC}  $1"; }
 error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
-
-log "Installing packages"
-sudo pacman -Syu --noconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh
-
-chsh -s /usr/bin/zsh
-log "Changed default shell to zsh"
 
 log "Symlinking dotfiles"
 
@@ -23,13 +16,12 @@ source "$DOTFILES/zsh/.zshenv"
 mkdir -p "$XDG_CONFIG_HOME"
 
 # List of directories to symlink directly
-dirs=(bat kitty nvim zathura yazi wofi wlogout wget prettier git swaync waybar hypr lazygit)
+dirs=(bat kitty nvim yazi wget prettier git lazygit)
 
 for dir in "${dirs[@]}"; do
     target="$XDG_CONFIG_HOME/$dir"
     src="$DOTFILES/$dir"
     
-    # Remove existing symlink or directory if present
     [ -e "$target" ] && rm -rf "$target"
     
     ln -sfn "$src" "$target"

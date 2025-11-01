@@ -1,29 +1,31 @@
-## Installation Guide:
-Before using bootstrap script you have too:
-- Set up ssh for git
+# Dotfiles
 
-## installation list:
+Personal configuration for macOS and Arch Linux.
 
-- ripgrep
-- fd
-- tmux
-- neovim
-- bat
-- bat-extras
-- wget
-- fzf
-- eza
-- zoxide
-- starship
-- fastfetch
-- less
-- luarocks
-- zsh-syntax-highlighting
-- zsh-autosuggestions
-- kitty
+## Installation
 
-- cargo
-- node
+Clone the repo:
 
-#### cool settign for bat
+```bash
+git clone https://github.com/yakovlievv/dotfiles.git ~/dotfiles
+cd ~/dotfiles
+```
+
+Run the setup script for your system:
+
+Arch Linux
+
+```bash
+./install-arch.sh
+```
+
+macOS
+
+```bash
+./install_mac.sh
+```
+
+The scripts will install all dependencies and link the configs automatically.
+
+### cool flag for bat
 --style="numbers,changes"
