@@ -42,4 +42,6 @@ export CLANG_FORMAT_CONFIG_FILE="$HOME/.config/clang-format"
 # bootstrap .zshrc to ~/.config/zsh/.zshrc, any other zsh config files can also reside here
 export ZCOMP_DUMP="$XDG_CACHE_HOME/zsh/zcompdump"
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
-. "/home/yakovlievv/.local/share/cargo/env"
+if [ -f "$HOME/.local/share/cargo/env" ]; then
+  source "$HOME/.local/share/cargo/env"
+fi
