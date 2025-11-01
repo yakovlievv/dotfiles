@@ -16,7 +16,13 @@ source "$DOTFILES/zsh/.zshenv"
 mkdir -p "$XDG_CONFIG_HOME"
 
 # List of directories to symlink directly
-dirs=(bat kitty nvim yazi wget prettier git lazygit)
+dirs=(bat karabiner kitty nvim yazi wget prettier git lazygit)
+
+log "installing brew"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+log "installing dependencies"
+brew install fnm
 
 for dir in "${dirs[@]}"; do
     target="$XDG_CONFIG_HOME/$dir"
@@ -39,17 +45,11 @@ ln -sfn "$DOTFILES/zsh/.zshenv" "$HOME/.zshenv"
 ln -sfn "$DOTFILES/zsh/.config/zsh" "$XDG_CONFIG_HOME/zsh"
 log "Linked zsh"
 
-ln -sfn "$DOTFILES/bin" "$XDG_BIN_HOME"
-log "Linked scripts"
-
 log "Building bat cache"
 bat cache --build
 
-log "Installing node"
-mkdir -p $NVM_DIR
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-. "$NVM_DIR/nvm.sh"
-nvm install 24
+log "installing node"
+fnm install 24
 
 log "Installing tpm"
 TPM_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/plugins/tpm"
