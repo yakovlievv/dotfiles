@@ -22,7 +22,7 @@ source "$DOTFILES/zsh/.zshenv"
 mkdir -p "$XDG_CONFIG_HOME"
 
 # List of directories to symlink directly
-dirs=(bat kitty nvim zathura yazi wofi wlogout wget prettier git swaync waybar hypr lazygit)
+dirs=(fastfetch bat kitty nvim zathura yazi wofi wlogout wget prettier git swaync waybar hypr lazygit)
 
 for dir in "${dirs[@]}"; do
     target="$XDG_CONFIG_HOME/$dir"

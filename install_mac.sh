@@ -16,10 +16,10 @@ source "$DOTFILES/zsh/.zshenv"
 mkdir -p "$XDG_CONFIG_HOME"
 
 # List of directories to symlink directly
-dirs=(bat karabiner kitty nvim yazi wget prettier git lazygit)
+dirs=(fastfetch bat karabiner kitty nvim yazi wget prettier git lazygit)
 
-log "installing brew"
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# log "installing brew"
+# /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 log "installing dependencies"
 brew install fnm
