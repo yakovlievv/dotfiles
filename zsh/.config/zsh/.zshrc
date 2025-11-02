@@ -17,7 +17,7 @@ export KEYTIMEOUT=20
 export HOMEBREW_NO_ENV_HINTS=1
 
 setopt auto_menu menu_complete # autocmp first menu match
-setopt autocd # type a dir to cd
+# setopt autocd # type a dir to cd
 setopt auto_param_slash # when a dir is completed, add a / instead of a trailing space
 setopt no_case_glob no_case_match # make cmp case insensitive
 setopt globdots # include dotfiles
@@ -71,3 +71,7 @@ bindkey '^Y' autosuggest-accept
 bindkey '^E' autosuggest-accept-word
 
 # precmd() { echo "" } # Optional blank line after each thing
+
+export NVM_DIR="$HOME/.local/share/nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
