@@ -5,6 +5,35 @@
                 "parameters": { "basic.to_if_alone_timeout_milliseconds": 500 },
                 "rules": [
                     {
+                        "description": "Swap ; and :",
+                        "manipulators": [
+                            {
+                                "from": {
+                                    "key_code": "semicolon",
+                                    "modifiers": {
+                                        "mandatory": ["shift"],
+                                        "optional": ["caps_lock"]
+                                    }
+                                },
+                                "to": [{ "key_code": "semicolon" }],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "semicolon",
+                                    "modifiers": { "optional": ["caps_lock"] }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "semicolon",
+                                        "modifiers": ["left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
                         "description": "Swap \"command + tab\" with \"option + tab\" (Compatibility for AltTab app)",
                         "manipulators": [
                             {
