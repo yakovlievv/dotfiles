@@ -10,7 +10,7 @@ warn()  { echo -e "${YELLOW}⚠${NC}  $1"; }
 error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
 
 log "Installing packages"
-sudo pacman -Syu --noconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh
+sudo pacman -Syu --noconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh lazygit
 
 chsh -s /usr/bin/zsh
 log "Changed default shell to zsh"
