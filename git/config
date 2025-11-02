@@ -2,7 +2,7 @@
 	name = yakovlievv
 	email = yakovlievv25@gmail.com
 
-[url "git@github.com:yakovleivv/"]
+[url "git@github.com:yakovlievv/"]
     insteadOf = "ya:"
 
 [url "git@github.com:"]
