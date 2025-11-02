@@ -4,10 +4,12 @@ Personal configuration for macOS and Arch Linux.
 
 ## Installation
 
+> [!WARNING] Before cloning you must set up ssh to connect to github.
+
 Clone the repo:
 
 ```bash
-git clone https://github.com/yakovlievv/dotfiles.git ~/dotfiles
+git clone git@github.com ~/dotfiles
 cd ~/dotfiles
 ```
 
@@ -28,4 +30,5 @@ macOS
 The scripts will install all dependencies and link the configs automatically.
 
 ### cool flag for bat
+
 --style="numbers,changes"

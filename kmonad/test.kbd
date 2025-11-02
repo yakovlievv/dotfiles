@@ -1,0 +1,15 @@
+
+(defcfg
+  input  (iokit-name "Apple Internal Keyboard / Trackpad")
+  output (kext)
+  fallthrough true
+  allow-cmd true
+)
+
+(defsrc
+  caps
+)
+
+(deflayer base
+  caps (tap-hold 200 esc lctrl)
+)
