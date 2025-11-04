@@ -9,41 +9,12 @@ log()   { echo -e "${GREEN}==>${NC} $1"; }
 warn()  { echo -e "${YELLOW}⚠${NC}  $1"; }
 error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
 
-log "Symlinking dotfiles"
-
-DOTFILES="$HOME/Dots"
-source "$DOTFILES/zsh/.zshenv"
-mkdir -p "$XDG_CONFIG_HOME"
-
-# List of directories to symlink directly
-dirs=(fastfetch bat karabiner kitty nvim yazi wget prettier git lazygit)
-
 # log "installing brew"
 # /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 log "installing dependencies"
 brew install fnm
 
-for dir in "${dirs[@]}"; do
-    target="$XDG_CONFIG_HOME/$dir"
-    src="$DOTFILES/$dir"
-    
-    [ -e "$target" ] && rm -rf "$target"
-    
-    ln -sfn "$src" "$target"
-    log "Linked $src → $target"
-done
-
-ln -sfn "$DOTFILES/starship/starship.toml" "$XDG_CONFIG_HOME/starship.toml"
-log "Linked starship"
-
-ln -sfn "$DOTFILES/tmux/.tmux.conf" "$HOME/.tmux.conf"
-ln -sfn "$DOTFILES/tmux/.config/tmux" "$XDG_CONFIG_HOME/tmux"
-log "Linked tmux"
-
-ln -sfn "$DOTFILES/zsh/.zshenv" "$HOME/.zshenv"
-ln -sfn "$DOTFILES/zsh/.config/zsh" "$XDG_CONFIG_HOME/zsh"
-log "Linked zsh"
 
 log "Building bat cache"
 bat cache --build
