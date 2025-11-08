@@ -1,6 +1,6 @@
 [submodule "bin"]
 	path = bin
-	url = ya:scripts.git
+	url = git@github.com:yakovlievv/scripts
 [submodule "nvim"]
 	path = nvim
-	url = ya:nvim.git
+	url = git@github.com:yakovlievv/nvim

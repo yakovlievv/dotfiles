@@ -10,19 +10,18 @@ warn()  { echo -e "${YELLOW}⚠${NC}  $1"; }
 error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
 
 log "Installing packages"
-sudo pacman -Syu --noconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh lazygit
+sudo pacman -Syu --noconfirm ripgrep fd tmux neovim bat bat-extras wget fzf eza zoxide starship fastfetch less luarocks zsh-syntax-highlighting zsh-autosuggestions kitty zsh lazygit fnm
 
-chsh -s /usr/bin/zsh
-log "Changed default shell to zsh"
+. $HOME/dotfiles/symlink_arch.sh
 
 log "Building bat cache"
 bat cache --build
 
-log "Installing node"
-mkdir -p $NVM_DIR
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-. "$NVM_DIR/nvm.sh"
-nvm install 24
+log "installing node"
+fnm install 24
+
+chsh -s /usr/bin/zsh
+log "Changed default shell to zsh"
 
 log "Installing tpm"
 TPM_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/plugins/tpm"

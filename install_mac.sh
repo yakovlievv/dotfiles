@@ -15,12 +15,16 @@ error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
 log "installing dependencies"
 brew install fnm
 
+. $HOME/dotfiles/symlink-mac.sh
 
 log "Building bat cache"
 bat cache --build
 
 log "installing node"
 fnm install 24
+
+chsh -s /usr/bin/zsh
+log "Changed default shell to zsh"
 
 log "Installing tpm"
 TPM_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/tmux/plugins/tpm"

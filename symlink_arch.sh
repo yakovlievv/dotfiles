@@ -11,7 +11,7 @@ error() { echo -e "${RED}✖${NC}  $1" >&2; exit 1; }
 
 log "Symlinking dotfiles"
 
-DOTFILES="$HOME/Dots"
+DOTFILES="$HOME/dotfiles"
 source "$DOTFILES/zsh/.zshenv"
 mkdir -p "$XDG_CONFIG_HOME"
 
