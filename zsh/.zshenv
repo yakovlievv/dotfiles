@@ -11,7 +11,7 @@ export XDG_STATE_HOME="$HOME/.local/state"
 export XDG_BIN_HOME="$HOME/.local/bin"
 export XDG_CACHE_HOME="$HOME/.cache"
 
-export PATH="$XDG_BIN_HOME:$HOME/Dots/bin:$PATH"
+export PATH="$XDG_BIN_HOME:$HOME/dotfiles/bin:$PATH"
 
 # moving other files to correct paths
 export LY_LOG="$XDG_STATE_HOME/ly/session.log"
@@ -46,3 +46,4 @@ export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 if [ -f "$XDG_DATA_HOME/cargo/env" ]; then
   source "$XDG_DATA_HOME/cargo/env"
 fi
+. "/home/yako/.local/share/cargo/env"
