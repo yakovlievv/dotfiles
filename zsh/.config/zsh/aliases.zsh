@@ -23,6 +23,7 @@ alias gp="git pull"
 
 alias gcl="git clone"
 
+alias lg="lazygit"
 # modern replacements
 alias man="batman"
 

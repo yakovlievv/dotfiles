@@ -46,4 +46,3 @@ export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 if [ -f "$XDG_DATA_HOME/cargo/env" ]; then
   source "$XDG_DATA_HOME/cargo/env"
 fi
-. "/home/yako/.local/share/cargo/env"
