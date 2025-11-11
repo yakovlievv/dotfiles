@@ -1,0 +1,8 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 0                  # don't wrap lines automatically
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+BreakBeforeBraces: Attach       # keep braces on the same line as function/loops
+SpaceBeforeParens: ControlStatements
