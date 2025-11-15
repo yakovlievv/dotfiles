@@ -10,8 +10,9 @@ export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_STATE_HOME="$HOME/.local/state"
 export XDG_BIN_HOME="$HOME/.local/bin"
 export XDG_CACHE_HOME="$HOME/.cache"
+export XDG_DOWNLOAD_DIR="$HOME/down"
 
-export PATH="$XDG_BIN_HOME:$HOME/dotfiles/bin:$PATH"
+export PATH="$XDG_BIN_HOME:$HOME/bin:$PATH"
 
 # moving other files to correct paths
 export LY_LOG="$XDG_STATE_HOME/ly/session.log"
