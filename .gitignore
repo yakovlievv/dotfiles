@@ -2,3 +2,5 @@ tmux/.config/tmux/plugins/**
 zsh/.config/zsh/.zcompdump
 karabiner/automatic_backups/**
 zsh/.config/zsh/.zsh_sessions
+.DS_Store
+zsh/.config/zsh/.zsh_history
