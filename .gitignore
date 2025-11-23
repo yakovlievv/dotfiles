@@ -4,3 +4,4 @@ karabiner/automatic_backups/**
 zsh/.config/zsh/.zsh_sessions
 .DS_Store
 zsh/.config/zsh/.zsh_history
+bin/dots
