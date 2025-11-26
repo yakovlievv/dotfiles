@@ -39,3 +39,5 @@ alias cdi="zi"
 # utilities
 alias cl="clear"
 alias tm='tmux has-session -t default 2>/dev/null || tmux new-session -s default "echo; fastfetch; zsh"; tmux attach -t default'
+
+alias oc="opencode"
