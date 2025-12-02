@@ -4,3 +4,6 @@
 [submodule "nvim"]
 	path = nvim
 	url = git@github.com:yakovlievv/nvim
+[submodule "dots-cli"]
+	path = dots-cli
+	url = git@github.com:yakovlievv/dots-cli
