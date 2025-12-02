@@ -15,10 +15,12 @@ export XDG_DOWNLOAD_DIR="$HOME/down"
 export PATH="$XDG_BIN_HOME:$HOME/bin:$PATH"
 
 # moving other files to correct paths
+export HISTDIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+export HISTFILE="$HISTDIR/zsh_history"
 export LY_LOG="$XDG_STATE_HOME/ly/session.log"
 export GIT_CONFIG_GLOBAL="$XDG_CONFIG_HOME/git/config"
 export PRETTIER_CONFIG="$XDG_CONFIG_HOME/.prettierrc"
-export LESSHISTFILE="$XDG_CACHE_HOME/less_history"
+export LESSHISTFILE="$XDG_CACHE_HOME/less/less_history"
 export PYTHON_HISTORY="$XDG_DATA_HOME/python/history"
 export WGETRC="$XDG_CONFIG_HOME/wget/wgetrc"
 export PYTHONSTARTUP="$XDG_CONFIG_HOME/python/pythonrc"
@@ -32,8 +34,8 @@ export NPM_CONFIG_USERCONFIG="$XDG_CONFIG_HOME/npm/npmrc"
 export NVM_DIR="$XDG_DATA_HOME/nvm"
 export GRADLE_USER_HOME="$XDG_DATA_HOME/gradle"
 export NUGET_PACKAGES="$XDG_CACHE_HOME/NuGetPackages"
-export _JAVA_OPTIONS=-Djava.util.prefs.userRoot="$XDG_CONFIG_HOME/java"
-export _JAVA_AWT_WM_NONREPARENTING=1
+# export _JAVA_OPTIONS=-Djava.util.prefs.userRoot="$XDG_CONFIG_HOME/java"
+# export _JAVA_AWT_WM_NONREPARENTING=1
 export PARALLEL_HOME="$XDG_CONFIG_HOME/parallel"
 export FFMPEG_DATADIR="$XDG_CONFIG_HOME/ffmpeg"
 export WINEPREFIX="$XDG_DATA_HOME/wineprefixes/default"
@@ -44,6 +46,6 @@ export CLANG_FORMAT_CONFIG_FILE="$HOME/.config/clang-format"
 export ZCOMP_DUMP="$XDG_CACHE_HOME/zsh/zcompdump"
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
 
-if [ -f "$XDG_DATA_HOME/cargo/env" ]; then
-  source "$XDG_DATA_HOME/cargo/env"
+if [ -f "$CARGO_HOME/env" ]; then
+  source "$CARGO_HOME/env"
 fi

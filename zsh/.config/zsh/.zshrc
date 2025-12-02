@@ -5,8 +5,6 @@ eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell zsh)"
 # ┌─ History
 SAVEHIST=100000
 HISTSIZE=100000
-HISTDIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
-HISTFILE="$HISTDIR/history"
 
 setopt append_history inc_append_history share_history
 setopt hist_ignore_all_dups hist_reduce_blanks hist_ignore_space

@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 # ┌─ Functions:
-function ycd() {
+function yz() {
 	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
 	yazi "$@" --cwd-file="$tmp"
 	IFS= read -r -d '' cwd < "$tmp"
