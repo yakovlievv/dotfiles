@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${DOTFILES_ROOT:-$HOME/dots}"
-BIN_DIR="$ROOT/bin"
-TARGET_BIN="$ROOT/dots-cli/target/release/dots"
+export DOTFILES = "$HOME/dots"
 
-rm -rf "$HOME/bin"
-ln -s "$BIN_DIR" "$HOME/bin"
-export PATH="$PATH:$HOME/bin"
+if [[ "$OSTYPE" == darwin* ]]; then
+    rm -rf "$HOME/Documents/bin"
+    ln -sfnv "$DOTFILES/bin" "$HOME/Documents/"
+    export PATH="$PATH:$HOME/Documents/bin"
 
-if [[ ! -x "$TARGET_BIN" ]]; then
-  echo "Building dots CLI..."
-  cargo build --release --manifest-path "$ROOT/dots-cli/Cargo.toml"
+elif [[ "$OSTYPE" == linux-* ]]; then
+    rm -rf "$HOME/bin"
+    ln -sfnv "$DOTFILES/bin" "$HOME/bin"
+    export PATH="$PATH:$HOME/bin"
 fi
 
-ln -sfn "$TARGET_BIN" "$BIN_DIR/dots"
