@@ -5,3 +5,4 @@ zsh/.config/zsh/.zsh_sessions
 .DS_Store
 zsh/.config/zsh/.zsh_history
 bin/dots
+util
