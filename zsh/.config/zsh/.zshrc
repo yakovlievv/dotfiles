@@ -42,6 +42,8 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
+[ -f ~/.zshrc.local ] && source ~/.zshrc.local
+
 # ┌─ Fzf settings:
 export FZF_DEFAULT_OPTS=" \
   --color=spinner:#F5E0DC,hl:#F38BA8 \
