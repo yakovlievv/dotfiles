@@ -13,7 +13,6 @@ setopt hist_verify
 # ┌─ some options
 export KEYTIMEOUT=20
 export HOMEBREW_NO_ENV_HINTS=1
-export OPENAI_API_KEY=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
 
 setopt auto_menu menu_complete # autocmp first menu match
 # setopt autocd # type a dir to cd
