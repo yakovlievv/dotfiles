@@ -1,0 +1,15 @@
+{
+  "title": "left command to left option",
+  "rules": [
+    {
+      "description": "Left Command becomes Left Option",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": { "key_code": "left_command" },
+          "to": [{ "key_code": "left_option" }]
+        }
+      ]
+    }
+  ]
+}
