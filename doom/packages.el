@@ -2,6 +2,7 @@
 ;;; $DOOMDIR/packages.el
 
 (package! org-roam)
+(package! catppuccin-theme)
 ;; To install a package:
 ;;
 ;;   1. Declare them here in a `package!' statement,
