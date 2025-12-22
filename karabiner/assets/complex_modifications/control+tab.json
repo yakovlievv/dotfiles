@@ -1,22 +1,22 @@
 {
-  "title": "q",
+  "title": "Control+Tab as Command+Tab",
   "rules": [
     {
-      "description": "Option+Q behaves as Command+Q",
+      "description": "Control+Tab works as Command+Tab",
       "manipulators": [
         {
           "type": "basic",
           "from": {
-            "key_code": "q",
+            "key_code": "tab",
             "modifiers": {
-              "mandatory": ["left_option"],
+              "mandatory": ["control"],
               "optional": ["any"]
             }
           },
           "to": [
             {
-              "key_code": "q",
-              "modifiers": ["left_command"]
+              "key_code": "tab",
+              "modifiers": ["command"]
             }
           ]
         }

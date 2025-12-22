@@ -1,5 +1,5 @@
 {
-  "title": "Left Command to Option except Cmd+Tab and Cmd+Q (correct holding)",
+  "title": "command -> option",
   "rules": [
     {
       "description": "Left Command → Option except when Tab or Q is pressed",
