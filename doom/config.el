@@ -12,17 +12,10 @@
           org-roam-directory "~/Documents/org/roam/"
           org-roam-dailies-directory "daily/"
           org-roam-dailies-capture-templates
-          '(
-            ("d" "default" entry
-             "* %?"
+          '(("d" "default" entry "* %?"
              :if-new (file+head
                        "%<%Y-%m-%d>.org"
-                       "\n#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n:PROPERTIES:\n:WAKE_UP:\n:BED_TIME:\n:MOOD:\n:END:\n\n* The lore\n\n"
-                       )
-             )
-            )
-          )
-        )
+                       "\n#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n:PROPERTIES:\n:WAKE_UP:\n:BED_TIME:\n:MOOD:\n:END:\n\n* The lore\n\n* Focus blocks\n\n")))))
 
 (map! :leader
       :desc "Open today's daily note"
