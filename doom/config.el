@@ -15,17 +15,16 @@
             ("d" "default" entry "%?"
              :target (file+head
                        "%<%Y-%m-%d>.org"
-                       "#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n:PROPERTIES:\n:WAKE_UP:\n:BED_TIME:\n:MOOD:\n:END:\n\n* The lore\n\n* Focus blocks\n\n")
-             )
-            ("f" "test" entry "**balss"
-             :target (file+heading
-                       "%<%Y-%m-%d>.org"
-                       "* Focus blocks")
-             ))))
+                       "#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n:PROPERTIES:\n:WAKE_UP:\n:BED_TIME:\n:MOOD:\n:END:\n\n* The lore\n\n* Focus blocks\n\n"))
+            ("f" "Focus Block" entry
+             "* %^{Title}\n:PROPERTIES: \n:START: %^{Start time}T\n:END_TIME: %^{End time}T\n:DURATION: %^{Duration}\n:END:\n"
+             :target (file+olp "%<%Y-%m-%d>.org" ("Focus blocks")))
+            )
+          )
+        )
 
 (map! :leader
       :desc "Open today's daily note"
       "d d" #'org-roam-dailies-goto-today
       :desc "Capture into daily note"
-      "d f" #'org-roam-dailies-capture-today
-      )
+      "d f" #'org-roam-dailies-capture-today)
