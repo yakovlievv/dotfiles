@@ -2,7 +2,11 @@
 (setq doom-theme 'catppuccin)
 
 (after! org
-        (setq org-log-done 'time))
+        (setq org-log-done 'time)
+        (setq org-hide-emphasis-markers t)
+        (setq org-clock-persist t))
+
+(org-clock-persistence-insinuate)
 
 (after! org-roam
         (org-roam-db-autosync-mode)
@@ -15,10 +19,14 @@
             ("d" "default" entry "%?"
              :target (file+head
                        "%<%Y-%m-%d>.org"
-                       "#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n:PROPERTIES:\n:WAKE_UP:\n:BED_TIME:\n:MOOD:\n:END:\n\n* The lore\n\n* Focus blocks\n\n"))
+                       "#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n\n* The lore\n\n* Tasks\n\n* Focus blocks\n\n")
+             )
             ("f" "Focus Block" entry
-             "* %^{Title}\n:PROPERTIES: \n:START: %^{Start time}T\n:END_TIME: %^{End time}T\n:DURATION: %^{Duration}\n:END:\n"
+             "* %^{Title}\n:PROPERTIES:\n:END:\n"
              :target (file+olp "%<%Y-%m-%d>.org" ("Focus blocks")))
+            ("m" "Morning Log" plain
+             ":PROPERTIES:\n:BED_TIME: %^T\n:WAKE_TIME: %^T\n:END:"
+             :target (file+olp "%<%Y-%m-%d>.org" ("Morning log")))
             )
           )
         )
