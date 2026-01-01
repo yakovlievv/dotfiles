@@ -2,6 +2,8 @@
 ;;; $DOOMDIR/packages.el
 
 (package! org-roam)
+(package! org-ql)
+(package! org-roam-ui)
 (package! catppuccin-theme)
 ;; To install a package:
 ;;

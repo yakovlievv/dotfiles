@@ -42,7 +42,7 @@
        (:if (featurep :system 'macos) macos)  ; improve compatibility with macOS
 
        :lang
-       (org +roam2)
+       (org +roam2 +agenda +habits)
        emacs-lisp        ; drown in parentheses
        markdown          ; writing docs for people to ignore
        sh                ; she sells {ba,z,fi}sh shells on the C xor
