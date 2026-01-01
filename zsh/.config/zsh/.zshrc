@@ -71,3 +71,11 @@ bindkey '^Y' autosuggest-accept
 bindkey '^E' autosuggest-accept-word
 
 # precmd() { echo "" } # Optional blank line after each thing
+
+# pnpm
+export PNPM_HOME="/Users/yako/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
