@@ -1,6 +1,7 @@
 eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"
 eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell zsh)"
+eval "$(/usr/libexec/path_helper)"
 
 # ┌─ History
 SAVEHIST=100000
@@ -26,35 +27,35 @@ stty stop undef # disable accidental ctrl s
 
 # ┌─ Macos-specific settings:
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    # Source fzf
-    if [[ ! "$PATH" == */opt/homebrew/opt/fzf/bin* ]]; then
-        PATH="${PATH:+${PATH}:}/opt/homebrew/opt/fzf/bin"
-    fi
-    source <(fzf --zsh)
-    # Source zsh-autosuggestions
-    source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-    # Source zsh-syntax-highlighting
-    source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+# Source fzf
+if [[ ! "$PATH" == */opt/homebrew/opt/fzf/bin* ]]; then
+PATH="${PATH:+${PATH}:}/opt/homebrew/opt/fzf/bin"
+fi
+source <(fzf --zsh)
+# Source zsh-autosuggestions
+source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+# Source zsh-syntax-highlighting
+source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-    # Source zsh-syntax-highlighting
-    source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+# Source zsh-syntax-highlighting
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 # ┌─ Fzf settings:
 export FZF_DEFAULT_OPTS=" \
-  --color=spinner:#F5E0DC,hl:#F38BA8 \
-  --color=fg:#CDD6F4,header:#F38BA8,info:#CBA6F7,pointer:#F5E0DC \
-  --color=marker:#B4BEFE,fg+:#CDD6F4,prompt:#CBA6F7,hl+:#F38BA8 \
-  --color=selected-bg:#45475A \
-  --color=border:#6C7086,label:#CDD6F4 \
-  --height=40% --layout=reverse"
+--color=spinner:#F5E0DC,hl:#F38BA8 \
+--color=fg:#CDD6F4,header:#F38BA8,info:#CBA6F7,pointer:#F5E0DC \
+--color=marker:#B4BEFE,fg+:#CDD6F4,prompt:#CBA6F7,hl+:#F38BA8 \
+--color=selected-bg:#45475A \
+--color=border:#6C7086,label:#CDD6F4 \
+--height=40% --layout=reverse"
 
 if command -v fd >/dev/null; then
-  export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
 fi
 
 # ┌─ Source other files:
@@ -75,7 +76,7 @@ bindkey '^E' autosuggest-accept-word
 # pnpm
 export PNPM_HOME="/Users/yako/.local/share/pnpm"
 case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
+*":$PNPM_HOME:"*) ;;
+*) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end

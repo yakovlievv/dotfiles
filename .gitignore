@@ -7,3 +7,4 @@ zsh/.config/zsh/.zsh_history
 bin/dots
 util
 zsh/.config/zsh/.zshrc.local
+zsh/.config/zsh/.zsh_sessions
