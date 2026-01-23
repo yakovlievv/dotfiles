@@ -3,6 +3,7 @@
 
 (package! org-roam)
 (package! org-ql)
+(package! exec-path-from-shell)
 (package! org-roam-ui)
 (package! catppuccin-theme)
 ;; To install a package:

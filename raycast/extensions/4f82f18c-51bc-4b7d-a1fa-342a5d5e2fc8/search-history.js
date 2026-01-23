@@ -14,7 +14,7 @@ ${t.message}`:f,g=[p,r,e].filter(Boolean).join(`
             datetime(last_visit_date/1000000,'unixepoch') as lastVisited
           FROM moz_places
           ${n.length>0?`WHERE ${Pt(n)}`:""}
-          ORDER BY last_visit_date DESC LIMIT ${r||t.limitResults};`};var Ct=require("@raycast/api");var te={default:"",google:"https://google.com/search?q=",bing:"https://www.bing.com/search?q=",baidu:"https://www.baidu.com/s?wd=",brave:"https://search.brave.com/search?q=",duckduckgo:"https://duckduckgo.com/?q=",qwant:"https://www.qwant.com/?q="},he="https://cdn.jsdelivr.net/gh/zen-browser/branding/Main%20icons/SVG/zen-black.svg",Ne=`
+          ORDER BY last_visit_date DESC LIMIT ${r||t.limitResults};`};var Ct=require("@raycast/api");var te={default:"",google:"https://google.com/search?q=",bing:"https://www.bing.com/search?q=",baidu:"https://www.baidu.com/s?wd=",brave:"https://search.brave.com/search?q=",duckduckgo:"https://duckduckgo.com/?q=",qwant:"https://www.qwant.com/?q=",kagi:"https://kagi.com/search?q="},he="https://cdn.jsdelivr.net/gh/zen-browser/branding/Main%20icons/SVG/zen-black.svg",Ne=`
   # \u{1F6A8}Error: Zen Browser is not installed
 
   ## This extension depends on Zen browser. You must install it to continue.
