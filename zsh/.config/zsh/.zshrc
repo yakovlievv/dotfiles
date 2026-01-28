@@ -2,6 +2,13 @@ eval "$(starship init zsh)"
 eval "$(zoxide init zsh)"
 eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell zsh)"
 eval "$(/usr/libexec/path_helper)"
+# Start ssh-agent if not already running
+if ! pgrep -u "$USER" ssh-agent > /dev/null; then
+    eval "$(ssh-agent -s)"
+fi
+
+# Add your key automatically
+ssh-add -K ~/.ssh/id_ed25519 2>/dev/null
 
 # ┌─ History
 SAVEHIST=100000
