@@ -1,10 +1,8 @@
-(setq org-directory "~/Documents/org/")
+(setq org-directory "~/org/")
 (setq doom-theme 'catppuccin)
 ;; Set default font and size
 ;; Monospaced Nerd Font
 (setq doom-font (font-spec :family "JetBrainsMono Nerd Font Mono" :size 16))
-
-
 ;; Optional: fallback for variable-pitch
 (setq doom-variable-pitch-font (font-spec :family "JetBrainsMono Nerd Font" :size 16))
 
@@ -52,7 +50,7 @@
         (org-clock-persistence-insinuate))
 
 (defun my/org-auto-commit ()
-  (let ((default-directory "~/Documents/org/"))  ; Fixed path
+  (let ((default-directory "~/org/"))
     (when (and (file-directory-p default-directory)
                (file-directory-p (concat default-directory ".git")))
       (when (not (string-empty-p
@@ -66,15 +64,15 @@
         (start-process "org-auto-push" nil "git" "push")))))
 
 (run-with-timer
-  (* 2 60 60)   ;; 2 hours in seconds
-  (* 2 60 60)
+  (* 4 60 60)
+  (* 4 60 60)
   #'my/org-auto-commit)
 
 (after! org-roam
         (org-roam-db-autosync-mode)
         (require 'org-roam-dailies)
         (setq
-          org-roam-directory "~/Documents/org/roam/"
+          org-roam-directory "~/org/roam/"
           org-roam-dailies-directory "daily/"
           org-roam-dailies-capture-templates
           '(
