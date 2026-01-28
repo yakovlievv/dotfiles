@@ -1,10 +1,21 @@
+[include]
+	path = /Users/yako/dotfiles/git/catppuccin.gitconfig
+
 [user]
 	name = yakovlievv
 	email = yakovlievv25@gmail.com
 
-[url "git@github.com:yakovlievv/"]
-    insteadOf = "ya:"
+[core]
+	pager = delta
 
-[url "git@github.com:"]
-    insteadOf = "gh:"
+[interactive]
+	diffFilter = delta --color-only
+
+[delta]
+	navigate = true
+	features = catppuccin-mocha
+    syntax-theme = "Catppuccin Mocha"
+
+[merge]
+	conflictStyle = zdiff3
 

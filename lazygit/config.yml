@@ -1,4 +1,3 @@
-# git:
-#   paging:
-#     colorArg: always
-#     pager: "bat --language=diff --plain --paging=never"
+git:
+  pagers:
+    - pager: delta --dark --paging=never --line-numbers --hyperlinks --hyperlinks-file-link-format="lazygit-edit://{path}:{line}"
