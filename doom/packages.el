@@ -3,9 +3,11 @@
 
 (package! org-roam)
 (package! org-ql)
+(package! org-roam-ql)
 (package! exec-path-from-shell)
 (package! org-roam-ui)
 (package! catppuccin-theme)
+(package! org-gcal)
 ;; To install a package:
 ;;
 ;;   1. Declare them here in a `package!' statement,
