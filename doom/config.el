@@ -15,7 +15,6 @@
            (frame-parameter nil 'left)
            (frame-parameter nil 'top)))
 
-
 ;; Set default Emacs window size on launch
 (setq initial-frame-alist
       '((width . 127)     ;; characters wide
@@ -30,66 +29,62 @@
 
 ;; Make sure exec-path-from-shell is loaded first
 (use-package! exec-path-from-shell
-              :config
-              (when (memq window-system '(mac ns x))
-                (exec-path-from-shell-initialize)))
+  :config
+  (when (memq window-system '(mac ns x))
+    (exec-path-from-shell-initialize)))
 
 (after! org
-        (add-to-list 'org-modules 'org-habit)
-
-        (setq org-log-done 'time
-              org-hide-emphasis-markers t
-              org-src-fontify-natively t
-              org-agenda-show-inherited-tasks t
-              org-habit-graph-column 50
-              org-habit-preceding-days 30
-              org-habit-following-days 10
-              org-habit-show-habits-only-for-today nil
-              org-agenda-skip-scheduled-repeats-after-deadline t
-              org-clock-persist 'history)
-        (org-clock-persistence-insinuate))
+  (add-to-list 'org-modules 'org-habit)
+  (setq org-archive-location
+        (expand-file-name "archive/arch-%s::datetree/"
+                          org-directory))
+  (setq org-log-done 'time
+        org-hide-emphasis-markers t
+        org-src-fontify-natively t
+        org-agenda-show-inherited-tasks t
+        org-habit-graph-column 50
+        org-habit-preceding-days 30
+        org-habit-following-days 10
+        org-habit-show-habits-only-for-today nil
+        org-agenda-skip-scheduled-repeats-after-deadline t
+        org-clock-persist 'history)
+  (org-clock-persistence-insinuate))
 
 (defun my/org-auto-commit ()
   (let ((default-directory "~/org/"))
     (when (and (file-directory-p default-directory)
                (file-directory-p (concat default-directory ".git")))
       (when (not (string-empty-p
-                   (shell-command-to-string "git status --porcelain")))
+                  (shell-command-to-string "git status --porcelain")))
         ;; Commit
         (shell-command "git add -A")
         (shell-command
-          (format "git commit -m 'Auto commit: %s'"
-                  (format-time-string "%Y-%m-%d %H:%M")))
+         (format "git commit -m 'Auto commit: %s'"
+                 (format-time-string "%Y-%m-%d %H:%M")))
         ;; Push asynchronously
         (start-process "org-auto-push" nil "git" "push")))))
 
 (run-with-timer
-  (* 4 60 60)
-  (* 4 60 60)
-  #'my/org-auto-commit)
+ (* 4 60 60)
+ (* 4 60 60)
+ #'my/org-auto-commit)
 
 (after! org-roam
-        (org-roam-db-autosync-mode)
-        (require 'org-roam-dailies)
-        (setq
-          org-roam-directory "~/org/roam/"
-          org-roam-dailies-directory "daily/"
-          org-roam-dailies-capture-templates
-          '(
-            ("d" "default" entry "%?"
-             :target (file+head
-                       "%<%Y-%m-%d>.org"
-                       "#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n* Morning log\n\n* The lore\n\n* Tasks\n\n* Focus blocks\n\n")
-             )
-            ("f" "Focus Block" entry
-             "* %^{Title}\n:PROPERTIES:\n:END:\n"
-             :target (file+olp "%<%Y-%m-%d>.org" ("Focus blocks")))
-            ("m" "Morning Log" plain
-             ":PROPERTIES:\n:BED_TIME: %^T\n:WAKE_TIME: %^T\n:END:\n\n"
-             :target (file+olp "%<%Y-%m-%d>.org" ("Morning log")))
-            ("t" "Daily task" entry
-             "* %^{Title}\n:PROPERTIES:\n:PLANNED:%^T\n:DEADLINE: %^T\n:END:"
-             :target (file+olp "%<%Y-%m-%d>.org" ("Tasks")))
-            )
-          )
-        )
+  (org-roam-db-autosync-mode)
+  (require 'org-roam-dailies)
+  (setq
+   org-roam-directory "~/org/roam/"
+   org-roam-dailies-directory "daily/"
+   org-roam-dailies-capture-templates
+   '(("d" "default" entry "%?"
+      :target (file+head
+               "%<%Y-%m-%d>.org"
+               ":PROPERTIES:\n:ID:       %(org-id-new)\n:SLEEP_TIME: %^T--%^T\n:END:\n#+title: %<%Y-%m-%d>\n#+filetags: %<:%Y:%B:>\n\n")))
+   org-agenda-files
+   (append
+    (list org-roam-directory)
+    (list "~/org/archive"))))
+
+(global-unset-key (kbd "C-s"))
+(map! "C-s" #'save-buffer)
+(map! "C-q" #'save-buffers-kill-terminal)
