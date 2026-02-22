@@ -1,14 +1,26 @@
-eval "$(starship init zsh)"
-eval "$(zoxide init zsh)"
-eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell zsh)"
-eval "$(/usr/libexec/path_helper)"
-# Start ssh-agent if not already running
-if ! pgrep -u "$USER" ssh-agent > /dev/null; then
-    eval "$(ssh-agent -s)"
-fi
+# ┌─ Cache eval helper: caches shell init scripts to avoid spawning subprocesses on every shell start
+_cache_eval() {
+  local name="$1"; shift
+  local cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/${name}.zsh"
+  local bin_path="${commands[$1]}"
+  if [[ ! -f "$cache" ]] || [[ -n "$bin_path" && "$bin_path" -nt "$cache" ]]; then
+    mkdir -p "${cache:h}"
+    "$@" > "$cache"
+  fi
+  source "$cache"
+}
 
-# Add your key automatically
-ssh-add -K ~/.ssh/id_ed25519 2>/dev/null
+_cache_eval starship starship init zsh
+_cache_eval zoxide zoxide init zsh
+_cache_eval fnm fnm env --use-on-cd --version-file-strategy=recursive --shell zsh
+
+# ┌─ ssh-agent (macOS: handled by keychain — add UseKeychain+AddKeysToAgent to ~/.ssh/config)
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  if ! pgrep -u "$USER" ssh-agent > /dev/null; then
+    eval "$(ssh-agent -s)"
+  fi
+  ssh-add ~/.ssh/id_ed25519 2>/dev/null
+fi
 
 # ┌─ History
 SAVEHIST=100000
@@ -34,20 +46,16 @@ stty stop undef # disable accidental ctrl s
 
 # ┌─ Macos-specific settings:
 if [[ "$OSTYPE" == "darwin"* ]]; then
-# Source fzf
-if [[ ! "$PATH" == */opt/homebrew/opt/fzf/bin* ]]; then
-PATH="${PATH:+${PATH}:}/opt/homebrew/opt/fzf/bin"
-fi
-source <(fzf --zsh)
-# Source zsh-autosuggestions
-source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-# Source zsh-syntax-highlighting
-source $(brew --prefix)/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
+  if [[ ! "$PATH" == */opt/homebrew/opt/fzf/bin* ]]; then
+    PATH="${PATH:+${PATH}:}/opt/homebrew/opt/fzf/bin"
+  fi
+  _cache_eval fzf fzf --zsh
+  source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+  source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-# Source zsh-syntax-highlighting
-source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+  _cache_eval fzf fzf --zsh
+  source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+  source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
