@@ -1,6 +1,6 @@
 (setq org-directory "~/org/")
 (setq doom-theme 'catppuccin)
-;; Set default font and size
+;; Set default font and sizo
 ;; Monospaced Nerd Font
 (setq doom-font (font-spec :family "JetBrainsMono Nerd Font Mono" :size 16))
 ;; Optional: fallback for variable-pitch
@@ -36,7 +36,7 @@
 (after! org
   (add-to-list 'org-modules 'org-habit)
   (setq org-archive-location
-        (expand-file-name "archive/arch-%s::datetree/"
+        (expand-file-name "archive/arch-%s:"
                           org-directory))
   (setq org-log-done 'time
         org-hide-emphasis-markers t
@@ -49,6 +49,14 @@
         org-agenda-skip-scheduled-repeats-after-deadline t
         org-clock-persist 'history)
   (org-clock-persistence-insinuate))
+
+(defun my/org-clock-in-when-doing ()
+  "Clock in when the TODO state is switched to STRT."
+  (when (string= org-state "STRT")
+    (unless (org-clocking-p)
+      (org-clock-in))))
+
+(add-hook 'org-after-todo-state-change-hook #'my/org-clock-in-when-doing)
 
 (defun my/org-auto-commit ()
   (let ((default-directory "~/org/"))
@@ -73,7 +81,7 @@
   (org-roam-db-autosync-mode)
   (require 'org-roam-dailies)
   (setq
-   org-roam-directory "~/org/roam/"
+   org-roam-directory "~/org/"
    org-roam-dailies-directory "daily/"
    org-roam-dailies-capture-templates
    '(("d" "default" entry "%?"
@@ -88,3 +96,10 @@
 (global-unset-key (kbd "C-s"))
 (map! "C-s" #'save-buffer)
 (map! "C-q" #'save-buffers-kill-terminal)
+
+(after! org
+  (map! :map org-mode-map
+        :n "C-a" #'evil-numbers/inc-at-pt
+        :n "C-x" #'evil-numbers/dec-at-pt
+        :v "g C-a" #'evil-numbers/inc-at-pt-in-visual
+        :v "g C-x" #'evil-numbers/dec-at-pt-in-visual))
