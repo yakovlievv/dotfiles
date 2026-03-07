@@ -19,7 +19,7 @@ alias ga="git add"
 alias gc="git commit -m"
 
 alias gp="git push"
-alias gp="git pull"
+alias gpl="git pull"
 
 alias gcl="git clone"
 
