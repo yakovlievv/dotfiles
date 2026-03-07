@@ -1,3 +1,4 @@
+export SHELL_SESSIONS_DISABLE=1
 export EDITOR="nvim"
 export SUDO_EDITOR="nvim"
 export LC_ALL=en_US.UTF-8
@@ -61,6 +62,13 @@ if command -v fd >/dev/null; then
     export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
 fi
 
-if [ -f "$CARGO_HOME/env" ]; then
-  source "$CARGO_HOME/env"
-fi
+# Lazy-load cargo and pnpm: defer PATH additions until first use
+_lazy_cargo() {
+    unfunction cargo rustc rustup rustfmt clippy 2>/dev/null
+    [ -f "$CARGO_HOME/env" ] && source "$CARGO_HOME/env"
+    "$0" "$@"
+}
+for _cmd in cargo rustc rustup rustfmt clippy; do
+    function $_cmd { _lazy_cargo "$@" }
+done
+unset _cmd
