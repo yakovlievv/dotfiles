@@ -1,6 +1,5 @@
 export EDITOR="nvim"
 export SUDO_EDITOR="nvim"
-export TERM="xterm-256color"
 export LC_ALL=en_US.UTF-8
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US.UTF-8
@@ -16,6 +15,7 @@ export PATH="$XDG_BIN_HOME:$HOME/bin:$XDG_CONFIG_HOME/emacs/bin:$PATH"
 
 # moving other files to correct paths
 export HISTDIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+[[ -d "$HISTDIR" ]] || mkdir -p "$HISTDIR"
 export HISTFILE="$HISTDIR/zsh_history"
 export LY_LOG="$XDG_STATE_HOME/ly/session.log"
 export GIT_CONFIG_GLOBAL="$XDG_CONFIG_HOME/git/config"
@@ -45,6 +45,21 @@ export CLANG_FORMAT_CONFIG_FILE="$HOME/.config/clang-format"
 # bootstrap .zshrc to ~/.config/zsh/.zshrc, any other zsh config files can also reside here
 export ZCOMP_DUMP="$XDG_CACHE_HOME/zsh/zcompdump"
 export ZDOTDIR="$XDG_CONFIG_HOME/zsh"
+
+# ┌─ Fzf settings:
+export FZF_DEFAULT_OPTS=" \
+--color=spinner:#F5E0DC,hl:#F38BA8 \
+--color=fg:#CDD6F4,header:#F38BA8,info:#CBA6F7,pointer:#B4BEFE \
+--color=marker:#B4BEFE,fg+:#CDD6F4,prompt:#CBA6F7,hl+:#F38BA8 \
+--color=selected-bg:#45475A \
+--color=border:#6C7086,label:#CDD6F4 \
+--color=gutter:#181825,bg+:#1e1e2e \
+--pointer='❯' --marker='✓' \
+--height=40% --layout=reverse"
+
+if command -v fd >/dev/null; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git'
+fi
 
 if [ -f "$CARGO_HOME/env" ]; then
   source "$CARGO_HOME/env"
