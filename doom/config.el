@@ -1,5 +1,6 @@
 (setq doom-theme 'catppuccin)
 (setq doom-font (font-spec :family "JetBrainsMono Nerd Font Mono" :size 16))
+;; Optional: fallback for variable-pitch
 (setq doom-variable-pitch-font (font-spec :family "JetBrainsMono Nerd Font" :size 16))
 
 (defun my/print-frame-size ()

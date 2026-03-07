@@ -1,5 +1,4 @@
 (after! org-roam
-  (org-roam-db-autosync-mode)
   (require 'org-roam-dailies)
   (setq
    org-roam-directory "~/org/"
@@ -12,4 +11,5 @@
    org-agenda-files
    (append
     (list org-roam-directory)
-    (list "~/org/archive"))))
+    (list "~/org/archive")))
+  (org-roam-db-autosync-mode))

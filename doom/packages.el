@@ -8,6 +8,7 @@
 (package! org-roam-ui)
 (package! catppuccin-theme)
 (package! org-gcal)
+(package! savefold :recipe (:host github :repo "jcfk/savefold.el"))
 ;; To install a package:
 ;;
 ;;   1. Declare them here in a `package!' statement,

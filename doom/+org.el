@@ -1,10 +1,16 @@
 (setq org-directory "~/org/")
 
+(use-package! savefold
+  :init
+  (setq savefold-backends '(org)
+        savefold-directory (concat doom-cache-dir "savefold/"))
+  :config
+  (savefold-mode 1))
+
 (after! org
   (add-to-list 'org-modules 'org-habit)
   (setq org-archive-location
-        (expand-file-name "archive/arch-%s:"
-                          org-directory))
+        (concat (expand-file-name "archive/arch_%s" org-directory) "::"))
   (setq org-log-done 'time
         org-hide-emphasis-markers t
         org-src-fontify-natively t
