@@ -62,7 +62,7 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
-[ -f ~/.zshrc.local ] && source ~/.zshrc.local
+[ -f "$ZDOTDIR/.zshrc.local" ] && source "$ZDOTDIR/.zshrc.local"
 
 
 # ┌─ Source other files:
@@ -79,10 +79,11 @@ bindkey '^E' autosuggest-accept-word
 
 # precmd() { echo "" } # Optional blank line after each thing
 
-# pnpm
-export PNPM_HOME="$XDG_DATA_HOME/pnpm"
-case ":$PATH:" in
-*":$PNPM_HOME:"*) ;;
-*) export PATH="$PNPM_HOME:$PATH" ;;
-esac
-# pnpm end
+# Lazy-load pnpm: defer PATH addition until first use
+_lazy_pnpm() {
+    unfunction pnpm 2>/dev/null
+    export PNPM_HOME="$XDG_DATA_HOME/pnpm"
+    export PATH="$PNPM_HOME:$PATH"
+    pnpm "$@"
+}
+function pnpm { _lazy_pnpm "$@" }
