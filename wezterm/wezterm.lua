@@ -38,6 +38,7 @@ config.cursor_blink_rate = 500
 config.harfbuzz_features = { "calt=1", "clig=1", "liga=1" }
 
 config.enable_tab_bar = false
+config.enable_kitty_keyboard = true
 
 -- macOS option as alt
 config.send_composed_key_when_left_alt_is_pressed = false
