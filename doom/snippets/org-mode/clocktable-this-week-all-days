@@ -1,0 +1,6 @@
+# -*- mode: snippet -*-
+# name: clocktable-this-week-all-days
+# key: report-week-days
+# --
+#+BEGIN: clocktable :tcolumns 1 :fileskip0 t :scope agenda :block thisweek :step day :maxlevel 3
+#+END:

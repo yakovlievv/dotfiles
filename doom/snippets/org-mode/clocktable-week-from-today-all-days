@@ -1,0 +1,6 @@
+# -*- mode: snippet -*-
+# name: clocktable-from-today-all-days
+# key: report-week-from-today-days
+# --
+#+BEGIN: clocktable :tcolumns 1 :fileskip0 t :scope agenda :tstart "<-w>" :tend "<now>" :step day :maxlevel 3
+#+END:

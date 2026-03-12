@@ -19,6 +19,7 @@
        :editor
        (evil +everywhere); come to the dark side, we have cookies
        file-templates    ; auto-snippets for empty files
+       snippets          ; yasnippet support
        fold              ; (nigh) universal code folding
        (whitespace +guess +trim)  ; a butler for your whitespace
 

@@ -1,0 +1,6 @@
+# -*- mode: snippet -*-
+# name: clocktable-today
+# key: report-today
+# --
+#+BEGIN: clocktable :tcolumns 1 :fileskip0 t :scope agenda :block today :maxlevel 20 :filetitle t
+#+END:
