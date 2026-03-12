@@ -1,0 +1,6 @@
+# -*- mode: snippet -*-
+# name: clocktable-week-from-today-one-block
+# key: report-week-from-today
+# --
+#+BEGIN: clocktable :tcolumns 1 :fileskip0 t :scope agenda :tstart "<-w>" :tend "<tomorrow>" :maxlevel 3
+#+END:

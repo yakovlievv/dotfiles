@@ -46,6 +46,34 @@
         (start-process "org-auto-push" nil "git" "push")))))
 
 (run-with-timer
- (* 4 60 60)
- (* 4 60 60)
+ (* 8 60 60)
+ (* 8 60 60)
  #'my/org-auto-commit)
+
+(defun my/auto-refresh-dashboard ()
+  (when (and (buffer-file-name)
+             (string= (file-name-nondirectory (buffer-file-name))
+                      "20260311170322-dashboard.org"))
+    (org-update-all-dblocks)))
+
+(run-with-timer 0 60 #'my/auto-refresh-dashboard)
+
+(defun org-dblock-write:notes-this-week (params)
+  "Insert a list of org files created this week."
+  (let* ((dir "~/org/")
+         (week-start (org-read-date nil t "thisweek"))
+         (files (directory-files dir t "\\.org$"))
+         (results '()))
+    (dolist (f files)
+      (let ((creation-time (file-attribute-modification-time (file-attributes f))))
+        (when (time-less-p week-start creation-time)
+          (with-temp-buffer
+            (insert-file-contents f nil 0 500)
+            (let ((title (if (re-search-forward "^#\\+title:\\s-*\\(.*\\)" nil t)
+                             (match-string 1)
+                           (file-name-base f))))
+              (push (cons title f) results))))))
+    (if results
+        (dolist (r (nreverse results))
+          (insert (format "- [[file:%s][%s]]\n" (cdr r) (car r))))
+      (insert "No new notes this week.\n"))))

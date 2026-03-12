@@ -1,0 +1,6 @@
+# -*- mode: snippet -*-
+# name: clocktable-this-week-one-block
+# key: report-week
+# --
+#+BEGIN: clocktable :tcolumns 1 :fileskip0 t :scope agenda :block thisweek :maxlevel 3
+#+END:
