@@ -32,4 +32,5 @@
 
 (load! "+org")
 (load! "+org-roam")
+(load! "+book-gallery")
 (load! "+keybinds")
