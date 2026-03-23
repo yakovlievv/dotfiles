@@ -246,6 +246,26 @@
         total)
     (error 0)))
 
+;;; Streak
+
+(defun book-gallery--calculate-streak (daily-hash)
+  "Calculate current reading streak (consecutive days) from DAILY-HASH."
+  (let ((streak 0)
+        (today (decode-time)))
+    (catch 'done
+      (dotimes (i 365)
+        (let* ((date-time (encode-time 0 0 0
+                                       (- (nth 3 today) i)
+                                       (nth 4 today)
+                                       (nth 5 today)))
+               (date-str (format-time-string "%Y-%m-%d" date-time))
+               (mins (gethash date-str daily-hash 0)))
+          (if (> mins 0)
+              (setq streak (1+ streak))
+            ;; Allow today to be 0 (haven't read yet today)
+            (when (> i 0) (throw 'done nil))))))
+    streak))
+
 ;;; Heatmap
 
 (defcustom book-gallery-heatmap-weeks 12
@@ -536,17 +556,23 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
                                         (let ((lr (plist-get b :last-read)))
                                           (and lr (string-prefix-p year-str lr)))))
                                  all-books))))
-    ;; Title
-    (insert (propertize "  yako's library" 'face '(:height 1.3 :weight bold)) "\n")
     ;; Stats
     (let* ((dot (propertize " · " 'face '(:foreground "#45475a")))
+           (streak (if book-gallery--daily-cache
+                       (book-gallery--calculate-streak book-gallery--daily-cache)
+                     0))
+           (streak-str (if (> streak 0)
+                           (concat (propertize "󰈸" 'face '(:foreground "#f9e2af"))
+                                   (propertize (format " %d" streak)
+                                               'face '(:foreground "#f9e2af")))
+                         (propertize "󰈸 0" 'face '(:foreground "#45475a"))))
            (goal book-gallery-weekly-goal-minutes)
            (show-goal (> goal 0))
            (bar-w 10)
            (pct (if show-goal (min 100 (round (* 100.0 (/ (float week-min) goal)))) 0))
            (filled (round (* bar-w (/ pct 100.0))))
            (empty (- bar-w filled))
-           (color (if (>= pct 100) "#a6e3a1" "#f9e2af")))
+           (color "#a6e3a1"))
       (insert "  "
               (propertize (format "%d total" total) 'face '(:foreground "#cdd6f4"))
               dot
@@ -588,6 +614,8 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
                   (concat (propertize " · " 'face '(:foreground "#313244"))
                           (propertize (concat "/" book-gallery--filter-title) 'face '(:foreground "#6c7086")))
                 "")
+              (propertize " " 'display `(space :align-to (- right ,(+ 2 (length (format "󰈸 %d" streak))))))
+              streak-str
               "\n")
       ;; Heatmap
       (when book-gallery--daily-cache
@@ -660,8 +688,10 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
     (kbd "j")   #'book-gallery-next-book
     (kbd "k")   #'book-gallery-prev-book
     (kbd "n")   #'book-gallery-new-book
-    (kbd "d")   #'book-gallery-mark-done
-    (kbd "a")   #'book-gallery-mark-active
+    (kbd "I")   #'book-gallery-new-from-isbn
+    (kbd "i")   #'book-gallery-fill-from-isbn
+    (kbd "D")   #'book-gallery-mark-done
+    (kbd "A")   #'book-gallery-mark-active
     (kbd "P")   #'book-gallery-mark-planned
     (kbd "o")   #'book-gallery-open-hsplit
     (kbd "O")   #'book-gallery-open-vsplit
@@ -755,6 +785,101 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
   (interactive)
   (org-roam-capture nil nil
                     :templates (list (nth 1 org-roam-capture-templates))))
+
+(defun book-gallery--isbn-fetch-json (url)
+  "Fetch URL and parse JSON response."
+  (with-current-buffer (url-retrieve-synchronously url t)
+    (goto-char (point-min))
+    (re-search-forward "\n\n")
+    (set-buffer-multibyte t)
+    (decode-coding-region (point) (point-max) 'utf-8)
+    (let ((json (json-read)))
+      (kill-buffer)
+      json)))
+
+(defun book-gallery--isbn-lookup (isbn)
+  "Look up ISBN via Google Books API. Returns plist (:title :author :pages :cover)."
+  (condition-case err
+      (let* ((data (book-gallery--isbn-fetch-json
+                    (format "https://www.googleapis.com/books/v1/volumes?q=isbn:%s" isbn)))
+             (items (cdr (assq 'items data)))
+             (vol (when (and items (> (length items) 0))
+                    (cdr (assq 'volumeInfo (aref items 0)))))
+             (title (cdr (assq 'title vol)))
+             (authors (cdr (assq 'authors vol)))
+             (author (when (and authors (> (length authors) 0))
+                       (aref authors 0)))
+             (pages (cdr (assq 'pageCount vol)))
+             (image-links (cdr (assq 'imageLinks vol)))
+             (cover (or (cdr (assq 'thumbnail image-links)) "")))
+        (if (null title)
+            (progn (message "No results for ISBN %s" isbn) nil)
+          (list :title title
+                :author (or author "Unknown")
+                :pages (or pages 0)
+                :cover (replace-regexp-in-string "http://" "https://" cover))))
+    (error
+     (message "ISBN lookup failed: %s" (error-message-string err))
+     nil)))
+
+(defun book-gallery-new-from-isbn ()
+  "Create a new book by looking up an ISBN."
+  (interactive)
+  (let* ((isbn (read-string "ISBN: "))
+         (data (book-gallery--isbn-lookup isbn)))
+    (if (null data)
+        (message "Could not find book for ISBN %s" isbn)
+      (let* ((title (plist-get data :title))
+             (author (plist-get data :author))
+             (pages (plist-get data :pages))
+             (cover (plist-get data :cover))
+             (slug (replace-regexp-in-string "[^a-z0-9]+" "_" (downcase title)))
+             (fname (format "%s-%s.org"
+                            (format-time-string "%Y%m%d%H%M%S")
+                            slug))
+             (fpath (expand-file-name fname org-roam-directory)))
+        (with-temp-file fpath
+          (insert (format ":PROPERTIES:\n:ID:       %s\n:AUTHOR:   %s\n:ISBN:     %s\n:COVER:    [[%s]]\n:RATING:   0\n:PAGES_READ: 0\n:TOTAL_PAGES: %d\n:END:\n#+title: %s\n#+filetags: :book:planned:\n\n* Read log\n:LOGBOOK:\n:END:\n"
+                          (org-id-new) author isbn cover pages title)))
+        (org-roam-db-update-file fpath)
+        (message "Created: %s by %s (%d pages)" title author pages)
+        (book-gallery-refresh)))))
+
+(defun book-gallery-fill-from-isbn ()
+  "Fill missing metadata on the book at point from ISBN lookup."
+  (interactive)
+  (when-let ((file (get-text-property (point) 'book-file)))
+    (let* ((isbn (read-string "ISBN: "))
+           (data (book-gallery--isbn-lookup isbn)))
+      (if (null data)
+          (message "Could not find book for ISBN %s" isbn)
+        (with-current-buffer (find-file-noselect file)
+          (save-excursion
+            ;; Store ISBN if missing
+            (goto-char (point-min))
+            (unless (re-search-forward "^:ISBN:" nil t)
+              (goto-char (point-min))
+              (when (re-search-forward "^:AUTHOR:.*$" nil t)
+                (end-of-line)
+                (insert (format "\n:ISBN:     %s" isbn))))
+            ;; Update author if empty
+            (goto-char (point-min))
+            (when (re-search-forward "^:AUTHOR: *$" nil t)
+              (replace-match (format ":AUTHOR:   %s" (plist-get data :author)) t t))
+            ;; Update cover if missing
+            (goto-char (point-min))
+            (unless (re-search-forward "^:COVER:" nil t)
+              (goto-char (point-min))
+              (when (re-search-forward "^:AUTHOR:.*$" nil t)
+                (end-of-line)
+                (insert (format "\n:COVER:    [[%s]]" (plist-get data :cover)))))
+            ;; Update total pages if 0
+            (goto-char (point-min))
+            (when (re-search-forward "^:TOTAL_PAGES: +0$" nil t)
+              (replace-match (format ":TOTAL_PAGES: %d" (plist-get data :pages)) t t))
+            (save-buffer)))
+        (message "Updated from ISBN: %s" (plist-get data :title))
+        (book-gallery-refresh)))))
 
 
 (defun book-gallery--set-status (new-status)
@@ -939,10 +1064,12 @@ On clock-out, prompts for current page."
          "  O          open in vertical split\n\n"
          (propertize "Actions\n" 'face '(:weight bold :foreground "#a6e3a1"))
          "  n          new book\n"
+         "  I          new book from ISBN\n"
+         "  i          fill metadata from ISBN\n"
          "  c          toggle clock (prompts page on clock-out)\n"
          "  p          set current page\n"
-         "  d          mark done (finished + full pages)\n"
-         "  a          mark active\n"
+         "  D          mark done (finished + full pages)\n"
+         "  A          mark active\n"
          "  P          mark planned\n"
          "  1-5        set rating\n\n"
          (propertize "View\n" 'face '(:weight bold :foreground "#cba6f7"))
