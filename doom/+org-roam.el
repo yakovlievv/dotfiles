@@ -16,7 +16,7 @@
      ("b" "book" plain "%?"
       :target (file+head
                "%<%Y%m%d%H%M%S>-${slug}.org"
-               ":PROPERTIES:\n:ID:       %(org-id-new)\n:AUTHOR:   %^{Author}\n:RATING:   0\n:PAGES_READ: 0\n:TOTAL_PAGES: %^{Total pages}\n:END:\n#+title: ${title}\n#+filetags: :book:planned:\n\n* Read log\n:LOGBOOK:\n:END:\n")
+               ":PROPERTIES:\n:ID:       %(org-id-new)\n:AUTHOR:   %^{Author}\n:COVER:    [[%^{Cover URL}]]\n:RATING:   0\n:PAGES_READ: 0\n:TOTAL_PAGES: %^{Total pages}\n:END:\n#+title: ${title}\n#+filetags: :book:planned:\n\n* Read log\n:LOGBOOK:\n:END:\n")
       :unnarrowed t))
    org-agenda-files
    (append
