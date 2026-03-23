@@ -14,6 +14,10 @@
   "Height in pixels for cover thumbnails."
   :type 'integer :group 'book-gallery)
 
+(defcustom book-gallery-weekly-goal-minutes 300
+  "Weekly reading goal in minutes. 0 to disable."
+  :type 'integer :group 'book-gallery)
+
 ;;; State
 
 (defvar book-gallery--filter-status nil)
@@ -54,7 +58,12 @@
                     :status status
                     :area-tags area-tags
                     :clock-minutes (book-gallery--file-clock-minutes file)
-                    :clock-this-week (book-gallery--file-clock-this-week file))
+                    :clock-today (book-gallery--file-clock-today file)
+                    :clock-this-week (book-gallery--file-clock-this-week file)
+                    :clock-year (book-gallery--file-clock-year file)
+                    :last-read (book-gallery--file-last-read file)
+                    :started (book-gallery--file-started file)
+                    :link-count (book-gallery--file-link-count file))
               books)))))
 
 (defun book-gallery--prop (props key)
@@ -82,6 +91,64 @@
               minutes)))
     (error 0)))
 
+(defun book-gallery--collect-daily-minutes (files)
+  "Collect reading minutes per date across all FILES. Returns hash: date-string → minutes."
+  (let ((daily (make-hash-table :test 'equal)))
+    (dolist (file files daily)
+      (condition-case nil
+          (with-temp-buffer
+            (insert-file-contents file)
+            (goto-char (point-min))
+            (while (re-search-forward
+                    "CLOCK: \\[\\([0-9]+-[0-9]+-[0-9]+\\) [A-Za-z]+ [0-9:]+\\]--\\[\\([0-9]+-[0-9]+-[0-9]+\\) [A-Za-z]+ [0-9:]+\\] => +\\([0-9]+\\):\\([0-9]+\\)"
+                    nil t)
+              (let* ((date (match-string 1))
+                     (hours (string-to-number (match-string 3)))
+                     (mins (string-to-number (match-string 4)))
+                     (total (+ (* 60 hours) mins)))
+                (puthash date (+ (gethash date daily 0) total) daily))))
+        (error nil)))))
+
+(defun book-gallery--file-last-read (file)
+  "Return the most recent CLOCK end date from FILE as a string, or nil."
+  (condition-case nil
+      (let (latest)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (while (re-search-forward
+                  "CLOCK: \\[.*?\\]--\\[\\([0-9]+-[0-9]+-[0-9]+\\) [A-Za-z]+ [0-9:]+\\]"
+                  nil t)
+            (setq latest (match-string 1))))
+        latest)
+    (error nil)))
+
+(defun book-gallery--file-started (file)
+  "Return the earliest CLOCK start date from FILE as a string, or nil."
+  (condition-case nil
+      (let (earliest)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (when (re-search-forward
+                 "CLOCK: \\[\\([0-9]+-[0-9]+-[0-9]+\\) [A-Za-z]+ [0-9:]+\\]"
+                 nil t)
+            (setq earliest (match-string 1))))
+        earliest)
+    (error nil)))
+
+(defun book-gallery--file-link-count (file)
+  "Count org-roam links (id: links) in FILE."
+  (condition-case nil
+      (let ((count 0))
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (while (re-search-forward "\\[\\[id:" nil t)
+            (setq count (1+ count))))
+        count)
+    (error 0)))
+
 (defun book-gallery--parse-clock-minutes (file)
   (let ((total 0))
     (with-temp-buffer
@@ -94,6 +161,11 @@
                        (* 60 (string-to-number (match-string 3)))
                        (string-to-number (match-string 4))))))
     total))
+
+(defun book-gallery--parse-org-time (str)
+  "Parse an org timestamp string like '2026-03-22 Sun 20:48' into a time value."
+  (let ((clean (replace-regexp-in-string " [A-Za-z]+ " "T" str)))
+    (date-to-time (concat clean ":00"))))
 
 (defun book-gallery--file-clock-this-week (file)
   "Parse CLOCK entries from FILE that fall within the current week."
@@ -109,7 +181,7 @@
             (let* ((start-str (match-string 1))
                    (hours (string-to-number (match-string 3)))
                    (mins (string-to-number (match-string 4)))
-                   (start-time (date-to-time (replace-regexp-in-string " [A-Za-z]+ " " " start-str))))
+                   (start-time (book-gallery--parse-org-time start-str)))
               (when (time-less-p week-start start-time)
                 (setq total (+ total (* 60 hours) mins))))))
         total)
@@ -123,6 +195,107 @@
     (encode-time 0 0 0
                  (- (nth 3 now) days-since-mon)
                  (nth 4 now) (nth 5 now))))
+
+(defun book-gallery--today-start ()
+  "Return the timestamp of today 00:00."
+  (let ((now (decode-time)))
+    (encode-time 0 0 0 (nth 3 now) (nth 4 now) (nth 5 now))))
+
+(defun book-gallery--year-start ()
+  "Return the timestamp of Jan 1 00:00 of the current year."
+  (let ((now (decode-time)))
+    (encode-time 0 0 0 1 1 (nth 5 now))))
+
+(defun book-gallery--file-clock-today (file)
+  "Parse CLOCK entries from FILE that fall within today."
+  (condition-case nil
+      (let ((total 0)
+            (today (book-gallery--today-start)))
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (while (re-search-forward
+                  "CLOCK: \\[\\([0-9]+-[0-9]+-[0-9]+ [A-Za-z]+ [0-9:]+\\)\\]--\\[\\([0-9]+-[0-9]+-[0-9]+ [A-Za-z]+ [0-9:]+\\)\\] => +\\([0-9]+\\):\\([0-9]+\\)"
+                  nil t)
+            (let* ((start-str (match-string 1))
+                   (hours (string-to-number (match-string 3)))
+                   (mins (string-to-number (match-string 4)))
+                   (start-time (book-gallery--parse-org-time start-str)))
+              (when (time-less-p today start-time)
+                (setq total (+ total (* 60 hours) mins))))))
+        total)
+    (error 0)))
+
+(defun book-gallery--file-clock-year (file)
+  "Parse CLOCK entries from FILE that fall within the current year."
+  (condition-case nil
+      (let ((total 0)
+            (year-start (book-gallery--year-start)))
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (while (re-search-forward
+                  "CLOCK: \\[\\([0-9]+-[0-9]+-[0-9]+ [A-Za-z]+ [0-9:]+\\)\\]--\\[\\([0-9]+-[0-9]+-[0-9]+ [A-Za-z]+ [0-9:]+\\)\\] => +\\([0-9]+\\):\\([0-9]+\\)"
+                  nil t)
+            (let* ((start-str (match-string 1))
+                   (hours (string-to-number (match-string 3)))
+                   (mins (string-to-number (match-string 4)))
+                   (start-time (book-gallery--parse-org-time start-str)))
+              (when (time-less-p year-start start-time)
+                (setq total (+ total (* 60 hours) mins))))))
+        total)
+    (error 0)))
+
+;;; Heatmap
+
+(defcustom book-gallery-heatmap-weeks 12
+  "Number of weeks to show in the reading heatmap."
+  :type 'integer :group 'book-gallery)
+
+(defun book-gallery--heatmap-color (minutes)
+  "Return a color for MINUTES of reading."
+  (cond
+   ((= minutes 0)  "#313244")
+   ((< minutes 30)  "#585b70")
+   ((< minutes 60)  "#74c7a4")
+   ((< minutes 120) "#a6e3a1")
+   (t               "#94e2d5")))
+
+(defun book-gallery--render-heatmap (daily-hash)
+  "Render a reading heatmap from DAILY-HASH (date → minutes)."
+  (let* ((weeks book-gallery-heatmap-weeks)
+         (today (decode-time))
+         (today-dow (nth 6 today))  ;; 0=Sun
+         ;; Days from today back to the Monday of `weeks` ago
+         (days-back (+ (* (1- weeks) 7)
+                       (if (= today-dow 0) 6 (1- today-dow))))
+         (day-names '("Mon" "Tue" "Wed" "Thu" "Fri" "Sat" "Sun")))
+    (insert "\n")
+    ;; Row per day of week
+    (dotimes (day-idx 7)
+      (insert "  "
+              (propertize (nth day-idx day-names) 'face '(:foreground "#6c7086"))
+              "  ")
+      (dotimes (week-idx weeks)
+        (let* ((offset (- days-back (- (* (- (1- weeks) week-idx) 7)
+                                        day-idx)))
+               ;; Calculate the date for this cell
+               (cell-time (encode-time 0 0 0
+                                       (- (nth 3 today) (- days-back
+                                                           (* week-idx 7)
+                                                           day-idx))
+                                       (nth 4 today)
+                                       (nth 5 today)))
+               (date-str (format-time-string "%Y-%m-%d" cell-time))
+               (mins (gethash date-str daily-hash 0))
+               (color (book-gallery--heatmap-color mins))
+               (future-p (time-less-p (current-time) cell-time)))
+          (insert (if future-p
+                      (propertize " " 'face '(:foreground "#1e1e2e"))
+                    (propertize "■" 'face `(:foreground ,color)))
+                  " ")))
+      (insert "\n"))
+    (insert "\n")))
 
 ;;; Filtering & sorting
 
@@ -138,6 +311,11 @@
                     (lambda (b) (member book-gallery--filter-tag
                                         (plist-get b :area-tags)))
                     result)))
+    (when book-gallery--filter-title
+      (let ((query (downcase book-gallery--filter-title)))
+        (setq result (seq-filter
+                      (lambda (b) (string-match-p query (downcase (plist-get b :title))))
+                      result))))
     result))
 
 (defun book-gallery--sort-books (books)
@@ -168,12 +346,17 @@
     (concat (propertize filled 'face '(:foreground "#f9e2af"))
             (propertize empty 'face '(:foreground "#45475a")))))
 
-(defun book-gallery--progress-bar (current total)
+(defun book-gallery--progress-bar (current total &optional status)
   (let* ((pct (if (> total 0) (/ (* 100.0 current) total) 0))
          (bar-width 15)
          (filled (round (* bar-width (/ pct 100.0))))
-         (empty (- bar-width filled)))
-    (concat (propertize (make-string filled ?#) 'face '(:foreground "#a6e3a1"))
+         (empty (- bar-width filled))
+         (bar-color (pcase status
+                      ("active"   "#a6e3a1")
+                      ("finished" "#89b4fa")
+                      ("planned"  "#f9e2af")
+                      (_          "#a6e3a1"))))
+    (concat (propertize (make-string filled ?#) 'face `(:foreground ,bar-color))
             (propertize (make-string empty ?-) 'face '(:foreground "#313244"))
             (propertize (format " %d%%" (round pct)) 'face '(:foreground "#6c7086")))))
 
@@ -251,6 +434,9 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
          (pages-read (plist-get book :pages-read))
          (total-pages (plist-get book :total-pages))
          (clock-min (plist-get book :clock-minutes))
+         (last-read (plist-get book :last-read))
+         (started (plist-get book :started))
+         (link-count (plist-get book :link-count))
          (area-tags (plist-get book :area-tags))
          (cover-url (plist-get book :cover-url))
          (file (plist-get book :file))
@@ -259,7 +445,11 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
                       (when-let ((local (book-gallery--download-cover cover-url)))
                         (book-gallery--create-cover-image local))))
          (cover-px-w (when cover-img (car (image-size cover-img t))))
-         (dot (propertize " · " 'face '(:foreground "#45475a"))))
+         (dot (propertize " · " 'face '(:foreground "#45475a")))
+         (clocking-p (and (fboundp 'org-clocking-p)
+                          (org-clocking-p)
+                          (eq (marker-buffer org-clock-marker)
+                              (get-file-buffer file)))))
     ;; Line 1: [cover]   Title  Author
     (insert "  ")
     (if cover-img
@@ -270,6 +460,8 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
       (put-text-property title-start (point) 'book-title t))
     (insert "  ")
     (insert (propertize author 'face '(:foreground "#a6adc8")))
+    (when clocking-p
+      (insert "  " (propertize "● reading" 'face '(:foreground "#a6e3a1" :weight bold))))
     (insert "\n")
     ;; Line 2: [status badge]   rating · tags · progress · clock
     (insert "  ")
@@ -289,11 +481,34 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
                          (propertize ", " 'face '(:foreground "#45475a")))))
     (when (> total-pages 0)
       (insert dot)
-      (insert (book-gallery--progress-bar pages-read total-pages)))
+      (insert (book-gallery--progress-bar pages-read total-pages status)))
     (when (> clock-min 0)
       (insert dot)
       (insert (propertize (book-gallery--format-hours clock-min)
                           'face '(:foreground "#89b4fa"))))
+    ;; Reading pace: pages/hr + estimated time left
+    (when (and (> clock-min 0) (> pages-read 0))
+      (let* ((pages-per-hr (/ (* 60.0 pages-read) clock-min))
+             (remaining (- total-pages pages-read))
+             (hrs-left (if (> pages-per-hr 0) (/ remaining pages-per-hr) 0)))
+        (insert dot)
+        (insert (propertize (format "%.0f p/hr" pages-per-hr) 'face '(:foreground "#cba6f7")))
+        (when (and (> remaining 0) (> hrs-left 0))
+          (insert (propertize (format " ~%s left" (book-gallery--format-hours (round (* 60 hrs-left))))
+                              'face '(:foreground "#6c7086"))))))
+    ;; Links
+    (when (> link-count 0)
+      (insert dot)
+      (insert (propertize (format "%d %s" link-count (if (= link-count 1) "link" "links"))
+                    'face '(:foreground "#94e2d5"))))
+    ;; Started date
+    (when started
+      (insert dot)
+      (insert (propertize (concat "from " started) 'face '(:foreground "#6c7086"))))
+    ;; Last read
+    (when last-read
+      (insert dot)
+      (insert (propertize last-read 'face '(:foreground "#6c7086"))))
     (insert "\n")
     ;; Spacer between entries
     (insert (propertize "\n" 'line-spacing 12))
@@ -302,32 +517,81 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 
 ;;; Header
 
+(defvar book-gallery--daily-cache nil
+  "Hash table of date → minutes for the heatmap.")
+
 (defun book-gallery--render-header ()
   (let* ((all-books book-gallery--books-cache)
          (total (length all-books))
          (finished (length (seq-filter (lambda (b) (string= "finished" (plist-get b :status))) all-books)))
          (active (length (seq-filter (lambda (b) (string= "active" (plist-get b :status))) all-books)))
          (planned (length (seq-filter (lambda (b) (string= "planned" (plist-get b :status))) all-books)))
-         (total-min (apply #'+ (mapcar (lambda (b) (plist-get b :clock-minutes)) all-books)))
-         (week-min (apply #'+ (mapcar (lambda (b) (plist-get b :clock-this-week)) all-books))))
+         (today-min (apply #'+ (mapcar (lambda (b) (plist-get b :clock-today)) all-books)))
+         (week-min (apply #'+ (mapcar (lambda (b) (plist-get b :clock-this-week)) all-books)))
+         (year-min (apply #'+ (mapcar (lambda (b) (plist-get b :clock-year)) all-books)))
+         (year-str (substring (format-time-string "%Y") 0 4))
+         (year-finished (length (seq-filter
+                                 (lambda (b)
+                                   (and (string= "finished" (plist-get b :status))
+                                        (let ((lr (plist-get b :last-read)))
+                                          (and lr (string-prefix-p year-str lr)))))
+                                 all-books))))
     ;; Title
-    (insert (propertize "  Book Gallery" 'face '(:height 1.3 :weight bold)) "\n")
+    (insert (propertize "  yako's library" 'face '(:height 1.3 :weight bold)) "\n")
     ;; Stats
-    (insert "  "
-            (propertize (format "%d books" total) 'face '(:foreground "#cdd6f4"))
-            (propertize " · " 'face '(:foreground "#45475a"))
-            (propertize (format "%d finished" finished) 'face '(:foreground "#89b4fa"))
-            (propertize " · " 'face '(:foreground "#45475a"))
-            (propertize (format "%d active" active) 'face '(:foreground "#a6e3a1"))
-            (propertize " · " 'face '(:foreground "#45475a"))
-            (propertize (format "%d planned" planned) 'face '(:foreground "#f9e2af"))
-            (propertize " · " 'face '(:foreground "#45475a"))
-            (propertize (format "total %s" (book-gallery--format-hours total-min))
-                        'face '(:foreground "#89b4fa"))
-            (propertize " · " 'face '(:foreground "#45475a"))
-            (propertize (format "this week %s" (book-gallery--format-hours week-min))
-                        'face '(:foreground "#a6e3a1"))
-            "\n\n")))
+    (let* ((dot (propertize " · " 'face '(:foreground "#45475a")))
+           (goal book-gallery-weekly-goal-minutes)
+           (show-goal (> goal 0))
+           (bar-w 10)
+           (pct (if show-goal (min 100 (round (* 100.0 (/ (float week-min) goal)))) 0))
+           (filled (round (* bar-w (/ pct 100.0))))
+           (empty (- bar-w filled))
+           (color (if (>= pct 100) "#a6e3a1" "#f9e2af")))
+      (insert "  "
+              (propertize (format "%d total" total) 'face '(:foreground "#cdd6f4"))
+              dot
+              (propertize (number-to-string active) 'face '(:foreground "#a6e3a1"))
+              (propertize "-" 'face '(:foreground "#45475a"))
+              (propertize (number-to-string finished) 'face '(:foreground "#89b4fa"))
+              (propertize "-" 'face '(:foreground "#45475a"))
+              (propertize (number-to-string planned) 'face '(:foreground "#f9e2af"))
+              dot
+              (propertize "year " 'face '(:foreground "#89b4fa"))
+              (propertize (book-gallery--format-hours year-min) 'face '(:foreground "#89b4fa"))
+              (propertize "-" 'face '(:foreground "#45475a"))
+              (propertize (format "%d %s" year-finished (if (= year-finished 1) "book" "books"))
+                          'face '(:foreground "#89b4fa"))
+              dot
+              (propertize (format "week %s" (book-gallery--format-hours week-min))
+                          'face '(:foreground "#a6e3a1"))
+              (if show-goal
+                  (concat (propertize (format "/%s " (book-gallery--format-hours goal))
+                                      'face '(:foreground "#45475a"))
+                          (propertize (make-string filled ?#) 'face `(:foreground ,color))
+                          (propertize (make-string empty ?-) 'face '(:foreground "#313244")))
+                "")
+              dot
+              (propertize (format "today %s" (book-gallery--format-hours today-min))
+                          'face '(:foreground "#f9e2af"))
+              dot
+              (propertize (symbol-name book-gallery--sort-key)
+                          'face '(:foreground "#6c7086"))
+              (if book-gallery--filter-status
+                  (concat (propertize " · " 'face '(:foreground "#313244"))
+                          (propertize book-gallery--filter-status 'face '(:foreground "#6c7086")))
+                "")
+              (if book-gallery--filter-tag
+                  (concat (propertize " · " 'face '(:foreground "#313244"))
+                          (propertize book-gallery--filter-tag 'face '(:foreground "#6c7086")))
+                "")
+              (if book-gallery--filter-title
+                  (concat (propertize " · " 'face '(:foreground "#313244"))
+                          (propertize (concat "/" book-gallery--filter-title) 'face '(:foreground "#6c7086")))
+                "")
+              "\n")
+      ;; Heatmap
+      (when book-gallery--daily-cache
+        (book-gallery--render-heatmap book-gallery--daily-cache)))))
 
 ;;; Main render
 
@@ -339,17 +603,22 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
              (books (book-gallery--sort-books
                      (book-gallery--filter-books all-books))))
         (setq book-gallery--books-cache all-books)
+        (setq book-gallery--daily-cache
+              (book-gallery--collect-daily-minutes
+               (mapcar (lambda (b) (plist-get b :file)) all-books)))
         (erase-buffer)
         (book-gallery--render-header)
         (if (null books)
             (insert (propertize "  No books found." 'face '(:foreground "#6c7086")))
           (dolist (book books)
             (book-gallery--render-entry book)))
+        (setq-local truncate-lines t)
+        (setq-local display-line-numbers nil)
         (book-gallery--goto-first-title))
     (error
      (let ((inhibit-read-only t))
        (erase-buffer)
-       (insert (format "Book Gallery Error:\n\n%s" (error-message-string err)))))))
+       (insert (format "Library Error:\n\n%s" (error-message-string err)))))))
 
 ;;; Major mode
 
@@ -371,7 +640,10 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 
 (define-derived-mode book-gallery-mode special-mode "BookGallery"
   "Major mode for the book gallery."
-  (setq truncate-lines nil)
+  (setq-local truncate-lines t)
+  (setq-local truncate-partial-width-windows nil)
+  (setq-local word-wrap nil)
+  (setq-local display-line-numbers nil)
   (buffer-disable-undo)
   (add-hook 'post-command-hook #'book-gallery--snap-to-title nil t)
   (add-hook 'kill-buffer-hook #'book-gallery--cleanup nil t)
@@ -385,10 +657,25 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
   (evil-define-key 'normal book-gallery-mode-map
     (kbd "RET")      #'book-gallery-open-at-point
     (kbd "<return>") #'book-gallery-open-at-point
-    "j"  #'book-gallery-next-book
-    "k"  #'book-gallery-prev-book
-    "gr" #'book-gallery-refresh
-    "q"  #'quit-window))
+    (kbd "j")   #'book-gallery-next-book
+    (kbd "k")   #'book-gallery-prev-book
+    (kbd "n")   #'book-gallery-new-book
+    (kbd "d")   #'book-gallery-mark-done
+    (kbd "a")   #'book-gallery-mark-active
+    (kbd "P")   #'book-gallery-mark-planned
+    (kbd "o")   #'book-gallery-open-hsplit
+    (kbd "O")   #'book-gallery-open-vsplit
+    (kbd "p")   #'book-gallery-set-pages
+    (kbd "c")   #'book-gallery-toggle-clock
+    (kbd "1")   (lambda () (interactive) (book-gallery-set-rating 1))
+    (kbd "2")   (lambda () (interactive) (book-gallery-set-rating 2))
+    (kbd "3")   (lambda () (interactive) (book-gallery-set-rating 3))
+    (kbd "4")   (lambda () (interactive) (book-gallery-set-rating 4))
+    (kbd "5")   (lambda () (interactive) (book-gallery-set-rating 5))
+    (kbd "/")   #'book-gallery-search
+    (kbd "?")   #'book-gallery-help
+    (kbd "g r") #'book-gallery-refresh
+    (kbd "q")   #'quit-window))
 
 (map! :map book-gallery-mode-map
       :localleader
@@ -408,7 +695,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
     (setq book-gallery--refresh-timer nil)))
 
 (defun book-gallery--auto-refresh ()
-  (when-let ((buf (get-buffer "*Book Gallery*")))
+  (when-let ((buf (get-buffer "*yako's library*")))
     (when (buffer-live-p buf)
       (with-current-buffer buf
         (book-gallery--render)))))
@@ -419,7 +706,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery ()
   "Open the book gallery."
   (interactive)
-  (let ((buf (get-buffer-create "*Book Gallery*")))
+  (let ((buf (get-buffer-create "*yako's library*")))
     (with-current-buffer buf
       (unless (eq major-mode 'book-gallery-mode)
         (book-gallery-mode))
@@ -437,7 +724,8 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-filter-all ()
   (interactive)
   (setq book-gallery--filter-status nil
-        book-gallery--filter-tag nil)
+        book-gallery--filter-tag nil
+        book-gallery--filter-title nil)
   (book-gallery-refresh))
 
 (defun book-gallery-filter-status ()
@@ -461,6 +749,126 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-sort-author () (interactive) (setq book-gallery--sort-key 'author) (book-gallery-refresh))
 (defun book-gallery-sort-rating () (interactive) (setq book-gallery--sort-key 'rating) (book-gallery-refresh))
 (defun book-gallery-sort-status () (interactive) (setq book-gallery--sort-key 'status) (book-gallery-refresh))
+
+(defun book-gallery-new-book ()
+  "Create a new book using the org-roam book capture template."
+  (interactive)
+  (org-roam-capture nil nil
+                    :templates (list (nth 1 org-roam-capture-templates))))
+
+
+(defun book-gallery--set-status (new-status)
+  "Set the status of the book at point to NEW-STATUS."
+  (when-let ((file (get-text-property (point) 'book-file)))
+    (with-current-buffer (find-file-noselect file)
+      (save-excursion
+        (goto-char (point-min))
+        (when (re-search-forward "^#\\+filetags:.*$" nil t)
+          (let* ((line (match-string 0))
+                 (current (seq-find (lambda (s) (string-match-p (concat ":" s ":") line))
+                                    '("planned" "active" "finished"))))
+            (when current
+              (replace-match
+               (replace-regexp-in-string (concat ":" current ":") (concat ":" new-status ":") line)
+               t t)
+              (save-buffer)
+              (org-roam-db-update-file file))))))
+    (message "Status → %s" new-status)
+    (book-gallery-refresh)))
+
+(defun book-gallery-mark-done ()
+  "Mark book at point as finished, set pages_read = total_pages."
+  (interactive)
+  (when-let ((file (get-text-property (point) 'book-file)))
+    (with-current-buffer (find-file-noselect file)
+      (save-excursion
+        (goto-char (point-min))
+        (when (re-search-forward "^:TOTAL_PAGES: +\\([0-9]+\\)" nil t)
+          (let ((total (match-string 1)))
+            (goto-char (point-min))
+            (when (re-search-forward "^:PAGES_READ: +\\([0-9]+\\)" nil t)
+              (replace-match total nil nil nil 1))))
+        (save-buffer)))
+    (book-gallery--set-status "finished")))
+
+(defun book-gallery-mark-active ()
+  "Mark book at point as active."
+  (interactive)
+  (book-gallery--set-status "active"))
+
+(defun book-gallery-mark-planned ()
+  "Mark book at point as planned."
+  (interactive)
+  (book-gallery--set-status "planned"))
+
+(defun book-gallery-open-hsplit ()
+  "Open the book at point in a horizontal split."
+  (interactive)
+  (if-let ((file (get-text-property (point) 'book-file)))
+      (progn (split-window-below) (other-window 1) (find-file file))
+    (message "No book at point")))
+
+(defun book-gallery-open-vsplit ()
+  "Open the book at point in a vertical split."
+  (interactive)
+  (if-let ((file (get-text-property (point) 'book-file)))
+      (progn (split-window-right) (other-window 1) (find-file file))
+    (message "No book at point")))
+
+(defun book-gallery-set-rating (rating)
+  "Set RATING (1-5) on the book at point."
+  (interactive "p")
+  (when-let ((file (get-text-property (point) 'book-file)))
+    (when (<= 1 rating 5)
+      (with-current-buffer (find-file-noselect file)
+        (save-excursion
+          (goto-char (point-min))
+          (when (re-search-forward "^:RATING: +\\([0-9]+\\)" nil t)
+            (replace-match (number-to-string rating) nil nil nil 1)
+            (save-buffer))))
+      (book-gallery-refresh))))
+
+(defun book-gallery--update-pages (file pages)
+  "Set PAGES_READ in FILE to PAGES."
+  (with-current-buffer (find-file-noselect file)
+    (save-excursion
+      (goto-char (point-min))
+      (when (re-search-forward "^:PAGES_READ: +\\([0-9]+\\)" nil t)
+        (replace-match (number-to-string pages) nil nil nil 1)
+        (save-buffer)))))
+
+(defun book-gallery-set-pages ()
+  "Prompt for current page and update PAGES_READ on the book at point."
+  (interactive)
+  (when-let ((file (get-text-property (point) 'book-file)))
+    (let ((page (read-number "Page you're on: ")))
+      (book-gallery--update-pages file page)
+      (book-gallery-refresh))))
+
+(defun book-gallery-toggle-clock ()
+  "Toggle clock on the book at point. Clocks into the Read log heading.
+On clock-out, prompts for current page."
+  (interactive)
+  (when-let ((file (get-text-property (point) 'book-file)))
+    (let ((buf (find-file-noselect file)))
+      (if (and (org-clocking-p)
+               (eq (marker-buffer org-clock-marker) buf))
+          ;; Clock out, then ask for page
+          (progn
+            (with-current-buffer buf
+              (save-excursion
+                (goto-char org-clock-marker)
+                (org-clock-out)))
+            (let ((page (read-number "Page you're on: ")))
+              (book-gallery--update-pages file page)))
+        ;; Clock in to "Read log" heading
+        (with-current-buffer buf
+          (save-excursion
+            (goto-char (point-min))
+            (if (re-search-forward "^\\*+ Read log" nil t)
+                (org-clock-in)
+              (message "No 'Read log' heading found in %s" file))))))
+    (book-gallery-refresh)))
 
 (defun book-gallery--goto-first-title ()
   "Move cursor to the first book title in the buffer."
@@ -506,8 +914,54 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
            (fwd-pos (goto-char fwd-pos))
            (bwd-pos (goto-char bwd-pos))))))))
 
+(defvar book-gallery--filter-title nil)
+
+(defun book-gallery-search ()
+  "Filter books by title."
+  (interactive)
+  (let ((query (read-string "Search title: ")))
+    (setq book-gallery--filter-title (if (string-empty-p query) nil query))
+    (book-gallery-refresh)))
+
+(defun book-gallery-help ()
+  "Show keybinding help."
+  (interactive)
+  (let ((buf (get-buffer-create "*yako's library help*")))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert
+         (propertize "yako's library keybindings\n\n" 'face '(:weight bold :height 1.2))
+         (propertize "Navigation\n" 'face '(:weight bold :foreground "#89b4fa"))
+         "  j/k        next/prev book\n"
+         "  RET        open book\n"
+         "  o          open in horizontal split\n"
+         "  O          open in vertical split\n\n"
+         (propertize "Actions\n" 'face '(:weight bold :foreground "#a6e3a1"))
+         "  n          new book\n"
+         "  c          toggle clock (prompts page on clock-out)\n"
+         "  p          set current page\n"
+         "  d          mark done (finished + full pages)\n"
+         "  a          mark active\n"
+         "  P          mark planned\n"
+         "  1-5        set rating\n\n"
+         (propertize "View\n" 'face '(:weight bold :foreground "#cba6f7"))
+         "  /          search by title\n"
+         "  SPC m f s  filter by status\n"
+         "  SPC m f t  filter by tag\n"
+         "  SPC m f a  clear filters\n"
+         "  SPC m s t  sort by title\n"
+         "  SPC m s a  sort by author\n"
+         "  SPC m s r  sort by rating\n"
+         "  SPC m s s  sort by status\n"
+         "  g r        refresh\n\n"
+         (propertize "  q  quit    ?  this help\n" 'face '(:foreground "#6c7086")))
+        (special-mode)
+        (goto-char (point-min))))
+    (pop-to-buffer buf)))
+
 ;; Keybinding
-(map! :leader :desc "Book gallery" "o b" #'book-gallery)
+(map! :leader :desc "Book gallery" "n b" #'book-gallery)
 
 (provide '+book-gallery)
 ;;; +book-gallery.el ends here
