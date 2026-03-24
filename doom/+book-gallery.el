@@ -14,9 +14,13 @@
   "Height in pixels for cover thumbnails."
   :type 'integer :group 'book-gallery)
 
-(defcustom book-gallery-weekly-goal-minutes 300
+(defcustom book-gallery-weekly-goal-minutes 120
   "Weekly reading goal in minutes. 0 to disable."
   :type 'integer :group 'book-gallery)
+
+(defcustom book-gallery-google-books-api-key "AIzaSyAC0eAET4yidxFFPwUZ_iEdCPBM_A00AZk"
+  "Google Books API key for ISBN lookups."
+  :type 'string :group 'book-gallery)
 
 ;;; State
 
@@ -784,43 +788,100 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
   "Create a new book using the org-roam book capture template."
   (interactive)
   (org-roam-capture nil nil
-                    :templates (list (nth 1 org-roam-capture-templates))))
+                    :templates (list +org-roam-book-capture-template)))
 
 (defun book-gallery--isbn-fetch-json (url)
-  "Fetch URL and parse JSON response."
-  (with-current-buffer (url-retrieve-synchronously url t)
-    (goto-char (point-min))
-    (re-search-forward "\n\n")
-    (set-buffer-multibyte t)
-    (decode-coding-region (point) (point-max) 'utf-8)
-    (let ((json (json-read)))
-      (kill-buffer)
-      json)))
+  "Fetch URL and parse JSON response. Signals descriptive errors on failure."
+  (let ((buf (condition-case nil
+                 (url-retrieve-synchronously url t nil 10)
+               (error nil))))
+    (unless buf
+      (error "Network error: could not connect to Google Books API. Check your internet connection"))
+    (with-current-buffer buf
+      (goto-char (point-min))
+      ;; Extract HTTP status code
+      (let ((status-code nil))
+        (when (re-search-forward "^HTTP/[0-9.]+ \\([0-9]+\\)" nil t)
+          (setq status-code (string-to-number (match-string 1))))
+        (re-search-forward "\n\n" nil t)
+        (set-buffer-multibyte t)
+        (decode-coding-region (point) (point-max) 'utf-8)
+        (let ((json (condition-case nil
+                        (json-read)
+                      (error (kill-buffer) (error "Failed to parse API response")))))
+          (kill-buffer)
+          ;; Check for API error response
+          (let ((api-error (cdr (assq 'error json))))
+            (when api-error
+              (let* ((code (cdr (assq 'code api-error)))
+                     (msg (cdr (assq 'message api-error)))
+                     (reason (let* ((errs (cdr (assq 'errors api-error)))
+                                    (first-err (when (and errs (> (length errs) 0))
+                                                 (aref errs 0))))
+                               (when first-err (cdr (assq 'reason first-err))))))
+                (error "Google Books API error %s: %s"
+                       (or code status-code "unknown")
+                       (cond
+                        ((equal reason "rateLimitExceeded")
+                         "Daily quota exceeded. Try again tomorrow or check your API key quota at console.cloud.google.com")
+                        ((equal reason "keyInvalid")
+                         "Invalid API key. Check book-gallery-google-books-api-key")
+                        ((equal reason "keyExpired")
+                         "API key expired. Generate a new one at console.cloud.google.com")
+                        ((equal reason "accessNotConfigured")
+                         "Books API not enabled. Enable it at console.cloud.google.com → APIs & Services")
+                        ((eql code 403)
+                         (format "Forbidden: %s" (or msg "access denied")))
+                        ((eql code 400)
+                         (format "Bad request: %s" (or msg "check ISBN format")))
+                        ((eql code 500)
+                         "Google server error. Try again later")
+                        ((eql code 503)
+                         "Google Books API temporarily unavailable. Try again later")
+                        (t (or msg "unknown error")))))))
+          json)))))
 
 (defun book-gallery--isbn-lookup (isbn)
   "Look up ISBN via Google Books API. Returns plist (:title :author :pages :cover)."
-  (condition-case err
-      (let* ((data (book-gallery--isbn-fetch-json
-                    (format "https://www.googleapis.com/books/v1/volumes?q=isbn:%s" isbn)))
-             (items (cdr (assq 'items data)))
-             (vol (when (and items (> (length items) 0))
-                    (cdr (assq 'volumeInfo (aref items 0)))))
-             (title (cdr (assq 'title vol)))
-             (authors (cdr (assq 'authors vol)))
-             (author (when (and authors (> (length authors) 0))
-                       (aref authors 0)))
-             (pages (cdr (assq 'pageCount vol)))
-             (image-links (cdr (assq 'imageLinks vol)))
-             (cover (or (cdr (assq 'thumbnail image-links)) "")))
-        (if (null title)
-            (progn (message "No results for ISBN %s" isbn) nil)
-          (list :title title
-                :author (or author "Unknown")
-                :pages (or pages 0)
-                :cover (replace-regexp-in-string "http://" "https://" cover))))
-    (error
-     (message "ISBN lookup failed: %s" (error-message-string err))
-     nil)))
+  (let ((isbn (string-trim isbn)))
+    (unless (string-match-p "^[0-9Xx-]+$" isbn)
+      (user-error "Invalid ISBN format: %s" isbn))
+    (let ((clean-isbn (replace-regexp-in-string "-" "" isbn)))
+      (unless (or (= (length clean-isbn) 10) (= (length clean-isbn) 13))
+        (user-error "ISBN must be 10 or 13 digits, got %d: %s" (length clean-isbn) isbn))
+      (condition-case err
+          (let* ((data (book-gallery--isbn-fetch-json
+                        (format "https://www.googleapis.com/books/v1/volumes?q=isbn:%s&key=%s"
+                                clean-isbn book-gallery-google-books-api-key)))
+                 (total (cdr (assq 'totalItems data)))
+                 (items (cdr (assq 'items data)))
+                 (vol (when (and items (> (length items) 0))
+                        (cdr (assq 'volumeInfo (aref items 0)))))
+                 (title (cdr (assq 'title vol)))
+                 (authors (cdr (assq 'authors vol)))
+                 (author (when (and authors (> (length authors) 0))
+                           (aref authors 0)))
+                 (pages (cdr (assq 'pageCount vol)))
+                 (image-links (cdr (assq 'imageLinks vol)))
+                 (cover (or (cdr (assq 'thumbnail image-links)) "")))
+            (cond
+             ((and (numberp total) (= total 0))
+              (message "No books found for ISBN %s. The edition may not be in Google's database" clean-isbn) nil)
+             ((null title)
+              (message "ISBN %s found but missing title data" clean-isbn) nil)
+             (t
+              (when (= (or pages 0) 0)
+                (message "Warning: no page count for ISBN %s" clean-isbn))
+              (when (string-empty-p cover)
+                (message "Warning: no cover image for ISBN %s" clean-isbn))
+              (list :title title
+                    :author (or author "Unknown")
+                    :pages (or pages 0)
+                    :cover (replace-regexp-in-string "http://" "https://" cover)))))
+        (user-error (signal (car err) (cdr err)))
+        (error
+         (message "ISBN lookup failed: %s" (error-message-string err))
+         nil)))))
 
 (defun book-gallery-new-from-isbn ()
   "Create a new book by looking up an ISBN."

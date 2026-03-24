@@ -33,4 +33,6 @@
 (load! "+org")
 (load! "+org-roam")
 (load! "+book-gallery")
+(load! "+writing-hub")
 (load! "+keybinds")
+(load! "+lesson-dashboard")
