@@ -87,3 +87,6 @@ _lazy_pnpm() {
     pnpm "$@"
 }
 function pnpm { _lazy_pnpm "$@" }
+
+# bun completions
+[ -s "/Users/yako/.bun/_bun" ] && source "/Users/yako/.bun/_bun"
