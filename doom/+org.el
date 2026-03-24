@@ -12,7 +12,8 @@
   (setq org-archive-location
         (concat (expand-file-name "archive/arch_%s" org-directory) "::"))
   (setq org-log-done 'time
-        org-hide-emphasis-markers t
+        org-image-actual-width 300
+       org-hide-emphasis-markers t
         org-src-fontify-natively t
         org-agenda-show-inherited-tasks t
         org-habit-graph-column 50
@@ -31,24 +32,6 @@
 
 (add-hook 'org-after-todo-state-change-hook #'my/org-clock-in-when-doing)
 
-(defun my/org-auto-commit ()
-  (let ((default-directory "~/org/"))
-    (when (and (file-directory-p default-directory)
-               (file-directory-p (concat default-directory ".git")))
-      (when (not (string-empty-p
-                  (shell-command-to-string "git status --porcelain")))
-        ;; Commit
-        (shell-command "git add -A")
-        (shell-command
-         (format "git commit -m 'Auto commit: %s'"
-                 (format-time-string "%Y-%m-%d %H:%M")))
-        ;; Push asynchronously
-        (start-process "org-auto-push" nil "git" "push")))))
-
-(run-with-timer
- (* 8 60 60)
- (* 8 60 60)
- #'my/org-auto-commit)
 
 (defun my/auto-refresh-dashboard ()
   (when (and (buffer-file-name)
