@@ -32,7 +32,10 @@
     (nreverse result)))
 
 (defun lesson-dashboard--find-todays-lessons ()
-  "Scan lesson plan files for lessons scheduled today."
+  "Scan lesson plan files for lessons scheduled today.
+Matches headings like:
+  * Lesson 9 <2026-03-26 Thu 18:15-19:15>
+  * Lesson 9 <2026-03-26 Thu 18:15>"
   (let ((today (format-time-string "%Y-%m-%d"))
         (files (lesson-dashboard--find-lesson-files))
         (lessons '()))
@@ -43,9 +46,10 @@
           (save-excursion
             (goto-char (point-min))
             (while (re-search-forward
-                    (concat "^\\(\\* Lesson [0-9]+\\)\n"
-                            "SCHEDULED: <" (regexp-quote today)
-                            " [A-Za-z]+ \\([0-9]+:[0-9]+\\)>")
+                    (concat "^\\(\\* Lesson [0-9]+\\)"
+                            " <" (regexp-quote today)
+                            " [A-Za-z]+ \\([0-9]+:[0-9]+\\)"
+                            "\\(?:-[0-9]+:[0-9]+\\)?>")
                     nil t)
               (let ((heading (match-string-no-properties 1))
                     (time-str (match-string-no-properties 2)))
