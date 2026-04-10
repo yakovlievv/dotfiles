@@ -1,5 +1,22 @@
 ;;; +keybinds.el -*- lexical-binding: t; -*-
 
+(defun my/evil-next-line (count)
+  "Move by visual lines without count, logical lines with count."
+  (interactive "p")
+  (if (> count 1)
+      (evil-next-line count)
+    (evil-next-visual-line 1)))
+
+(defun my/evil-previous-line (count)
+  "Move by visual lines without count, logical lines with count."
+  (interactive "p")
+  (if (> count 1)
+      (evil-previous-line count)
+    (evil-previous-visual-line 1)))
+
+(map! :nv "j" #'my/evil-next-line
+      :nv "k" #'my/evil-previous-line)
+
 (global-unset-key (kbd "C-s"))
 (map! "C-s" #'save-buffer)
 (map! "C-q" #'save-buffers-kill-terminal)
