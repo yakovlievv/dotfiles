@@ -2,7 +2,10 @@
 
 (defvar lesson-dashboard--lessons nil
   "List of today's lessons. Each element is a plist:
-  (:title :time :file :heading)")
+  (:title :time :end-time :file :heading)")
+
+(defvar lesson-dashboard--timer nil
+  "Timer for updating the lesson clock display.")
 
 (defvar lesson-dashboard--current-index 0
   "Index of the currently displayed lesson.")
@@ -49,12 +52,14 @@ Matches headings like:
                     (concat "^\\(\\* Lesson [0-9]+\\)"
                             " <" (regexp-quote today)
                             " [A-Za-z]+ \\([0-9]+:[0-9]+\\)"
-                            "\\(?:-[0-9]+:[0-9]+\\)?>")
+                            "\\(?:-\\([0-9]+:[0-9]+\\)\\)?>")
                     nil t)
               (let ((heading (match-string-no-properties 1))
-                    (time-str (match-string-no-properties 2)))
+                    (time-str (match-string-no-properties 2))
+                    (end-str (match-string-no-properties 3)))
                 (push (list :title title
                             :time time-str
+                            :end-time end-str
                             :file file
                             :heading heading)
                       lessons)))))))
@@ -76,21 +81,57 @@ Matches headings like:
                        (point-max))))
             (cons beg end)))))))
 
+(defun lesson-dashboard--timer-suffix (lesson)
+  "Return a timer string for LESSON based on current time."
+  (let* ((start-str (plist-get lesson :time))
+         (end-str (plist-get lesson :end-time))
+         (start-min (lesson-dashboard--parse-hm start-str))
+         (end-min (lesson-dashboard--parse-hm end-str))
+         (now-min (+ (* 60 (string-to-number (format-time-string "%H")))
+                     (string-to-number (format-time-string "%M")))))
+    (cond
+     ((null end-min)
+      (if (< now-min start-min)
+          (lesson-dashboard--format-duration (- start-min now-min))
+        nil))
+     ((< now-min start-min)
+      (lesson-dashboard--format-duration (- start-min now-min)))
+     ((< now-min end-min)
+      (lesson-dashboard--format-duration (- end-min now-min)))
+     (t "0m"))))
+
 (defun lesson-dashboard--render-tabs ()
   "Insert the tab bar into the buffer. Returns position after tabs."
-  (let ((start (point)))
+  (let ((start (point))
+        (active-timer-str nil))
     (insert "  ")
     (dotimes (i (length lesson-dashboard--lessons))
       (let* ((lesson (nth i lesson-dashboard--lessons))
              (title (plist-get lesson :title))
              (time (plist-get lesson :time))
-             (label (format " %s at %s " title time))
+             (end-time (plist-get lesson :end-time))
              (active (= i lesson-dashboard--current-index))
+             (time-range (if end-time
+                             (format "%s-%s" time end-time)
+                           time))
+             (label (format " %s %s " title time-range))
              (f (if active
                     '(:background "#89b4fa" :foreground "#1e1e2e" :weight normal :underline nil :height 1.0)
                   '(:background "#313244" :foreground "#cdd6f4" :weight normal :underline nil :height 1.0))))
+        (when active
+          (setq active-timer-str (lesson-dashboard--timer-suffix lesson)))
         (insert (propertize label 'face f 'font-lock-face f))
         (insert " ")))
+    ;; Right-align the timer, only if it fits on the same line
+    (when active-timer-str
+      (let* ((timer-label (format " %s " active-timer-str))
+             (used (- (point) (line-beginning-position)))
+             (padding (- (1- (window-body-width)) used (length timer-label))))
+        (when (> padding 0)
+          (insert (make-string padding ?\s))
+          (insert (propertize timer-label
+                              'face '(:background "#cba6f7" :foreground "#1e1e2e" :weight normal :height 1.0)
+                              'font-lock-face '(:background "#cba6f7" :foreground "#1e1e2e" :weight normal :height 1.0))))))
     (insert "\n\n")
     ;; Mark tab region as read-only and already fontified so org-mode won't override faces
     (add-text-properties start (point) '(read-only t fontified t))
@@ -221,6 +262,18 @@ Matches headings like:
   (lesson-dashboard--save-content)
   (message "Lesson saved."))
 
+(defun lesson-dashboard--kill-query ()
+  "Prompt to save before killing the lesson dashboard buffer."
+  (if (not lesson-dashboard--dirty)
+      t
+    (let ((answer (read-char-choice
+                   "Lesson dashboard modified. [s]ave, [d]iscard, [c]ancel? "
+                   '(?s ?d ?c))))
+      (pcase answer
+        (?s (lesson-dashboard--save-content) t)
+        (?d t)
+        (?c nil)))))
+
 (defun lesson-dashboard-quit ()
   "Save and quit the lesson dashboard."
   (interactive)
@@ -235,6 +288,52 @@ Matches headings like:
     (with-silent-modifications
       (add-text-properties (point-min) (marker-position lesson-dashboard--content-start)
                            '(fontified t)))))
+
+(defun lesson-dashboard--parse-hm (hm-str)
+  "Parse \"HH:MM\" string into total minutes since midnight."
+  (when (and hm-str (string-match "\\([0-9]+\\):\\([0-9]+\\)" hm-str))
+    (+ (* 60 (string-to-number (match-string 1 hm-str)))
+       (string-to-number (match-string 2 hm-str)))))
+
+(defun lesson-dashboard--format-duration (minutes)
+  "Format MINUTES as \"Xh Ym\" or \"Ym\"."
+  (let ((h (/ minutes 60))
+        (m (% minutes 60)))
+    (if (> h 0)
+        (format "%dh %dm" h m)
+      (format "%dm" m))))
+
+(defun lesson-dashboard--refresh-tabs ()
+  "Re-render only the tab bar without touching content."
+  (when (and (markerp lesson-dashboard--content-start)
+             (marker-position lesson-dashboard--content-start))
+    (let ((inhibit-read-only t))
+      (remove-hook 'after-change-functions #'lesson-dashboard--mark-dirty t)
+      (save-excursion
+        (delete-region (point-min) lesson-dashboard--content-start)
+        (goto-char (point-min))
+        (lesson-dashboard--render-tabs)
+        (set-marker lesson-dashboard--content-start (point)))
+      (add-hook 'after-change-functions #'lesson-dashboard--mark-dirty nil t))))
+
+(defun lesson-dashboard--update-timer ()
+  "Re-render tabs to update the timer display."
+  (when-let ((buf (get-buffer lesson-dashboard-buffer-name)))
+    (when (buffer-live-p buf)
+      (with-current-buffer buf
+        (lesson-dashboard--refresh-tabs)))))
+
+(defun lesson-dashboard--start-timer ()
+  "Start the timer for updating the lesson clock."
+  (lesson-dashboard--stop-timer)
+  (setq lesson-dashboard--timer
+        (run-at-time t 30 #'lesson-dashboard--update-timer)))
+
+(defun lesson-dashboard--stop-timer ()
+  "Stop the lesson clock timer."
+  (when lesson-dashboard--timer
+    (cancel-timer lesson-dashboard--timer)
+    (setq lesson-dashboard--timer nil)))
 
 (defun lesson-dashboard-open-link-split ()
   "Open org link at point in a vertical split."
@@ -257,6 +356,8 @@ Matches headings like:
   (local-set-key (kbd "C-s") #'lesson-dashboard-save)
   (add-hook 'post-command-hook #'lesson-dashboard--snap-cursor nil t)
   (add-hook 'after-change-functions #'lesson-dashboard--protect-tabs nil t)
+  (add-hook 'kill-buffer-query-functions #'lesson-dashboard--kill-query nil t)
+  (add-hook 'kill-buffer-hook #'lesson-dashboard--stop-timer nil t)
   (setq-local header-line-format nil))
 
 ;;;###autoload
@@ -271,6 +372,7 @@ Matches headings like:
       (switch-to-buffer (get-buffer-create lesson-dashboard-buffer-name))
       (lesson-dashboard-mode)
       (lesson-dashboard--refresh)
+      (lesson-dashboard--start-timer)
       (message "C-h/C-l switch tabs, C-j/C-k next/prev lesson, C-x C-s save, q quit."))))
 
 (provide '+lesson-dashboard)
