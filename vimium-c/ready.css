@@ -1,0 +1,94 @@
+/* #ui */
+.HUD.D:after {
+  background: rgba(30, 30, 46, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+.LH,
+.D > .LH {
+  background: #cba6f7;
+  color: #1e1e2e;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.LH > match,
+.D > .LH > match {
+  color: #f38ba8;
+  font-weight: bold;
+}
+
+/* #omni */
+body {
+  background: transparent;
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+}
+
+#bar {
+  background: rgba(24, 24, 37, 0.92);
+  border-bottom: 1px solid #313244;
+  border-radius: 8px 8px 0 0;
+}
+
+#bar.empty {
+  border-radius: 8px;
+}
+
+#input {
+  background: transparent;
+  border: 0px solid #313244;
+  color: #cdd6f4;
+  box-shadow: none;
+  border-radius: 6px;
+}
+
+#list {
+  background: rgba(24, 24, 37, 0.92);
+  border-radius: 0 0 8px 8px;
+}
+
+.item {
+  border-bottom: 1px solid rgba(49, 50, 68, 0.5);
+}
+
+.item:hover {
+  background: rgba(49, 50, 68, 0.7);
+  border-style: none;
+}
+
+.item.s {
+  background: rgba(69, 71, 90, 0.8);
+  border-style: none;
+}
+
+.top {
+  color: #cdd6f4;
+}
+
+a {
+  color: #89b4fa;
+}
+
+match {
+  color: #cba6f7;
+  font-weight: bold;
+}
+
+.title > match {
+  text-decoration: underline;
+}
+
+.label,
+.time {
+  color: #6c7086;
+}
+
+body::after {
+  border: 1px solid rgba(180, 190, 254, 0.15);
+  border-radius: 8px;
+}
