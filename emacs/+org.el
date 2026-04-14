@@ -7,6 +7,22 @@
   :config
   (savefold-mode 1))
 
+(after! org-modern
+  (setf (nth 2 org-modern-fold-stars) '("▶" . "▼"))
+  (custom-set-faces!
+    `(org-modern-tag :inherit org-modern-label :weight semibold :background ,(catppuccin-color 'mauve) :foreground ,(catppuccin-color 'mantle) :distant-foreground ,(catppuccin-color 'mauve))
+    `(org-modern-done :inherit org-modern-label :weight semibold :background ,(catppuccin-color 'mantle) :foreground ,(catppuccin-color 'lavender))
+    `(org-modern-progress-complete :background ,(catppuccin-color 'lavender) :foreground ,(catppuccin-color 'mantle))
+    `(org-modern-progress-incomplete :background ,(catppuccin-color 'mantle) :foreground ,(catppuccin-color 'lavender))
+    `(org-modern-date-active :background ,(catppuccin-color 'mantle) :foreground ,(catppuccin-color 'lavender))
+    `(org-modern-time-active :background ,(catppuccin-color 'mantle) :foreground ,(catppuccin-color 'lavender))
+    `(org-modern-date-inactive :background ,(catppuccin-color 'mantle) :foreground ,(catppuccin-color 'overlay0))
+    `(org-modern-time-inactive :background ,(catppuccin-color 'mantle) :foreground ,(catppuccin-color 'overlay0))))
+
+(after! org-appear
+  (setq org-appear-autoemphasis t
+        org-appear-autolinks t
+        org-appear-autosubmarkers t))
 
 (after! org
   (add-to-list 'org-modules 'org-habit)
@@ -38,6 +54,78 @@
 
 (add-hook 'org-after-todo-state-change-hook #'my/org-clock-in-when-doing)
 
+(defun my/parse-schedule (schedule-str)
+  "Parse SCHEDULE-STR into an alist of (day-num . time-str).
+Supports two formats:
+  \"tue,thu 18:15-19:15\"           — shared time for all days
+  \"tue 19:15-20:15, fri 16:00-17:00\" — per-day times"
+  (let ((day-to-num (lambda (d)
+                      (pcase (downcase (string-trim d))
+                        ("sun" 0) ("mon" 1) ("tue" 2) ("wed" 3)
+                        ("thu" 4) ("fri" 5) ("sat" 6)))))
+    (if (string-match-p "," schedule-str)
+        ;; Could be "tue,thu 18:15" or "tue 19:15, fri 16:00"
+        ;; Distinguish: if first comma-segment has only a day name, it's shared-time
+        (let* ((first-segment (string-trim (car (split-string schedule-str ","))))
+               (first-parts (split-string first-segment)))
+          (if (= 1 (length first-parts))
+              ;; Shared time: "tue,thu 18:15-19:15"
+              (let* ((parts (split-string (string-trim schedule-str)))
+                     (days-str (car parts))
+                     (time-str (cadr parts))
+                     (day-names (split-string days-str ",")))
+                (mapcar (lambda (d) (cons (funcall day-to-num d) time-str)) day-names))
+            ;; Per-day: "tue 19:15-20:15, fri 16:00-17:00"
+            (let ((segments (split-string schedule-str ",")))
+              (mapcar (lambda (seg)
+                        (let ((parts (split-string (string-trim seg))))
+                          (cons (funcall day-to-num (car parts)) (cadr parts))))
+                      segments))))
+      ;; Single day: "wed 14:00-15:00"
+      (let ((parts (split-string (string-trim schedule-str))))
+        (list (cons (funcall day-to-num (car parts)) (cadr parts)))))))
+
+(defun my/create-next-lesson ()
+  "Create the next lesson heading based on #+SCHEDULE: in current buffer.
+Refuses if :inactive: filetag is present."
+  (interactive)
+  (let ((filetags (or (car (cdr (assoc "FILETAGS" (org-collect-keywords '("FILETAGS"))))) "")))
+    (when (string-match-p ":inactive:" filetags)
+      (user-error "This student/group is marked as inactive")))
+  (let* ((schedule-str (car (cdr (assoc "SCHEDULE" (org-collect-keywords '("SCHEDULE"))))))
+         (_ (unless schedule-str (user-error "No #+SCHEDULE: found in this file")))
+         (entries (my/parse-schedule schedule-str))
+         (day-nums (mapcar #'car entries))
+         (today-dow (nth 6 (decode-time)))
+         (days-ahead (cl-loop for i from 0 to 6
+                              for d = (mod (+ today-dow i) 7)
+                              when (memq d day-nums)
+                              return i))
+         (next-dow (mod (+ today-dow days-ahead) 7))
+         (time-str (cdr (assq next-dow entries)))
+         (next-date (time-add (current-time) (days-to-time days-ahead)))
+         (last-num (save-excursion
+                     (goto-char (point-min))
+                     (let ((max-n 0))
+                       (while (re-search-forward "^\\* Lesson \\([0-9]+\\)" nil t)
+                         (setq max-n (max max-n (string-to-number (match-string 1)))))
+                       max-n)))
+         (next-num (1+ last-num))
+         (full-stamp (format-time-string
+                      (concat "<%Y-%m-%d %a " time-str ">") next-date)))
+    (goto-char (point-max))
+    (unless (bolp) (insert "\n"))
+    (insert (format "* Lesson %d %s\n" next-num full-stamp))
+    (insert "** Pre-lesson\n")
+    (insert (format "*** TODO prepare for lesson %d\n" next-num))
+    (insert (format "DEADLINE: %s\n"
+                    (format-time-string
+                     (concat "<%Y-%m-%d %a "
+                             (car (split-string time-str "-"))
+                             ">")
+                     next-date)))
+    (insert "** Lesson\n")
+    (insert "** Post-lesson\n")))
 
 (defun my/auto-refresh-dashboard ()
   (when (and (buffer-file-name)

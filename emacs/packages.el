@@ -6,6 +6,8 @@
 (package! org-roam-ql)
 (package! exec-path-from-shell)
 (package! org-roam-ui)
+(package! org-appear)
+(package! org-modern)
 (package! catppuccin-theme)
 (package! org-gcal)
 (package! savefold :recipe (:host github :repo "jcfk/savefold.el"))

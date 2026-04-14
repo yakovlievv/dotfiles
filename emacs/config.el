@@ -30,6 +30,25 @@
   (when (memq window-system '(mac ns x))
     (exec-path-from-shell-initialize)))
 
+(setq ispell-dictionary "en"
+      ispell-personal-dictionary
+      (expand-file-name "ispell/en.pws" doom-data-dir))
+
+(after! langtool
+  (setq langtool-bin "languagetool"
+        langtool-default-language "en-US"
+        langtool-disabled-rules '("MORFOLOGIK_RULE_EN_US"
+                                  "UPPERCASE_SENTENCE_START"
+                                  "COMMA_PARENTHESIS_WHITESPACE"
+                                  "EN_QUOTES")))
+
+(map! :leader
+      :prefix ("l" . "language")
+      :desc "Check grammar"    "g" #'langtool-check
+      :desc "Done checking"    "G" #'langtool-check-done
+      :desc "Show message"     "m" #'langtool-show-message-at-point
+      :desc "Correct buffer"   "c" #'langtool-correct-buffer)
+
 (load! "+org")
 (load! "+org-roam")
 (load! "+book-gallery")

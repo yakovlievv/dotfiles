@@ -1,16 +1,16 @@
 ;;; +keybinds.el -*- lexical-binding: t; -*-
 
-(defun my/evil-next-line (count)
+(evil-define-motion my/evil-next-line (count)
   "Move by visual lines without count, logical lines with count."
-  (interactive "p")
-  (if (> count 1)
+  :type line
+  (if (and count (> count 1))
       (evil-next-line count)
     (evil-next-visual-line 1)))
 
-(defun my/evil-previous-line (count)
+(evil-define-motion my/evil-previous-line (count)
   "Move by visual lines without count, logical lines with count."
-  (interactive "p")
-  (if (> count 1)
+  :type line
+  (if (and count (> count 1))
       (evil-previous-line count)
     (evil-previous-visual-line 1)))
 
