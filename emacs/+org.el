@@ -8,6 +8,7 @@
   (savefold-mode 1))
 
 (after! org-modern
+  (setq org-modern-checkbox nil)
   (setf (nth 2 org-modern-fold-stars) '("▶" . "▼"))
   (custom-set-faces!
     `(org-modern-tag :inherit org-modern-label :weight semibold :background ,(catppuccin-color 'mauve) :foreground ,(catppuccin-color 'mantle) :distant-foreground ,(catppuccin-color 'mauve))
@@ -24,12 +25,62 @@
         org-appear-autolinks t
         org-appear-autosubmarkers t))
 
+(use-package! org-fragtog
+  :when (require 'org-fragtog nil t)
+  :hook (org-mode . org-fragtog-mode))
+
+(after! ob-mermaid
+  (setq ob-mermaid-cli-path (executable-find "mmdc")))
+
 (after! org
   (add-to-list 'org-modules 'org-habit)
   (setq org-archive-location
         (concat (expand-file-name "archive/arch_%s" org-directory) "::"))
+  (require 'ob-mermaid)
+  (add-to-list 'org-babel-load-languages '(mermaid . t))
+  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
+  (setq org-use-property-inheritance
+        (append (if (listp org-use-property-inheritance) org-use-property-inheritance nil)
+                '("calendar-id" "CALENDAR-ID")))
+
+
+  (defun my/org-gcal-post-all-in-buffer ()
+    "Walk every heading with an active timestamp and call org-gcal-post-at-point.
+Creates the :org-gcal: drawer so future org-gcal-sync-buffer calls pick them up."
+    (interactive)
+    (save-excursion
+      (goto-char (point-min))
+      (org-map-entries
+       (lambda ()
+         (let ((has-drawer
+                (save-excursion
+                  (org-back-to-heading t)
+                  (let ((end (save-excursion (org-end-of-subtree t t))))
+                    (re-search-forward "^[ \t]*:org-gcal:[ \t]*$" end t))))
+               (has-ts
+                (save-excursion
+                  (org-back-to-heading t)
+                  (let ((end (save-excursion (outline-next-heading) (point))))
+                    (re-search-forward org-ts-regexp end t)))))
+           (when (and has-ts (not has-drawer))
+             (message "org-gcal: posting %s" (nth 4 (org-heading-components)))
+             (org-gcal-post-at-point t nil)))))))
+  (setq plstore-cache-passphrase-for-symmetric-encryption t
+        plstore-encrypt-to '("yakovlievv25@gmail.com"))
+  (require 'org-gcal)
+
+  ;; Make org-gcal honor file-level #+PROPERTY: calendar-id ... and
+  ;; inherited calendar-id properties so headings don't need their own.
+  (defun my/org-gcal-inherit-calendar-id (orig-fn pom property &rest args)
+    (let ((val (apply orig-fn pom property args)))
+      (if (and (null val)
+               (member property '("calendar-id" "CALENDAR-ID")))
+          (or (apply orig-fn pom property t (cdr args))
+              (cdr (assoc property org-file-properties)))
+        val)))
+  (advice-add 'org-entry-get :around #'my/org-gcal-inherit-calendar-id)
+  (setq org-startup-with-latex-preview t)
   (setq org-log-done 'time
-        org-image-actual-width 300
        org-hide-emphasis-markers t
         org-src-fontify-natively t
         org-agenda-show-inherited-tasks t

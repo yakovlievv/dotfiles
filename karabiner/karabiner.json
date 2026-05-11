@@ -163,7 +163,7 @@
                         ]
                     },
                     {
-                        "description": "Dual-role CapsLock: Esc when tapped; Control in Kitty/WezTerm/UTM/Emacs, Command elsewhere when held.",
+                        "description": "Dual-role CapsLock: Esc when tapped; Control in Kitty/WezTerm/UTM/Emacs/Ghostty, Command elsewhere when held.",
                         "manipulators": [
                             {
                                 "conditions": [
@@ -173,7 +173,8 @@
                                             "^com\\.github\\.wez\\.wezterm$",
                                             "^com\\.utmapp\\.UTM$",
                                             "^org\\.gnu\\.Emacs$",
-                                            "^org\\.gnu\\.Emacs-mac$"
+                                            "^org\\.gnu\\.Emacs-mac$",
+                                            "^com\\.mitchellh\\.ghostty$"
                                         ],
                                         "type": "frontmost_application_if"
                                     }
@@ -194,7 +195,8 @@
                                             "^com\\.github\\.wez\\.wezterm$",
                                             "^com\\.utmapp\\.UTM$",
                                             "^org\\.gnu\\.Emacs$",
-                                            "^org\\.gnu\\.Emacs-mac$"
+                                            "^org\\.gnu\\.Emacs-mac$",
+                                            "^com\\.mitchellh\\.ghostty$"
                                         ],
                                         "type": "frontmost_application_unless"
                                     }

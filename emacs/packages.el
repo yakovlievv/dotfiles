@@ -8,8 +8,10 @@
 (package! org-roam-ui)
 (package! org-appear)
 (package! org-modern)
+(package! org-fragtog)
 (package! catppuccin-theme)
 (package! org-gcal)
+(package! ob-mermaid)
 (package! savefold :recipe (:host github :repo "jcfk/savefold.el"))
 ;; To install a package:
 ;;

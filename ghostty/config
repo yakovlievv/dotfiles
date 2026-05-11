@@ -1,0 +1,40 @@
+
+# THEME
+theme = Catppuccin Mocha
+
+# FONT
+font-family = JetBrainsMono Nerd Font Mono
+font-size = 16
+
+# LIGATURES
+font-feature = calt, clig, liga
+
+# WINDOW
+background-opacity = 0.9
+background-blur = 10
+background = #11111b
+
+# No titlebar/decorations (closest to RESIZE-only)
+window-decoration = false
+
+# Padding
+window-padding-x = 15
+window-padding-y = 10
+
+# CURSOR
+cursor-style = block
+cursor-style-blink = true
+# Note: blink rate is not configurable in Ghostty
+
+# TAB BAR
+# Ghostty auto-hides it when there's one tab — nothing to set
+
+# Kitty keyboard + graphics protocol are ON by default in Ghostty
+
+# KEYBINDINGS
+# Ctrl+Backspace → send ^W (same as your WezTerm binding)
+keybind = ctrl+backspace=text:\x17
+
+# Clipboard
+keybind = ctrl+shift+v=paste_from_clipboard
+keybind = ctrl+shift+c=copy_to_clipboard
