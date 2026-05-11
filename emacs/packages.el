@@ -10,9 +10,10 @@
 (package! org-modern)
 (package! org-fragtog)
 (package! catppuccin-theme)
-(package! org-gcal)
 (package! ob-mermaid)
 (package! savefold :recipe (:host github :repo "jcfk/savefold.el"))
+(package! valign)
+(package! guess-language)
 ;; To install a package:
 ;;
 ;;   1. Declare them here in a `package!' statement,
