@@ -39,47 +39,7 @@
   (require 'ob-mermaid)
   (add-to-list 'org-babel-load-languages '(mermaid . t))
   (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
-  (setq org-use-property-inheritance
-        (append (if (listp org-use-property-inheritance) org-use-property-inheritance nil)
-                '("calendar-id" "CALENDAR-ID")))
-
-
-  (defun my/org-gcal-post-all-in-buffer ()
-    "Walk every heading with an active timestamp and call org-gcal-post-at-point.
-Creates the :org-gcal: drawer so future org-gcal-sync-buffer calls pick them up."
-    (interactive)
-    (save-excursion
-      (goto-char (point-min))
-      (org-map-entries
-       (lambda ()
-         (let ((has-drawer
-                (save-excursion
-                  (org-back-to-heading t)
-                  (let ((end (save-excursion (org-end-of-subtree t t))))
-                    (re-search-forward "^[ \t]*:org-gcal:[ \t]*$" end t))))
-               (has-ts
-                (save-excursion
-                  (org-back-to-heading t)
-                  (let ((end (save-excursion (outline-next-heading) (point))))
-                    (re-search-forward org-ts-regexp end t)))))
-           (when (and has-ts (not has-drawer))
-             (message "org-gcal: posting %s" (nth 4 (org-heading-components)))
-             (org-gcal-post-at-point t nil)))))))
-  (setq plstore-cache-passphrase-for-symmetric-encryption t
-        plstore-encrypt-to '("yakovlievv25@gmail.com"))
-  (require 'org-gcal)
-
-  ;; Make org-gcal honor file-level #+PROPERTY: calendar-id ... and
-  ;; inherited calendar-id properties so headings don't need their own.
-  (defun my/org-gcal-inherit-calendar-id (orig-fn pom property &rest args)
-    (let ((val (apply orig-fn pom property args)))
-      (if (and (null val)
-               (member property '("calendar-id" "CALENDAR-ID")))
-          (or (apply orig-fn pom property t (cdr args))
-              (cdr (assoc property org-file-properties)))
-        val)))
-  (advice-add 'org-entry-get :around #'my/org-gcal-inherit-calendar-id)
-  (setq org-startup-with-latex-preview t)
+  (setq org-startup-with-latex-preview nil)
   (setq org-log-done 'time
        org-hide-emphasis-markers t
         org-src-fontify-natively t
@@ -147,20 +107,31 @@ Refuses if :inactive: filetag is present."
          (_ (unless schedule-str (user-error "No #+SCHEDULE: found in this file")))
          (entries (my/parse-schedule schedule-str))
          (day-nums (mapcar #'car entries))
-         (today-dow (nth 6 (decode-time)))
-         (days-ahead (cl-loop for i from 0 to 6
-                              for d = (mod (+ today-dow i) 7)
-                              when (memq d day-nums)
+         (last-info (save-excursion
+                      (goto-char (point-min))
+                      (let ((max-n 0) date-str)
+                        (while (re-search-forward
+                                "^\\* Lesson \\([0-9]+\\)\\(?: <\\([0-9]+-[0-9]+-[0-9]+\\)\\)?"
+                                nil t)
+                          (let ((n (string-to-number (match-string 1))))
+                            (when (> n max-n)
+                              (setq max-n n
+                                    date-str (match-string 2)))))
+                        (cons max-n date-str))))
+         (last-num (car last-info))
+         (last-date-str (cdr last-info))
+         (today-date-str (format-time-string "%Y-%m-%d"))
+         (days-ahead (cl-loop for i from 0 to 13
+                              for cand-time = (time-add (current-time) (days-to-time i))
+                              for cand-dow = (nth 6 (decode-time cand-time))
+                              for cand-date-str = (format-time-string "%Y-%m-%d" cand-time)
+                              when (and (memq cand-dow day-nums)
+                                        (or (null last-date-str)
+                                            (string< last-date-str cand-date-str)))
                               return i))
-         (next-dow (mod (+ today-dow days-ahead) 7))
-         (time-str (cdr (assq next-dow entries)))
          (next-date (time-add (current-time) (days-to-time days-ahead)))
-         (last-num (save-excursion
-                     (goto-char (point-min))
-                     (let ((max-n 0))
-                       (while (re-search-forward "^\\* Lesson \\([0-9]+\\)" nil t)
-                         (setq max-n (max max-n (string-to-number (match-string 1)))))
-                       max-n)))
+         (next-dow (nth 6 (decode-time next-date)))
+         (time-str (cdr (assq next-dow entries)))
          (next-num (1+ last-num))
          (full-stamp (format-time-string
                       (concat "<%Y-%m-%d %a " time-str ">") next-date)))
@@ -175,8 +146,60 @@ Refuses if :inactive: filetag is present."
                              (car (split-string time-str "-"))
                              ">")
                      next-date)))
+    (insert "*** Print [0/0]\n\n")
     (insert "** Lesson\n")
     (insert "** Post-lesson\n")))
+
+(defun my/last-lesson-end-time ()
+  "Return encoded end-time of the highest-numbered `* Lesson N' in current buffer.
+Falls back to the start time when no end is given. Returns nil if no lesson found."
+  (save-excursion
+    (goto-char (point-min))
+    (let ((max-num -1)
+          best)
+      (while (re-search-forward
+              "^\\* Lesson \\([0-9]+\\) <\\([0-9]+\\)-\\([0-9]+\\)-\\([0-9]+\\) [A-Za-z]+ \\([0-9]+\\):\\([0-9]+\\)\\(?:-\\([0-9]+\\):\\([0-9]+\\)\\)?>"
+              nil t)
+        (let ((n (string-to-number (match-string 1))))
+          (when (> n max-num)
+            (setq max-num n
+                  best (list (string-to-number (match-string 2))
+                             (string-to-number (match-string 3))
+                             (string-to-number (match-string 4))
+                             (string-to-number (or (match-string 7) (match-string 5)))
+                             (string-to-number (or (match-string 8) (match-string 6))))))))
+      (when best
+        (encode-time 0 (nth 4 best) (nth 3 best)
+                     (nth 2 best) (nth 1 best) (nth 0 best))))))
+
+(defun my/auto-create-next-lesson-maybe ()
+  "Scan lesson plan files and create the next lesson in any file
+whose highest-numbered lesson has already ended."
+  (when (fboundp 'lesson-dashboard--find-lesson-files)
+    (dolist (tf (lesson-dashboard--find-lesson-files))
+      (let ((file (cdr tf)))
+        (condition-case err
+            (with-current-buffer (find-file-noselect file)
+              (let ((filetags (or (cadr (assoc "FILETAGS" (org-collect-keywords '("FILETAGS")))) ""))
+                    (last-end (my/last-lesson-end-time)))
+                (when (and last-end
+                           (not (string-match-p ":inactive:" filetags))
+                           (time-less-p last-end (current-time)))
+                  (save-excursion (my/create-next-lesson))
+                  (when (buffer-modified-p) (save-buffer))
+                  (message "Auto-created next lesson in %s"
+                           (file-name-nondirectory file)))))
+          (error (message "auto-create-next-lesson failed for %s: %s"
+                          (file-name-nondirectory file)
+                          (error-message-string err))))))))
+
+(defvar my/auto-create-next-lesson-timer nil
+  "Timer that periodically runs `my/auto-create-next-lesson-maybe'.")
+
+(when (timerp my/auto-create-next-lesson-timer)
+  (cancel-timer my/auto-create-next-lesson-timer))
+(setq my/auto-create-next-lesson-timer
+      (run-with-timer 60 60 #'my/auto-create-next-lesson-maybe))
 
 (defun my/auto-refresh-dashboard ()
   (when (and (buffer-file-name)

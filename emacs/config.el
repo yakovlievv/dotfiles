@@ -67,10 +67,17 @@
   (message "Spell dictionary: %s" dict))
 
 (after! spell-fu
-  (setq-default spell-fu-dictionaries
-                (list (spell-fu-get-ispell-dictionary "en")
-                      (spell-fu-get-ispell-dictionary "ru")
-                      (spell-fu-get-ispell-dictionary "uk"))))
+  (let ((pws (lambda (name)
+               (spell-fu-get-personal-dictionary
+                name (expand-file-name (format "ispell/%s.pws" name)
+                                       doom-data-dir)))))
+    (setq-default spell-fu-dictionaries
+                  (list (spell-fu-get-ispell-dictionary "en")
+                        (spell-fu-get-ispell-dictionary "ru")
+                        (spell-fu-get-ispell-dictionary "uk")
+                        (funcall pws "en")
+                        (funcall pws "ru")
+                        (funcall pws "uk")))))
 
 (after! langtool
   (setq langtool-bin "languagetool"
@@ -97,13 +104,8 @@
       :desc "Correct buffer"   "c" #'langtool-correct-buffer
       :desc "Set spell dict"   "d" #'my/spell-set-dict)
 
-(use-package! valign
-  :hook (org-mode . valign-mode)
-  :config
-  (setq valign-max-table-size 0))
-
 (after! org-modern
-  (setq org-modern-table nil))
+  (setq org-modern-table t))
 
 (load! "+org")
 (load! "+org-roam")

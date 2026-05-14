@@ -1,14 +1,21 @@
 (after! org-roam
   (require 'org-roam-dailies)
+  (defvar +org-roam-daily-template-file "~/org/templates/daily.org"
+    "Path to the org-roam daily capture template.")
+  (defun +org-roam-daily-template ()
+    "Return contents of `+org-roam-daily-template-file' as a string."
+    (with-temp-buffer
+      (insert-file-contents (expand-file-name +org-roam-daily-template-file))
+      (buffer-string)))
   (setq
    book-gallery-weekly-goal-minutes 180
    org-roam-directory "~/org/roam/"
    org-roam-dailies-directory "daily/"
    org-roam-dailies-capture-templates
-   '(("d" "default" entry "%?"
+   `(("d" "default" entry "%?"
       :target (file+head
                "%<%Y-%m-%d>.org"
-               ":PROPERTIES:\n:ID:       %(org-id-new)\n:SLEEP_TIME: %^T--%^T\n:END:\n#+title: %<%Y-%m-%d>\n#+filetags: :daily:\n\n")))
+               ,(+org-roam-daily-template))))
    org-roam-capture-templates
    '(("d" "default" plain "%?"
       :target (file+head "%<%Y%m%d%H%M%S>-${slug}.org"
