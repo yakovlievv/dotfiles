@@ -3,6 +3,17 @@
 ;; Optional: fallback for variable-pitch
 (setq doom-variable-pitch-font (font-spec :family "JetBrainsMono Nerd Font" :size 16))
 
+;; config.el
+(after! dirvish
+  (dirvish-override-dired-mode)  ; replace dired with dirvish everywhere
+  (setq dirvish-preview-dispatchers
+        (append dirvish-preview-dispatchers '(image)))  ; enable image preview
+  (setq dirvish-quick-access-entries
+        '(("o" "~/org/"          "Org vault")
+          ("r" "~/org/roam/"     "Roam notes")
+          ("m" "~/org/material/" "Material")))
+  (setq dirvish-attributes '(nerd-icons)))
+
 (defun my/print-frame-size ()
   "Print the current frame's width, height, left, and top."
   (interactive)

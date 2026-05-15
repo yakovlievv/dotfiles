@@ -30,7 +30,8 @@
 
 (map! :leader
       :desc "Writing hub" "n w" #'writing-hub
-      :desc "Lesson dashboard" "n l" #'lesson-dashboard)
+      :desc "Lesson dashboard" "n l" #'lesson-dashboard
+      :desc "Dirvish" "e" #'dirvish)
 
 (defvar org-link-vsplit-window nil
   "Window reused for link preview.")
@@ -51,19 +52,22 @@
       win)))
 
 (defun my/fit-window-to-image ()
-  "When the current buffer shows an image, resize the window to its rendered width."
-  (when (and (derived-mode-p 'image-mode)
-             (image-get-display-property)
-             (not (one-window-p)))
-    (redisplay t)
-    (let* ((img-w-px (car (image-display-size
-                           (image-get-display-property) t)))
-           (pad-px (* 2 (frame-char-width)))
-           (target-px (+ img-w-px pad-px))
-           (delta-px (- target-px (window-body-width nil t))))
-      (when (/= 0 delta-px)
-        (ignore-errors
-          (window-resize nil delta-px t nil t))))))
+  "When the current buffer shows an image or PDF page, resize the window to its rendered width."
+  (let ((img (cond
+              ((and (derived-mode-p 'image-mode)
+                    (image-get-display-property)))
+              ((and (derived-mode-p 'pdf-view-mode)
+                    (fboundp 'pdf-view-current-image)
+                    (pdf-view-current-image))))))
+    (when (and img (not (one-window-p)))
+      (redisplay t)
+      (let* ((img-w-px (car (image-display-size img t)))
+             (pad-px (* 2 (frame-char-width)))
+             (target-px (+ img-w-px pad-px))
+             (delta-px (- target-px (window-body-width nil t))))
+        (when (/= 0 delta-px)
+          (ignore-errors
+            (window-resize nil delta-px t nil t)))))))
 
 (defun my/preview-file-in-vsplit (file)
   "Show FILE in the vsplit preview window."
@@ -73,18 +77,27 @@
       (display-line-numbers-mode -1)
       (my/fit-window-to-image))))
 
+(defun my/org-link-roam-target-p (file)
+  "Return non-nil if FILE lives under `org-roam-directory'."
+  (when-let* ((file file)
+              (roam-dir (and (boundp 'org-roam-directory) org-roam-directory)))
+    (file-in-directory-p file roam-dir)))
+
 (defun my/org-link-target-at-point ()
-  "Return the file path of the org link at point, or nil."
+  "Return the file path of the org link at point, or nil.
+Org-roam links (id: links resolving inside `org-roam-directory') are ignored."
   (let ((ctx (org-element-context)))
     (when (eq (org-element-type ctx) 'link)
-      (let ((type (org-element-property :type ctx))
-            (path (org-element-property :path ctx)))
-        (cond
-         ((string= type "file") (expand-file-name path))
-         ((string= type "id")
-          (when-let ((loc (org-id-find path)))
-            (car loc)))
-         (t nil))))))
+      (let* ((type (org-element-property :type ctx))
+             (path (org-element-property :path ctx))
+             (target (cond
+                      ((string= type "file") (expand-file-name path))
+                      ((string= type "id")
+                       (when-let ((loc (org-id-find path)))
+                         (car loc)))
+                      (t nil))))
+        (unless (my/org-link-roam-target-p target)
+          target)))))
 
 (defun my/link-preview-post-command ()
   "Preview the org link under cursor in the vsplit window."
@@ -146,9 +159,11 @@ previews the linked file. Press again to close."
     (my/preview-file-in-vsplit abs-path)))
 
 (defun my/kill-image-buffers ()
-  "Kill every buffer in `image-mode' so previews re-render fresh."
+  "Kill every image/PDF preview buffer so previews re-render fresh."
   (dolist (buf (buffer-list))
-    (when (with-current-buffer buf (derived-mode-p 'image-mode))
+    (when (with-current-buffer buf
+            (or (derived-mode-p 'image-mode)
+                (derived-mode-p 'pdf-view-mode)))
       (kill-buffer buf))))
 
 (defun my/org-insert-material-links ()
@@ -305,6 +320,155 @@ Refuses to overwrite an existing non-trivial file."
     (message "Migrated %d links from %d topics into %s"
              count (length sources) target)))
 
+(defun my/org-rewrite-link-paths (mapping)
+  "Rewrite org `file:' links across ~/org/ according to MAPPING.
+MAPPING is an alist of (OLD-ABS . NEW-ABS) absolute paths. For each
+pair both the absolute (file:/Users/...) and tilde (file:~/...) link
+forms are replaced. Returns a cons (FILES-MODIFIED . REPLACEMENTS)."
+  (let* ((home (expand-file-name "~/"))
+         (forms
+          (apply
+           #'append
+           (mapcar
+            (lambda (pair)
+              (let* ((old (expand-file-name (car pair)))
+                     (new (expand-file-name (cdr pair)))
+                     (acc (list (cons (concat "file:" old)
+                                      (concat "file:" new)))))
+                (when (and (string-prefix-p home old)
+                           (string-prefix-p home new))
+                  (push (cons (concat "file:~/" (substring old (length home)))
+                              (concat "file:~/" (substring new (length home))))
+                        acc))
+                acc))
+            mapping)))
+         (root (expand-file-name "~/org/"))
+         (files-modified 0)
+         (replacements 0))
+    (dolist (org-file (directory-files-recursively
+                       root "\\.org\\'" nil
+                       (lambda (sub)
+                         (not (string-prefix-p
+                               "." (file-name-nondirectory
+                                    (directory-file-name sub)))))))
+      (with-temp-buffer
+        (insert-file-contents org-file)
+        (let ((original (buffer-string))
+              (local 0))
+          (dolist (form forms)
+            (goto-char (point-min))
+            (while (search-forward (car form) nil t)
+              (replace-match (cdr form) t t)
+              (cl-incf local)))
+          (unless (string= original (buffer-string))
+            (write-region (point-min) (point-max) org-file nil 'silent)
+            (cl-incf files-modified)
+            (cl-incf replacements local)))))
+    (cons files-modified replacements)))
+
+(defun my/org-move-path--smart-source ()
+  "Return a sensible default source path for `my/org-move-path', or nil."
+  (cond
+   ((derived-mode-p 'dired-mode)
+    (ignore-errors (dired-get-filename nil t)))
+   ((derived-mode-p 'org-mode)
+    (when-let* ((target (my/org-link-target-at-point))
+                ((file-exists-p target)))
+      target))))
+
+(defun my/org-move-path--resolve-destination (src dst-raw)
+  "Resolve user-typed DST-RAW into the final absolute destination for SRC.
+If DST-RAW points to an existing directory or ends with /, the source
+basename is appended; otherwise DST-RAW is treated as the full new path."
+  (let ((dst (expand-file-name dst-raw)))
+    (if (or (file-directory-p dst)
+            (string-suffix-p "/" dst-raw))
+        (expand-file-name (file-name-nondirectory
+                           (directory-file-name src))
+                          dst)
+      dst)))
+
+(defun my/org-move-path--build-mapping (src dst)
+  "Build (OLD . NEW) alist of file paths for moving SRC to DST.
+For a directory SRC, returns one pair per descendant file with
+substructure preserved under DST."
+  (if (file-directory-p src)
+      (mapcar (lambda (f)
+                (cons f (expand-file-name (file-relative-name f src) dst)))
+              (directory-files-recursively src ""))
+    (list (cons src dst))))
+
+(defun my/org-move-path (src dst)
+  "Move SRC to DST and rewrite every org `file:' link that referenced
+SRC (or anything under it) across ~/org/.
+
+Interactive defaults: file-at-point in dired, link-target in org-mode,
+otherwise `read-file-name' rooted at ~/org/material/. If DST is an
+existing directory (or ends with /), the source basename is appended.
+Missing parent directories are created. Overwrite is refused without
+explicit confirmation."
+  (interactive
+   (let* ((default (my/org-move-path--smart-source))
+          (src (or default
+                   (read-file-name
+                    "Move: " (expand-file-name "~/org/material/")
+                    nil t))))
+     (list (expand-file-name src)
+           (read-file-name
+            (format "Move %s to: " (abbreviate-file-name src))
+            (file-name-directory src)))))
+  (let* ((src (expand-file-name src))
+         (dst (my/org-move-path--resolve-destination src dst)))
+    (unless (file-exists-p src)
+      (user-error "Source does not exist: %s" src))
+    (when (string= src dst)
+      (user-error "Source and destination are the same"))
+    (when (and (file-exists-p dst)
+               (not (yes-or-no-p
+                     (format "%s exists. Overwrite? "
+                             (abbreviate-file-name dst)))))
+      (user-error "Aborted"))
+    (let* ((mapping (my/org-move-path--build-mapping src dst))
+           (n (length mapping)))
+      (unless (yes-or-no-p
+               (format "Move %s (%d file%s); rewrite links in ~/org/. Continue? "
+                       (abbreviate-file-name src) n (if (= n 1) "" "s")))
+        (user-error "Aborted"))
+      (make-directory (file-name-directory dst) t)
+      (rename-file src dst t)
+      (let ((result (my/org-rewrite-link-paths mapping)))
+        (when (derived-mode-p 'dired-mode)
+          (revert-buffer nil t))
+        (message "Moved to %s; rewrote %d link(s) across %d org file(s)"
+                 (abbreviate-file-name dst)
+                 (cdr result) (car result))))))
+
+(defun my/org--rename-link-sync (orig-fn from to ok-if-already-exists)
+  "Around-advice on `dired-rename-file': capture FROM/TO, delegate, then
+rewrite org links so anything pointing to FROM (or under it) now points
+to TO. Silent when no org link matches."
+  (let* ((from-abs (expand-file-name from))
+         (to-abs (expand-file-name to))
+         (mapping (if (file-directory-p from-abs)
+                      (mapcar (lambda (f)
+                                (cons f (expand-file-name
+                                         (file-relative-name f from-abs)
+                                         to-abs)))
+                              (directory-files-recursively from-abs ""))
+                    (list (cons from-abs to-abs)))))
+    (funcall orig-fn from to ok-if-already-exists)
+    (when mapping
+      (let ((result (my/org-rewrite-link-paths mapping)))
+        (when (> (cdr result) 0)
+          (message "Rewrote %d org link(s) in %d file(s)"
+                   (cdr result) (car result)))))))
+
+(after! dired
+  (advice-add 'dired-rename-file :around #'my/org--rename-link-sync))
+
+(map! :leader
+      :desc "Move file (sync org links)" "f M" #'my/org-move-path)
+
 (after! org
   (map! :map org-mode-map
         :localleader
@@ -315,4 +479,26 @@ Refuses to overwrite an existing non-trivial file."
 (after! image-mode
   (map! :map image-mode-map
         :n "RET" (cmd! (call-process "open" nil 0 nil (buffer-file-name)))))
+
+(defun my/org-image-link-at-point ()
+  "Return absolute path if point is on an org link to an image file."
+  (let ((ctx (org-element-context)))
+    (when (eq (org-element-type ctx) 'link)
+      (let ((type (org-element-property :type ctx))
+            (path (org-element-property :path ctx)))
+        (when (and (member type '("file" "attachment"))
+                   path
+                   (string-match-p (image-file-name-regexp) path))
+          (expand-file-name path))))))
+
+(defun my/org-ret-dwim ()
+  "Open image links in macOS default app; otherwise fall back to `+org/dwim-at-point'."
+  (interactive)
+  (if-let ((img (my/org-image-link-at-point)))
+      (call-process "open" nil 0 nil img)
+    (call-interactively #'+org/dwim-at-point)))
+
+(after! org
+  (map! :map org-mode-map
+        :n "RET" #'my/org-ret-dwim))
 

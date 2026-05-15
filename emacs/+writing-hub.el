@@ -272,9 +272,21 @@ CREATED is a list of created files to exclude."
                   "\\[\\[[^]]*\\]\\]" "" result))
     result))
 
+(defun writing-hub--noise-token-p (token)
+  "Return non-nil if TOKEN is scaffolding rather than prose.
+Filters out tokens with no alphanumeric content (`|', `*', `***', `-',
+`=>', `[', `]', `[ ]', `[-]', etc.) and checkbox states that mix
+brackets with digits/x (`[X]', `[x]', `[1/3]', `[50%]')."
+  (or
+   ;; No alphanumeric content at all
+   (not (string-match-p "[[:alnum:]]" token))
+   ;; Checkbox states: [X] [x] [N/M] [K%]
+   (string-match-p "\\`\\[[ xX/[:digit:]%-]*\\]\\'" token)))
+
 (defun writing-hub--count-line-words (line)
-  "Count words in a single LINE after stripping org links."
-  (length (split-string (writing-hub--strip-org-links line) nil t)))
+  "Count words in a single LINE after stripping org links and noise tokens."
+  (length (seq-remove #'writing-hub--noise-token-p
+                      (split-string (writing-hub--strip-org-links line) nil t))))
 
 (defun writing-hub--count-file-words (file)
   "Count total words in FILE, excluding metadata lines."
@@ -315,13 +327,20 @@ Falls back to reading FILE on disk if REV lookup fails."
 ;;; Diff parsing (unified)
 
 (defun writing-hub--per-file-words (start-sha end-sha created-files)
-  "Parse git diff from START-SHA to END-SHA and return per-file word counts.
+  "Parse git word-diff and return per-file word counts.
 Returns a hash table: absolute-file-path -> (added . deleted).
 END-SHA nil means diff against working tree.
-CREATED-FILES are files whose full word count is added if not in the diff."
+CREATED-FILES are files whose full word count is added if not in the diff.
+
+Uses `--word-diff=porcelain` so only the actually-changed tokens are
+counted.  A line edit like `[ ] task` -> `[X] task' counts the brackets
+and `X' instead of the full line on each side.  Metadata lines (#+keys,
+property drawers, CLOCK/DEADLINE/SCHEDULED/CLOSED) are skipped based on
+the first token on each reconstructed input line."
   (let ((default-directory writing-hub--org-dir)
         (result (make-hash-table :test 'equal))
-        current-file file-added file-deleted)
+        current-file file-added file-deleted
+        line-metadata-p saw-first-token)
     (cl-flet ((flush ()
                 (when current-file
                   (let ((prev (gethash current-file result '(0 . 0))))
@@ -330,31 +349,63 @@ CREATED-FILES are files whose full word count is added if not in the diff."
                                    (+ (cdr prev) file-deleted))
                              result)))))
       (when start-sha
-        (let ((diff-output (shell-command-to-string
-                            (format "git -c core.quotepath=false diff %s -- roam/ 2>/dev/null"
-                                    (writing-hub--git-diff-range start-sha end-sha)))))
+        (let ((diff-output
+               (shell-command-to-string
+                (format "git -c core.quotepath=false diff --word-diff=porcelain --word-diff-regex='[^[:space:]]+' %s -- roam/ 2>/dev/null"
+                        (writing-hub--git-diff-range start-sha end-sha)))))
           (dolist (line (split-string diff-output "\n"))
             (cond
+             ;; New file marker — flush prior, start fresh
              ((string-prefix-p "+++ b/" line)
               (flush)
               (setq current-file (expand-file-name (substring line 6) writing-hub--org-dir)
                     file-added 0
-                    file-deleted 0))
+                    file-deleted 0
+                    line-metadata-p nil
+                    saw-first-token nil))
+             ;; +++ /dev/null (deleted file) — drop current file
              ((string-prefix-p "+++ " line)
               (flush)
               (setq current-file nil))
+             ;; Headers / hunk markers / blanks — skip
+             ((or (string-empty-p line)
+                  (string-prefix-p "diff " line)
+                  (string-prefix-p "index " line)
+                  (string-prefix-p "--- " line)
+                  (string-prefix-p "@@" line)
+                  (string-prefix-p "new file" line)
+                  (string-prefix-p "deleted file" line)
+                  (string-prefix-p "similarity" line)
+                  (string-prefix-p "rename" line)
+                  (string-prefix-p "Binary " line))
+              nil)
+             ;; End-of-input-line marker — reset per-line state
+             ((string= line "~")
+              (setq line-metadata-p nil
+                    saw-first-token nil))
+             ;; Word run: ' word1 word2', '+added', '-removed'
              ((and current-file
-                   (string-prefix-p "+" line)
-                   (not (string-prefix-p "+++" line)))
-              (let ((content (substring line 1)))
-                (unless (writing-hub--metadata-line-p content)
-                  (setq file-added (+ file-added (writing-hub--count-line-words content))))))
-             ((and current-file
-                   (string-prefix-p "-" line)
-                   (not (string-prefix-p "---" line)))
-              (let ((content (substring line 1)))
-                (unless (writing-hub--metadata-line-p content)
-                  (setq file-deleted (+ file-deleted (writing-hub--count-line-words content))))))))
+                   (let ((c (aref line 0)))
+                     (or (eq c ?+) (eq c ?-) (eq c ?\s))))
+              (let* ((prefix (aref line 0))
+                     (content (substring line 1))
+                     (raw-tokens (split-string content nil t))
+                     (tokens (seq-remove #'writing-hub--noise-token-p raw-tokens)))
+                ;; Metadata check uses raw first token (e.g. `:PROPERTIES:'
+                ;; would be filtered as noise but must still mark the line).
+                (when (and raw-tokens (not saw-first-token))
+                  (setq saw-first-token t)
+                  (let ((first (car raw-tokens)))
+                    (when (or (string-prefix-p "#+" first)
+                              (string-prefix-p ":" first)
+                              (member first '("CLOCK:" "DEADLINE:" "SCHEDULED:" "CLOSED:")))
+                      (setq line-metadata-p t))))
+                (unless line-metadata-p
+                  (cond
+                   ((eq prefix ?+)
+                    (setq file-added (+ file-added (length tokens))))
+                   ((eq prefix ?-)
+                    (setq file-deleted (+ file-deleted (length tokens))))))))))
           (flush)
           ;; Created files not already in the diff (untracked at baseline time)
           (dolist (file created-files)
@@ -725,8 +776,18 @@ COLOR is the title color. DELETED-P means the file was deleted."
 
 ;;; Diff viewer
 
+(defun writing-hub--word-diff-cmd ()
+  "Return the base git word-diff command flags."
+  (concat "git -c core.quotepath=false "
+          "-c color.diff.old=red -c color.diff.new=green "
+          "-c color.diff.frag=cyan -c color.diff.meta=bold "
+          "diff --color=always --word-diff=color "
+          "--word-diff-regex='[^[:space:]]+'"))
+
 (defun writing-hub-diff-file-at-point ()
-  "Show the diff for the file at point with word-level highlighting."
+  "Show the word-level diff for the file at point.
+Uses `git diff --word-diff=color' so only the actually-changed tokens
+are highlighted inline, rather than full-line +/- pairs."
   (interactive)
   (let ((file (get-text-property (point) 'writing-hub-file)))
     (unless file
@@ -741,15 +802,18 @@ COLOR is the title color. DELETED-P means the file was deleted."
                                (shell-command-to-string
                                 (format "git ls-files %s 2>/dev/null"
                                         (shell-quote-argument relative)))))))
+           (diff-cmd (writing-hub--word-diff-cmd))
            (diff-output
             (cond
              (untracked-p
               (shell-command-to-string
-               (format "git diff --no-index -- /dev/null %s 2>/dev/null"
+               (format "%s --no-index -- /dev/null %s 2>/dev/null"
+                       diff-cmd
                        (shell-quote-argument relative))))
              ((not start-sha) nil)
              (t (shell-command-to-string
-                 (format "git diff %s -- %s 2>/dev/null"
+                 (format "%s %s -- %s 2>/dev/null"
+                         diff-cmd
                          (writing-hub--git-diff-range start-sha end-sha)
                          (shell-quote-argument relative)))))))
       (when (and (not untracked-p) (not start-sha))
@@ -764,12 +828,12 @@ COLOR is the title color. DELETED-P means the file was deleted."
           (let ((inhibit-read-only t))
             (erase-buffer)
             (insert diff-output)
-            (diff-mode)
-            (setq-local diff-refine 'font-lock)
-            (font-lock-ensure)
-            (setq header-line-format
-                  (format " %s  |  %s" title (writing-hub--view-label)))
-            (goto-char (point-min))))
+            (require 'ansi-color)
+            (ansi-color-apply-on-region (point-min) (point-max))
+            (goto-char (point-min)))
+          (special-mode)
+          (setq header-line-format
+                (format " %s  |  %s" title (writing-hub--view-label))))
         (pop-to-buffer buf)
         (when (bound-and-true-p evil-mode)
           (evil-define-key 'normal 'local

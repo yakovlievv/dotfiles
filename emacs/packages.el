@@ -13,6 +13,7 @@
 (package! ob-mermaid)
 (package! savefold :recipe (:host github :repo "jcfk/savefold.el"))
 (package! valign)
+(package! dirvish)
 (package! guess-language)
 ;; To install a package:
 ;;
