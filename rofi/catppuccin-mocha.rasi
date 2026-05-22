@@ -1,0 +1,135 @@
+* {
+    rosewater: #f5e0dc;
+    flamingo:  #f2cdcd;
+    pink:      #f5c2e7;
+    mauve:     #cba6f7;
+    red:       #f38ba8;
+    maroon:    #eba0ac;
+    peach:     #fab387;
+    yellow:    #f9e2af;
+    green:     #a6e3a1;
+    teal:      #94e2d5;
+    sky:       #89dceb;
+    sapphire:  #74c7ec;
+    blue:      #89b4fa;
+    lavender:  #b4befe;
+    text:      #cdd6f4;
+    subtext1:  #bac2de;
+    subtext0:  #a6adc8;
+    overlay2:  #9399b2;
+    overlay1:  #7f849c;
+    overlay0:  #6c7086;
+    surface2:  #585b70;
+    surface1:  #45475a;
+    surface0:  #313244;
+    base:      #1e1e2e;
+    mantle:    #181825;
+    crust:     #11111b;
+
+    background-color: transparent;
+    text-color:       @text;
+}
+
+window {
+    transparency:     "real";
+    location:         center;
+    anchor:           center;
+    width:            620px;
+    border-radius:    12px;
+    background-color: @base;
+    border:           2px solid;
+    border-color:     @mauve;
+    padding:          16px;
+}
+
+mainbox {
+    spacing:  12px;
+    children: ["inputbar", "listview"];
+}
+
+inputbar {
+    padding:          10px 14px;
+    background-color: @mantle;
+    border-radius:    8px;
+    spacing:          8px;
+    children:         ["prompt", "entry"];
+}
+
+prompt {
+    text-color: @mauve;
+}
+
+entry {
+    placeholder:       "Search…";
+    placeholder-color: @overlay0;
+    text-color:        @text;
+}
+
+listview {
+    lines:        10;
+    columns:      1;
+    spacing:      4px;
+    scrollbar:    false;
+    fixed-height: false;
+}
+
+element {
+    padding:       8px 12px;
+    spacing:       10px;
+    border-radius: 6px;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color:       @text;
+}
+
+element normal.active,
+element alternate.active {
+    background-color: transparent;
+    text-color:       @blue;
+}
+
+element normal.urgent,
+element alternate.urgent {
+    background-color: transparent;
+    text-color:       @red;
+}
+
+element selected.normal {
+    background-color: @mauve;
+    text-color:       @base;
+}
+
+element selected.active {
+    background-color: @blue;
+    text-color:       @base;
+}
+
+element selected.urgent {
+    background-color: @red;
+    text-color:       @base;
+}
+
+element-icon {
+    size:             1.2em;
+    background-color: transparent;
+    vertical-align:   0.5;
+}
+
+element-text {
+    background-color: transparent;
+    text-color:       inherit;
+    vertical-align:   0.5;
+}
+
+message {
+    padding:          10px;
+    border-radius:    8px;
+    background-color: @mantle;
+}
+
+textbox {
+    text-color: @text;
+}

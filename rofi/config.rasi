@@ -1,0 +1,13 @@
+configuration {
+    modes:                 "drun,menu:rofi-modes,calc";
+    combi-modes:           "menu:rofi-modes,drun,calc";
+    show-icons:            true;
+    icon-theme:            "Papirus-Dark";
+    drun-display-format:   "{name}";
+    combi-display-format:  "{text}";
+    combi-hide-mode-prefix: true;
+    font:                  "JetBrainsMono Nerd Font 13";
+    terminal:              "kitty";
+}
+
+@theme "catppuccin-mocha"

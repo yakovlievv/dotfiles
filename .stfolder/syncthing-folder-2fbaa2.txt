@@ -1,0 +1,5 @@
+# This directory is a Syncthing folder marker.
+# Do not delete.
+
+folderID: gmtjv-kmsd4
+created: 2026-05-16T20:50:32+03:00

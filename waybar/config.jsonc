@@ -1,90 +1,101 @@
 {
-    "position": "top",
-    "modules-left": ["custom/logo", "hyprland/workspaces", "hyprland/window"],
-    "modules-center": ["clock#clk1", "custom/separator", "clock#clk2", "custom/separator", "clock#clk3"],
-    "clock#clk2": {
-        "format":"{:%A}",
-        "interval": 60,
-        "tooltip": false
+  "position": "top",
+  "modules-left": [
+    "custom/logo",
+    "hyprland/workspaces",
+    "hyprland/window"
+  ],
+  "modules-center": [
+    "clock#clk1",
+    "custom/separator",
+    "clock#clk2",
+    "custom/separator",
+    "clock#clk3"
+  ],
+  "clock#clk2": {
+    "format": "{:%A}",
+    "interval": 60,
+    "tooltip": false
+  },
+  "custom/separator": {
+    "format": " | ",
+    "tooltip": false
+  },
+  "clock#clk1": {
+    "format": "{:%H:%M}",
+    "interval": 1,
+    "tooltip": false
+  },
+  "clock#clk3": {
+    "format": "{:%d/%m}",
+    "exec": "date '+'",
+    "interval": 60,
+    "tooltip": false
+  },
+  "modules-right": [
+    "hyprland/language",
+    "pulseaudio",
+    "bluetooth",
+    "cpu",
+    "temperature",
+    "custom/swaync",
+    "custom/wlogout"
+  ],
+  "custom/logo": {
+    "format": "<span size='150%' rise='-2000'>󰣇</span>",
+    "on-click": "wofi --show drun",
+    "tooltip": false
+  },
+  "hyprland/workspaces": {
+    "format": "",
+    // "persistent-workspaces": {
+    //     "*": 5
+    // }
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": "<span size='150%' rise='-2000'></span>",
+    "format-icons": {
+      "default": [
+        "<span size='150%' rise='-2000'></span>",
+        "<span size='150%' rise='-2000'></span>",
+        "<span size='150%' rise='-2000'></span>"
+      ]
     },
-    "custom/separator": {
-        "format": " | ",
-        "tooltip": false
-
-    },
-    "clock#clk1": {
-        "format":"{:%H:%M}",
-        "interval": 1,
-        "tooltip": false
-    },
-    "clock#clk3": {
-        "format":"{:%d/%m}",
-        "exec": "date '+'",
-        "interval": 60,
-        "tooltip": false
-    },
-    "modules-right": [
-            "hyprland/language",
-            "pulseaudio",
-            "bluetooth",
-            "cpu",
-            "temperature",
-            "custom/swaync",
-            "custom/wlogout"
-    ],
-    "custom/logo": {
-        "format": "<span size='150%' rise='-2000'>󰣇</span>",
-        "on-click": "wofi --show drun",
-        "tooltip": false
-
-    },
-    "hyprland/workspaces": {
-        "format": "",   
-        // "persistent-workspaces": {
-        //     "*": 5
-        // }
-    },
-
-    "pulseaudio": {
-        "format": "{icon} {volume}%",
-        "format-muted": "<span size='150%' rise='-2000'></span>",
-        "format-icons": {
-            "default": ["<span size='150%' rise='-2000'></span>", "<span size='150%' rise='-2000'></span>", "<span size='150%' rise='-2000'></span>"]
-        },
-        "on-click": "pavucontrol",
-        "tooltip": false
-    },
-    // "hyprland/window": {
-    //     "icon": true,
-    // },
-    "bluetooth": {
-        "tooltip": false,
-        "on-click": "blueman-manager",
-    },
-    "cpu": {
-        "interval": 1,
-        "format": "{usage}% <span size='150%' rise='-2000'></span>",
-        "tooltip": false,
-        "interval": 5
-    },
-    "temperature": {
-        "format": "{temperatureC}°C ",
-        "tooltip": false,
-    },
-    "hyprland/language": {
-        "tooltip": false,
-        "format-en": "<span size='125%' rise='-2000'>󰌌</span> en",
-        "format-uk": "<span size='125%' rise='-2000'>󰌌</span> uk",
-        "format-ru": "<span size='125%' rise='-2000'>󰌌</span> ru"
-    },
-    "custom/wlogout": {
-        "format": "<span size='150%' rise='-2000'></span>",
-        "on-click": "wlogout",
-        "tooltip": false,
-    },
-    "custom/swaync": {
-        "format":  "<span size='150%' rise='-2000'></span>",
-        "on-click": "swaync-client -t",
-        "tooltip": false,
-    }
+    "on-click": "pavucontrol",
+    "tooltip": false
+  },
+  // "hyprland/window": {
+  //     "icon": true,
+  // },
+  "bluetooth": {
+    "tooltip": false,
+    "on-click": "blueman-manager",
+  },
+  "cpu": {
+    "interval": 1,
+    "format": "{usage}% <span size='150%' rise='-2000'></span>",
+    "tooltip": false,
+    "interval": 5
+  },
+  "temperature": {
+    "format": "{temperatureC}°C ",
+    "tooltip": false,
+  },
+  "hyprland/language": {
+    "tooltip": false,
+    "format-en": "<span size='125%' rise='-2000'>󰌌</span> en",
+    "format-uk": "<span size='125%' rise='-2000'>󰌌</span> uk",
+    "format-ru": "<span size='125%' rise='-2000'>󰌌</span> ru"
+  },
+  "custom/wlogout": {
+    "format": "<span size='150%' rise='-2000'></span>",
+    "on-click": "wlogout",
+    "tooltip": false,
+  },
+  "custom/swaync": {
+    "format": "<span size='150%' rise='-2000'></span>",
+    "on-click": "swaync-client -t",
+    "tooltip": false,
+  }
 }

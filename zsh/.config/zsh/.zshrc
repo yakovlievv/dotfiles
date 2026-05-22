@@ -79,6 +79,32 @@ bindkey '^E' autosuggest-accept-word
 
 # precmd() { echo "" } # Optional blank line after each thing
 
+# ┌─ Transient prompt: collapse past prompts to `❯` with a timestamp on the right
+_transient_prompt() {
+    emulate -L zsh
+    [[ $CONTEXT == start ]] || return 0
+    while true; do
+        zle .recursive-edit
+        local -i ret=$?
+        [[ $ret == 0 && $KEYS == $'\4' ]] || break
+        [[ -o ignore_eof ]] || exit 0
+    done
+    local saved_prompt=$PROMPT
+    local saved_rprompt=$RPROMPT
+    PROMPT='%(?.%F{#b4befe}❯%f.%F{#f38ba8}❯%f) '
+    RPROMPT='%F{#7f849c}%D{%H:%M:%S}%f'
+    zle .reset-prompt
+    PROMPT=$saved_prompt
+    RPROMPT=$saved_rprompt
+    if (( ret )); then
+        zle .send-break
+    else
+        zle .accept-line
+    fi
+    return ret
+}
+zle -N zle-line-init _transient_prompt
+
 # Lazy-load pnpm: defer PATH addition until first use
 _lazy_pnpm() {
     unfunction pnpm 2>/dev/null
@@ -90,3 +116,7 @@ function pnpm { _lazy_pnpm "$@" }
 
 # bun completions
 [ -s "/Users/yako/.bun/_bun" ] && source "/Users/yako/.bun/_bun"
+
+if [ -z "$TMUX" ]; then
+  tm
+fi

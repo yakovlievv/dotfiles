@@ -231,7 +231,8 @@ subfolders are included; candidates show the relative path."
     (when selected
       (dolist (rel (nreverse selected))
         (insert (format "[[file:%s]]\n"
-                        (alist-get rel rel-alist nil nil #'equal)))))))
+                        (abbreviate-file-name
+                         (alist-get rel rel-alist nil nil #'equal))))))))
 
 (defvar my/external-links-file
   (expand-file-name "external-links.org" "~/org/roam/")

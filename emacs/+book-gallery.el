@@ -6,6 +6,24 @@
   "Book gallery for org-roam."
   :group 'org-roam)
 
+(defun book-gallery--read-env-var (key)
+  "Read KEY=VALUE from the .env file co-located with this file."
+  (let ((env-file (expand-file-name
+                   ".env"
+                   (file-name-directory
+                    (or load-file-name buffer-file-name "~/.config/doom/")))))
+    (when (file-readable-p env-file)
+      (with-temp-buffer
+        (insert-file-contents env-file)
+        (goto-char (point-min))
+        (when (re-search-forward
+               (format "^[ \t]*%s[ \t]*=[ \t]*\\(.*\\)$" (regexp-quote key))
+               nil t)
+          (let ((val (string-trim (match-string 1))))
+            (if (string-match "\\`[\"']\\(.*\\)[\"']\\'" val)
+                (match-string 1 val)
+              val)))))))
+
 (defcustom book-gallery-refresh-interval 300
   "Auto-refresh interval in seconds. 0 to disable."
   :type 'integer :group 'book-gallery)
@@ -18,8 +36,10 @@
   "Weekly reading goal in minutes. 0 to disable."
   :type 'integer :group 'book-gallery)
 
-(defcustom book-gallery-google-books-api-key "AIzaSyAC0eAET4yidxFFPwUZ_iEdCPBM_A00AZk"
-  "Google Books API key for ISBN lookups."
+(defcustom book-gallery-google-books-api-key
+  (or (book-gallery--read-env-var "GOOGLE_BOOKS_API_KEY") "")
+  "Google Books API key for ISBN lookups.
+Set GOOGLE_BOOKS_API_KEY in the .env file next to this file."
   :type 'string :group 'book-gallery)
 
 ;;; State
@@ -852,7 +872,9 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
       (condition-case err
           (let* ((data (book-gallery--isbn-fetch-json
                         (format "https://www.googleapis.com/books/v1/volumes?q=isbn:%s&key=%s"
-                                clean-isbn book-gallery-google-books-api-key)))
+                                clean-isbn
+                                (or (book-gallery--read-env-var "GOOGLE_BOOKS_API_KEY")
+                                    book-gallery-google-books-api-key))))
                  (total (cdr (assq 'totalItems data)))
                  (items (cdr (assq 'items data)))
                  (vol (when (and items (> (length items) 0))

@@ -10,3 +10,4 @@ zsh/.config/zsh/.zshrc.local
 zsh/.config/zsh/.zsh_sessions
 opencode/node_modules
 gcal.local
+emacs/.env

@@ -2,137 +2,137 @@
 
 /* Global Styles */
 * {
-    font-family: "JetBrainsMono Nerd Font Mono";
-    font-size: 16px;
-    min-height: 0;
-    font-weight: bold;
+  font-family: "JetBrainsMono Nerd Font Mono";
+  font-size: 16px;
+  min-height: 0;
+  font-weight: bold;
 }
 
 /* Waybar */
 window#waybar {
-    background: transparent;
-    transition-property: background-color;
-    transition-duration: 0.1s;
+  background: transparent;
+  transition-property: background-color;
+  transition-duration: 0.1s;
 }
 
 .module {
-    margin-top: 6px;
-    padding: 0px 5px;
-    background-color: @mantle;
-    border-radius:7px;
+  margin-top: 6px;
+  padding: 0px 5px;
+  background-color: @mantle;
+  border-radius: 7px;
 }
 
 button:hover {
-    color: @lavender;
+  color: @lavender;
 }
 
 #custom-logo {
-    color: @blue;
-    margin-left: 6px;
-    padding: 0 16px;
+  color: @blue;
+  margin-left: 6px;
+  padding: 0 16px;
 }
 
 /* Workspaces */
 #workspaces {
-    padding: 0 15px;
-    margin-left: 6px;
+  padding: 0 15px;
+  margin-left: 6px;
 }
 
 #workspaces button {
-    padding: 0 6px;
-    color: @surface0;
+  padding: 0 6px;
+  color: @surface0;
 }
 
 #workspaces button.active {
-    color: @lavender;
+  color: @lavender;
 }
 
 /* Window & Clock */
 #window {
-    opacity: 0.5;
-    margin-left: 6px;
-    padding: 0 20px;
+  opacity: 0.5;
+  margin-left: 6px;
+  padding: 0 20px;
 }
 #custom-separator {
-    border-radius: 0px;
-    margin-top: 5px;
-    color: @surface0;
+  border-radius: 0px;
+  margin-top: 5px;
+  color: @surface0;
 }
 #clock.clk1 {
-    color: @lavender;
-    padding: 0 0 0 20px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
-    margin: 5px 0px 0px 15px;
+  color: @lavender;
+  padding: 0 0 0 20px;
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
+  margin: 5px 0px 0px 15px;
 }
 
 #clock.clk2 {
-    margin-top: 5px;
-    color: @lavender;
-    border-radius:0px;
+  margin-top: 5px;
+  color: @lavender;
+  border-radius: 0px;
+  padding: 0px;
 }
 
 #clock.clk3 {
-    margin: 5px 15px 0px 0px;
-    color: @lavender;
-    padding: 0 20px 0 0;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
+  margin: 5px 15px 0px 0px;
+  color: @lavender;
+  padding: 0 20px 0 0;
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
 }
 /* Language */
 #language {
-    color: @peach;
-    padding: 0 15px;
-    margin-right: 6px;
+  color: @peach;
+  padding: 0 15px;
+  margin-right: 6px;
 }
 
 /* Pulseaudio */
 #pulseaudio {
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
-    color: @green;
-    padding: 0 15px;
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
+  color: @green;
+  padding: 0 15px;
 }
 
 /* Bluetooth */
 #bluetooth {
-    color: @sky;
-    padding: 0 15px;
-    margin-right: 6px;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
+  color: @sky;
+  padding: 0 15px;
+  margin-right: 6px;
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
 }
 
 /* CPU */
 #cpu {
-    color: @red;
-    padding: 0 15px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
+  color: @red;
+  padding: 0 15px;
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
 }
 
 /* Temperature */
 #temperature {
-    color: @blue;
-    padding: 0 15px;
-    margin-right: 6px;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
+  color: @blue;
+  padding: 0 15px;
+  margin-right: 6px;
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
 }
 
 /* Custom Logout */
 #custom-wlogout {
-    color: @red;
-    padding: 0 15px;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
-    margin-right: 6px
+  color: @red;
+  padding: 0 15px;
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
+  margin-right: 6px;
 }
 /* Custom Swaync */
 #custom-swaync {
-    color: @blue;
-    padding: 0 15px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
+  color: @blue;
+  padding: 0 15px;
+  border-top-right-radius: 0px;
+  border-bottom-right-radius: 0px;
 }
-

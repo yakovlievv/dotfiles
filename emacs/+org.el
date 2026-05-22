@@ -1,4 +1,7 @@
+;;; -*- lexical-binding: t -*-
+
 (setq org-directory "~/org/")
+
 
 (use-package! savefold
   :init
