@@ -2,7 +2,7 @@
 _cache_eval() {
     local name="$1"
     shift
-    (( $+commands[$1] )) || return 0
+    (($+commands[$1])) || return 0
     local cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/${name}.zsh"
     local bin_path="${commands[$1]}"
     if [[ ! -f "$cache" ]] || [[ -n "$bin_path" && "$bin_path" -nt "$cache" ]]; then
@@ -35,6 +35,7 @@ setopt hist_verify
 # ┌─ some options
 export KEYTIMEOUT=20
 export HOMEBREW_NO_ENV_HINTS=1
+export TRANSPARENT_TERMINAL=1
 
 setopt auto_menu menu_complete # autocmp first menu match
 # setopt autocd # type a dir to cd
@@ -46,8 +47,8 @@ setopt interactive_comments       # allow comments in shell
 unsetopt prompt_sp                # don't autoclean blanklines
 stty stop undef                   # disable accidental ctrl s
 
-# ┌─ Macos-specific settings:
-if [[ "$OSTYPE" == "darwin"* ]]; then
+# ┌─ System-specific settings:
+if [[ "$OSTYPE" == "darwin"* ]]; then # Macos
     if [[ ! "$PATH" == */opt/homebrew/opt/fzf/bin* ]]; then
         PATH="${PATH:+${PATH}:}/opt/homebrew/opt/fzf/bin"
     fi
@@ -55,7 +56,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
     source "$ZDOTDIR/catppuccin_theme.zsh"
     source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then # Linux
     _cache_eval fzf fzf --zsh
     source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
     source "$ZDOTDIR/catppuccin_theme.zsh"
@@ -63,7 +64,6 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
 fi
 
 [ -f "$ZDOTDIR/.zshrc.local" ] && source "$ZDOTDIR/.zshrc.local"
-
 
 # ┌─ Source other files:
 source "$ZDOTDIR/tab_comp.zsh"
@@ -96,7 +96,7 @@ _transient_prompt() {
     zle .reset-prompt
     PROMPT=$saved_prompt
     RPROMPT=$saved_rprompt
-    if (( ret )); then
+    if ((ret)); then
         zle .send-break
     else
         zle .accept-line
@@ -112,11 +112,20 @@ _lazy_pnpm() {
     export PATH="$PNPM_HOME:$PATH"
     pnpm "$@"
 }
-function pnpm { _lazy_pnpm "$@" }
+function pnpm { _lazy_pnpm "$@"; }
 
 # bun completions
 [ -s "/Users/yako/.bun/_bun" ] && source "/Users/yako/.bun/_bun"
 
+# auto run tmux
 if [ -z "$TMUX" ]; then
-  tm
+    tm
 fi
+
+# pnpm
+export PNPM_HOME="/Users/yako/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME/bin:"*) ;;
+  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+esac
+# pnpm end

@@ -1,0 +1,7 @@
+# Adds styled-underline (undercurl) + colored-underline capabilities to
+# tmux-256color so Neovim running inside tmux emits undercurl escape codes.
+# Compile with:  tic -x -o ~/.terminfo tmux-256color.terminfo
+tmux-256color,
+	Smulx=\E[4\:%p1%dm,
+	Setulc=\E[58\:2\:\:%p1%{65536}%/%d\:%p1%{256}%/%{255}%&%d\:%p1%{255}%&%d%;m,
+	use=tmux-256color,

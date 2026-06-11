@@ -5,6 +5,262 @@
                 "parameters": { "basic.to_if_alone_timeout_milliseconds": 500 },
                 "rules": [
                     {
+                        "description": "fn+M → Control+Option+Shift+M (MAXIMIZE: triggers the native macOS green-button 'Zoom' action — REQUIRES enabling 'Zoom' with shortcut ⌃⌥⇧M in System Settings → Keyboard → Keyboard Shortcuts → Window, this rule will not work without that rebind in place)",
+                        "manipulators": [
+                            {
+                                "description": "fn+M → Control+Option+Shift+M (zoom/maximize the focused window — Apple's native Zoom shortcut, must be enabled at ⌃⌥⇧M in System Settings first)",
+                                "from": {
+                                    "key_code": "m",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "m",
+                                        "modifiers": ["left_control", "left_option", "left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "fn+H/J/K/L → fn+Control+Arrows (TILING: macOS's native tiling shortcut is fn+control+arrow-keys; this lets you trigger it with vim-style hjkl instead — h=left, j=down, k=up, l=right)",
+                        "manipulators": [
+                            {
+                                "description": "fn+H → fn+Control+Left Arrow (tile window LEFT half — native macOS tiling shortcut)",
+                                "from": {
+                                    "key_code": "h",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "left_arrow",
+                                        "modifiers": ["fn", "left_control"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "description": "fn+J → fn+Control+Down Arrow (tile window BOTTOM half — native macOS tiling shortcut)",
+                                "from": {
+                                    "key_code": "j",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "down_arrow",
+                                        "modifiers": ["fn", "left_control"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "description": "fn+K → fn+Control+Up Arrow (tile window TOP half — native macOS tiling shortcut)",
+                                "from": {
+                                    "key_code": "k",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "up_arrow",
+                                        "modifiers": ["fn", "left_control"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "description": "fn+L → fn+Control+Right Arrow (tile window RIGHT half — native macOS tiling shortcut)",
+                                "from": {
+                                    "key_code": "l",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "right_arrow",
+                                        "modifiers": ["fn", "left_control"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "fn+Control+H/J/K/L → fn+Control+Shift+Arrows (ARRANGING: macOS's native window-arranging shortcut is fn+control+shift+arrow-keys; this lets you trigger it with vim-style hjkl instead — h=left, j=down, k=up, l=right — one modifier lighter to type than the real shortcut)",
+                        "manipulators": [
+                            {
+                                "description": "fn+Control+H → fn+Control+Shift+Left Arrow (arrange window LEFT — native macOS arranging shortcut)",
+                                "from": {
+                                    "key_code": "h",
+                                    "modifiers": {
+                                        "mandatory": ["fn", "control"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "left_arrow",
+                                        "modifiers": ["fn", "left_control", "left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "description": "fn+Control+J → fn+Control+Shift+Down Arrow (arrange window DOWN — native macOS arranging shortcut)",
+                                "from": {
+                                    "key_code": "j",
+                                    "modifiers": {
+                                        "mandatory": ["fn", "control"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "down_arrow",
+                                        "modifiers": ["fn", "left_control", "left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "description": "fn+Control+K → fn+Control+Shift+Up Arrow (arrange window UP — native macOS arranging shortcut)",
+                                "from": {
+                                    "key_code": "k",
+                                    "modifiers": {
+                                        "mandatory": ["fn", "control"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "up_arrow",
+                                        "modifiers": ["fn", "left_control", "left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "description": "fn+Control+L → fn+Control+Shift+Right Arrow (arrange window RIGHT — native macOS arranging shortcut)",
+                                "from": {
+                                    "key_code": "l",
+                                    "modifiers": {
+                                        "mandatory": ["fn", "control"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "right_arrow",
+                                        "modifiers": ["fn", "left_control", "left_shift"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "fn+Control+M → Command+M (MINIMIZE: triggers macOS's default 'Minimize' shortcut ⌘M — Minimize is left at its default binding in System Settings → Keyboard → Keyboard Shortcuts → App Shortcuts, this rule just lets fn+control+M trigger it too)",
+                        "manipulators": [
+                            {
+                                "description": "fn+Control+M → Command+M (minimize the focused window — Apple's default Minimize shortcut)",
+                                "from": {
+                                    "key_code": "m",
+                                    "modifiers": {
+                                        "mandatory": ["fn", "control"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "m",
+                                        "modifiers": ["left_command"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "fn+C → fn+Control+C (CENTER: lets plain fn+C trigger your 'center window' shortcut without also holding Control)",
+                        "manipulators": [
+                            {
+                                "description": "fn+C → fn+Control+C (center the focused window on screen)",
+                                "from": {
+                                    "key_code": "c",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "c",
+                                        "modifiers": ["fn", "left_control"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "fn+F → Control+fn+F (FILL: lets plain fn+F trigger your 'fill screen' shortcut without also holding Control)",
+                        "manipulators": [
+                            {
+                                "description": "fn+F → Control+fn+F (make the focused window fill the screen)",
+                                "from": {
+                                    "key_code": "f",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "f",
+                                        "modifiers": ["left_control", "fn"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "fn+R → Control+fn+R (RESTORE: lets plain fn+R trigger your 'return window to previous size' shortcut without also holding Control)",
+                        "manipulators": [
+                            {
+                                "description": "fn+R → Control+fn+R (restore the focused window to its previous size/position)",
+                                "from": {
+                                    "key_code": "r",
+                                    "modifiers": {
+                                        "mandatory": ["fn"],
+                                        "optional": []
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "key_code": "r",
+                                        "modifiers": ["left_control", "fn"]
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
                         "description": "Hyper + Tab → Command + Tab (App Switcher)",
                         "manipulators": [
                             {
