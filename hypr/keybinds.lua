@@ -27,6 +27,7 @@ return function(programs)
 	hl.bind(mainMod .. " + CTRL + H", hl.dsp.window.resize({ x = -20, y = 0, relative = true }), { repeating = true })
 
 	hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
+	hl.bind(mainMod .. " + CTRL + F", hl.dsp.window.fullscreen())
 	hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 	hl.bind(mainMod .. " + I", hl.dsp.layout("togglesplit")) -- dwindle only
 	hl.bind(mainMod .. " + G", hl.dsp.group.toggle())
