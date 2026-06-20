@@ -66,7 +66,7 @@
        (:if (featurep :system 'macos) macos)  ; improve compatibility with macOS
 
        :lang
-       (org :dragndrop +roam +pomodoro +present +agenda +habits +pretty +pandoc)
+       (org :dragndrop +roam +pomodoro +present +agenda +habits +pretty +pandoc +journal)
        emacs-lisp        ; drown in parentheses
        markdown          ; writing docs for people to ignore
        sh                ; she sells {ba,z,fi}sh shells on the C xor
