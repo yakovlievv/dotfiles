@@ -31,3 +31,7 @@ immediately without restarting, evaluate the affected block manually
 Emacs here is used for exactly one thing: the `~/org` vault (notes,
 tutoring lesson plans, a book tracker). Tailor suggestions to
 org-centric workflows, not general programming setup.
+
+## Details
+
+- org-roam-dailies is not activitely used. I use org-journal now
