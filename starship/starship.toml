@@ -3,6 +3,8 @@ add_newline = false
 palette = "catppuccin_mocha"
 
 format = """
+$username\
+$hostname\
 $directory\
 $git_branch\
 $git_state\
@@ -17,6 +19,14 @@ $nodejs\
 $python\
 $c\
 $lua"""
+
+[hostname]
+ssh_only = true
+format = "[$hostname](bold red) "
+
+[username]
+show_always = false
+format = "[$user](bold red)@"
 
 [fill]
 symbol = "."
