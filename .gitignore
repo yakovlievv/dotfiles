@@ -14,3 +14,11 @@ emacs/.env
 emacs/config.el
 .stfolder/syncthing-folder-2fbaa2.txt
 .stfolder/syncthing-folder-b82149.txt
+emacs/minimal-server-conf/eln-cache/30.2-6a8b22b2
+emacs/minimal-server-conf/elpa/archives/gnu
+emacs/minimal-server-conf/elpa/archives/melpa
+emacs/minimal-server-conf/elpa/archives/nongnu
+emacs/minimal-server-conf/elpa/compat-31.0.0.1
+emacs/minimal-server-conf/elpa
+emacs/minimal-server-conf/transient
+emacs/minimal-server-conf/org-roam.db

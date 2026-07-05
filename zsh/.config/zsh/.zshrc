@@ -32,6 +32,8 @@ setopt append_history inc_append_history share_history
 setopt hist_ignore_all_dups hist_reduce_blanks hist_ignore_space
 setopt hist_verify
 
+set bell-style none
+
 # ┌─ some options
 export KEYTIMEOUT=20
 export HOMEBREW_NO_ENV_HINTS=1
@@ -125,7 +127,7 @@ fi
 # pnpm
 export PNPM_HOME="/Users/yako/.local/share/pnpm"
 case ":$PATH:" in
-  *":$PNPM_HOME/bin:"*) ;;
-  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+*":$PNPM_HOME/bin:"*) ;;
+*) export PATH="$PNPM_HOME/bin:$PATH" ;;
 esac
 # pnpm end
