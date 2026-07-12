@@ -66,6 +66,10 @@ user_pref("devtools.toolbox.host", "right");
 user_pref("devtools.inspector.three-pane-enabled", false);
 user_pref("devtools.responsive.touchSimulation.enabled", true);
 
+// --- Chrome customization --------------------------------------------------
+// Load chrome/userChrome.css (dark tint over the transparent window).
+user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+
 // --- Zen: view & behavior --------------------------------------------------
 user_pref("zen.glance.enabled", false);
 user_pref("zen.view.compact.enable-at-startup", false);

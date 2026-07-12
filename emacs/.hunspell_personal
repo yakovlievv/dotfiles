@@ -1,4 +1,4 @@
-personal_ws-1.1 en_US 106
+personal_ws-1.1 en_US 127
 accessor
 aff
 ahrens
@@ -7,6 +7,9 @@ anki
 artur
 askesis
 atomicity
+auth
+auths
+backend
 bd
 bodya
 catppuccin
@@ -17,7 +20,9 @@ clocktable
 cmd
 config
 configs
+convo
 coreutils
+cybersecurity
 datatable
 dawg
 dotfiles
@@ -36,14 +41,20 @@ invoker
 irreg
 jetbrainsmono
 journaling
+js
+json
 kanban
 karpathy
 kyshenya
 lastname
+leitner
+linkable
+localstorage
 lsusb
 luhmann
 luhmann's
 mcdonalds
+middleware
 musictheory
 natasha
 nazik
@@ -53,6 +64,7 @@ nika
 niklas
 noter
 nvim
+oauth
 oksana
 oleg
 ostap
@@ -62,15 +74,20 @@ pkm
 pomodoro
 poshta
 postgres
+postgrest
 practises
 pre
+preconfigured
 prosecco
 py
 raycast
+retrievability
 road
 roadmap
 roksa
 ryasne
+set
+shadcn
 solya
 spoilt
 stative
@@ -78,6 +95,7 @@ structurization
 sts
 subnotes
 substitue
+supabase
 sviatik
 syncthing
 synctrain
@@ -90,7 +108,10 @@ tmux
 todo's
 transclusion
 translation
+unaccessible
 uncomfy
+unintrusive
+url's
 usbutils
 uuids
 vibin

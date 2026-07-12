@@ -17,7 +17,13 @@ DOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$(uname)" in
   Darwin) ZEN_BASE="$HOME/Library/Application Support/zen" ;;
-  Linux)  ZEN_BASE="$HOME/.zen" ;;
+  Linux)
+    # Native packages use ~/.config/zen; some builds use ~/.zen.
+    for cand in "$HOME/.zen" "$HOME/.config/zen"; do
+      [ -f "$cand/profiles.ini" ] && ZEN_BASE="$cand" && break
+    done
+    : "${ZEN_BASE:=$HOME/.zen}"
+    ;;
   *) echo "Unsupported OS: $(uname)" >&2; exit 1 ;;
 esac
 

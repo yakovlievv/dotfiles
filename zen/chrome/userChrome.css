@@ -1,0 +1,35 @@
+/* ---------------------------------------------------------------------------
+ * Darken the translucent chrome — LINUX ONLY.
+ *
+ * Zen runs a fully transparent window on Linux (zen.widget.linux.transparency),
+ * so the compositor's blur shows the raw wallpaper — bright wallpaper => washed
+ * out. This lays a dark semi-transparent tint over the blur: still see-through,
+ * but muted to a dark navy instead of a bright wash.
+ *
+ * Scoped to Linux via @media (-moz-platform) so macOS vibrancy is untouched.
+ *
+ * TUNE: the alpha (last value in --zen-tint). Higher = darker / less wallpaper,
+ * lower = more transparent. 0.55–0.75 is a good range.
+ * ------------------------------------------------------------------------- */
+
+@media (-moz-platform: linux) {
+  :root {
+    --zen-tint: rgba(18, 20, 32, 0.45);
+  }
+
+  /* Sidebar + toolbar chrome (the translucent strip with tabs). */
+  #navigator-toolbox,
+  #zen-sidebar-top-buttons,
+  #zen-appcontent-navbar-container,
+  .zen-sidebar-web-panel {
+    background-color: var(--zen-tint) !important;
+  }
+
+  /* Window base layer — darkens transparent content areas (blank/new-tab
+   * pages) so they match the sidebar instead of glowing with the wallpaper. */
+  #main-window,
+  #browser,
+  #tabbrowser-tabbox {
+    background-color: var(--zen-tint) !important;
+  }
+}
