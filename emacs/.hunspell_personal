@@ -1,4 +1,4 @@
-personal_ws-1.1 en_US 127
+personal_ws-1.1 en_US 145
 accessor
 aff
 ahrens
@@ -12,6 +12,8 @@ auths
 backend
 bd
 bodya
+cacheable
+can’t
 catppuccin
 changelog
 chattin
@@ -25,16 +27,22 @@ coreutils
 cybersecurity
 datatable
 dawg
+db's
+doomscrolling
+doomsroling
 dotfiles
 duolingo
 dzereltse
 enharmonic
 favourite
+filesystem
 filetag
 filetags
 gcal
 gf
 gf's
+heatmap
+homelab
 idk
 integrations
 invoker
@@ -44,6 +52,7 @@ journaling
 js
 json
 kanban
+karabiner
 karpathy
 kyshenya
 lastname
@@ -53,6 +62,7 @@ localstorage
 lsusb
 luhmann
 luhmann's
+macbook
 mcdonalds
 middleware
 musictheory
@@ -70,14 +80,17 @@ oleg
 ostap
 pdf's
 pdfs
+pipelining
 pkm
 pomodoro
 poshta
+postgre
 postgres
 postgrest
 practises
 pre
 preconfigured
+prooved
 prosecco
 py
 raycast
@@ -104,10 +117,12 @@ tanstack
 temu
 tenuto
 tetya
+timestamptz
 tmux
 todo's
 transclusion
 translation
+ulyana
 unaccessible
 uncomfy
 unintrusive
@@ -116,7 +131,10 @@ usbutils
 uuids
 vibin
 vika
+wonka
+xxy
 xy
+yy
 zettelkasten
 староанглійського
 злічуваними

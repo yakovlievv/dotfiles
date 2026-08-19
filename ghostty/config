@@ -4,36 +4,128 @@ theme = Catppuccin Mocha
 
 # FONT
 font-family = JetBrainsMono Nerd Font Mono
-font-size = 16
+font-size = 14  
 
 # LIGATURES
 font-feature = calt, clig, liga
 
-# WINDOW
-background-opacity = 0.9
-background-blur = 10
-background = #11111b
+# WEIGHT
+# The Nerd Font build ships as static per-weight files (no variable axes), so
+# faces are selected by name — font-variation would be a no-op here.
+font-style = Regular
+font-style-bold = Bold
 
-# No titlebar/decorations (closest to RESIZE-only)
-window-decoration = false
+# official (default), blueprint, chalkboard, microchip, glass, holographic, paper, retro, xray
+macos-icon = official
+
+# METRICS
+# Extra leading; the default cell is tight at 15pt.
+adjust-cell-height = 5%
+adjust-cell-width = -1
+
+# Undercurls: Ghostty's default curl is heavier than kitty's relative to the
+# glyph strokes, and sits lower. Thin it and pull it back toward the baseline.
+adjust-underline-thickness = 0
+adjust-underline-position = 0
+
+# Nerd Font icons. Ghostty scales symbols up to fill the cell (it applies the
+# upstream patcher's rules itself), which lands much larger than kitty, and
+# scaling up thickens the strokes with it. This is a *max height* cap, so a
+# negative delta only shrinks the icons that were being blown up.
+adjust-icon-height = -25%
+
+# macOS stem darkening.
+font-thicken = true
+font-thicken-strength = 128
+
+# COLOR / CONTRAST
+# Floor on the fg/bg contrast ratio (WCAG, 1-21; 1 = off). 1.1 only rescues
+# text that would otherwise be invisible against its own background.
+minimum-contrast = 1.1
+
+# Bold text uses the bright palette entry of its color. Replaces the
+# `bold-is-bright` boolean, deprecated in 1.2. Only affects palette-indexed
+# colors, so shell/man/ls change and nvim's truecolor highlights don't.
+bold-color = bright
+
+# Derive palette indices 16-255 from the base 16 instead of the xterm cube, so
+# the whole 256-color space stays Catppuccin. The tradeoff: TUIs that emit
+# indices literally get hues their authors didn't pick (Claude Code's gold 214
+# reads as peach). Kept on -- the cohesive palette is worth that.
+palette-generate = true
+
+# Alpha blending color space. macOS defaults to `native`; `linear-corrected`
+# drops the dark fringing around glyph edges over the 0.90 opacity while
+# staying weight-matched to native. Since 1.1.0.
+alpha-blending = linear-corrected
+
+# WINDOW
+background-opacity = 0.90
+
+# Extend the opacity to cells with an explicit background color. Without this,
+# only the window backdrop is transparent -- nvim and tmux paint a background
+# on every cell, so those regions stay fully opaque. Downside: status bars and
+# selections go translucent too.
+background-opacity-cells = true
+background-blur = 10
+# background = #11111b
+background = #0F0F14
+
+
+window-decoration = none
+macos-window-shadow = false
 
 # Padding
-window-padding-x = 15
-window-padding-y = 10
+window-padding-x = 10
+window-padding-y = 0
 
 # CURSOR
 cursor-style = block
 cursor-style-blink = true
-# Note: blink rate is not configurable in Ghostty
-
-# TAB BAR
-# Ghostty auto-hides it when there's one tab — nothing to set
-
-# Kitty keyboard + graphics protocol are ON by default in Ghostty
 
 # KEYBINDINGS
-# Ctrl+Backspace → send ^W (same as your WezTerm binding)
 keybind = ctrl+backspace=text:\x17
+
+# Force CSI-u encoding for keys tmux/legacy apps would otherwise collapse into
+# their C0 equivalents. Ghostty speaks the kitty keyboard protocol, but only
+# when the app asks for it — these bindings make the encoding unconditional.
+
+# ctrl+i == TAB in legacy encoding; send CSI 105;5u so it stays distinct.
+keybind = ctrl+i=csi:105;5u
+
+# ctrl+digit: modifyOtherKeys level 1 won't disambiguate these
+# (e.g. C-2 == NUL == C-Space), so encode them explicitly.
+keybind = ctrl+one=csi:49;5u
+keybind = ctrl+two=csi:50;5u
+keybind = ctrl+three=csi:51;5u
+keybind = ctrl+four=csi:52;5u
+keybind = ctrl+five=csi:53;5u
+keybind = ctrl+six=csi:54;5u
+keybind = ctrl+seven=csi:55;5u
+keybind = ctrl+eight=csi:56;5u
+
+# Alt/Option + arrows → xterm modifier encoding (CSI 1;3<dir>), same as kitty.
+# Ghostty's macOS defaults rebind alt+left/right to esc:b / esc:f (readline
+# word-motion), which nvim/tmux don't read as meta+arrow. Override all four so
+# pane resizing and other meta+arrow bindings work.
+keybind = alt+arrow_up=csi:1;3A
+keybind = alt+arrow_down=csi:1;3B
+keybind = alt+arrow_right=csi:1;3C
+keybind = alt+arrow_left=csi:1;3D
+
+# Option must act as Alt on every layout. Unset, Ghostty defaults this to true
+# only for U.S. layouts — it flips to false on Ukrainian-PC / RussianWin.
+macos-option-as-alt = true
+
+# Font size. Bind both `equal` and `plus` — which one the OS reports for
+# shift+= depends on layout (this mirrors Ghostty's own super+= / super++ default).
+keybind = ctrl+shift+equal=increase_font_size:1
+keybind = ctrl+shift+plus=increase_font_size:1
+keybind = ctrl+shift+minus=decrease_font_size:1
+
+# Config reload on ctrl+shift+, instead of Ghostty's super+shift+, default.
+keybind = ctrl+shift+comma=reload_config
+keybind = super+shift+comma=unbind 
 
 # Clipboard
 keybind = ctrl+shift+v=paste_from_clipboard
