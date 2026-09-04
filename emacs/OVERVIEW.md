@@ -110,11 +110,32 @@ Helpers: `my/ensure-vsplit-window`, `my/kill-image-buffers`,
 via `open`, everything else falls through to `+org/dwim-at-point`. Same `open`
 behaviour on `RET` inside `image-mode`.
 
-**Link sync** — `my/org-rewrite-link-paths` rewrites `file:` links across all of
-`~/org`, handling both absolute and `~/` forms. `my/org-move-path` (`SPC f M`) moves
-a file/dir and rewrites in one step, defaulting its source to the dired file at point
-or the link under the cursor. `my/org--rename-link-sync` is around-advice on
-`dired-rename-file`, so renames in dirvish never leave dangling links.
+**Link sync** — `~/` is the one canonical spelling for every `file:` path.
+`org-link-file-path-type` is `absolute` (which abbreviates to `~`),
+`my/org-link--normalize-buffer` runs from `before-save-hook` in vault org files, and
+`my/org-normalize-file-links` is the one-off sweep; all three collapse
+`/Users/yako/...` and legacy `/home/yako/...` links onto the tilde form.
+
+`my/org-link--map-vault` is the single vault pass behind both the dry run and the
+rewrite, so the preview can't disagree with what happens next.
+`my/org-link-scan-mapping` counts, `my/org-rewrite-link-paths` applies, and
+`my/org-link--report` lists the hits per file in `*org links*` before anything moves.
+
+`my/org-move-path` (`SPC f M`) moves a file/dir and rewrites in one step, defaulting
+its source to the dired file at point or the link under the cursor.
+`my/org--rename-link-sync` is around-advice on `dired-rename-file` (which `wdired`
+also goes through), so renames in dirvish never leave dangling links: renames no link
+points at report "no org links pointed at it", ones that would break links show them
+and ask, `n` skips the file entirely, and `!` answers yes for the rest of the command
+(i.e. a whole `wdired` batch). The `advice-add` sits at **top level, not inside
+`after! dired`** — inside it, a `doom/reload` session can end up with the advice never
+installed and renames then break every link silently. `my/org-link-sync-status`
+reports whether the advice, the save hook, and the preview are actually live; run it
+before a big restructure rather than trusting a reload.
+`my/org-find-dangling-links` lists every `file:` link whose target is gone, naming the
+unique same-basename file under `material/` when there is one — the before/after check
+for a reorganisation. `dired-create-destination-dirs` is `ask` so renaming into a not-yet-existing
+folder works.
 
 ## Org core
 

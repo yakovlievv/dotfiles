@@ -1,6 +1,7 @@
 
 # THEME
-theme = Catppuccin Mocha
+theme = Kanagawa Wave
+# theme = Catppuccin Mocha
 
 # FONT
 font-family = JetBrainsMono Nerd Font Mono
@@ -49,9 +50,9 @@ minimum-contrast = 1.1
 bold-color = bright
 
 # Derive palette indices 16-255 from the base 16 instead of the xterm cube, so
-# the whole 256-color space stays Catppuccin. The tradeoff: TUIs that emit
+# the whole 256-color space stays Kanagawa. The tradeoff: TUIs that emit
 # indices literally get hues their authors didn't pick (Claude Code's gold 214
-# reads as peach). Kept on -- the cohesive palette is worth that.
+# reads as carpYellow). Kept on -- the cohesive palette is worth that.
 palette-generate = true
 
 # Alpha blending color space. macOS defaults to `native`; `linear-corrected`
@@ -68,7 +69,8 @@ background-opacity = 0.90
 # selections go translucent too.
 background-opacity-cells = true
 background-blur = 10
-# background = #11111b
+# Kanagawa Wave default
+# background = #1F1F28
 background = #0F0F14
 
 
