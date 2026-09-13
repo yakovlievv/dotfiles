@@ -3,7 +3,7 @@
 -------------------
 
 local programs = {
-	terminal = "kitty",
+	terminal = "ghostty",
 	fileManager = "thunar",
 	browser = "zen-browser",
 }
@@ -271,6 +271,12 @@ local suppressMaximizeRule = hl.window_rule({
 	suppress_event = "maximize",
 })
 -- suppressMaximizeRule:set_enabled(false)
+
+hl.config({
+	xwayland = {
+		force_zero_scaling = true,
+	},
+})
 
 hl.window_rule({
 	-- Fix some dragging issues with XWayland

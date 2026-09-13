@@ -27,6 +27,7 @@ alias lg="lazygit"
 # modern replacements
 alias man="batman"
 
+alias lsn="command ls"
 alias ls="eza --icons -lA --git --group-directories-first"
 
 alias tree="eza --tree --icons --level=3"

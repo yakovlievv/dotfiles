@@ -4,6 +4,7 @@ theme = Kanagawa Wave
 # theme = Catppuccin Mocha
 
 # FONT
+# font-family = "Iosevka Custom"
 font-family = JetBrainsMono Nerd Font Mono
 font-size = 14  
 
@@ -132,3 +133,6 @@ keybind = super+shift+comma=unbind
 # Clipboard
 keybind = ctrl+shift+v=paste_from_clipboard
 keybind = ctrl+shift+c=copy_to_clipboard
+
+# closing without confirmation
+confirm-close-surface = false

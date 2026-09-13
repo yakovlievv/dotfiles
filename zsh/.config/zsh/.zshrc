@@ -56,12 +56,14 @@ if [[ "$OSTYPE" == "darwin"* ]]; then # Macos
     fi
     _cache_eval fzf fzf --zsh
     source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-    source "$ZDOTDIR/catppuccin_theme.zsh"
+    source "$ZDOTDIR/kanagawa_theme.zsh"
+    # source "$ZDOTDIR/catppuccin_theme.zsh"
     source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then # Linux
     _cache_eval fzf fzf --zsh
     source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-    source "$ZDOTDIR/catppuccin_theme.zsh"
+    source "$ZDOTDIR/kanagawa_theme.zsh"
+    # source "$ZDOTDIR/catppuccin_theme.zsh"
     source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 
