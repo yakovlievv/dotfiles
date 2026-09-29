@@ -247,24 +247,19 @@ hl.gesture({
 	action = "workspace",
 })
 
+-- Example per-device config
+-- See https://wiki.hypr.land/Configuring/Advanced-and-Cool/Devices/ for more
 hl.device({
 	name = "epic-mouse-v1",
 	sensitivity = -0.5,
 })
 
-----------------
----- CONFIG ----
-----------------
-
-hl.config({
-	xwayland = {
-		force_zero_scaling = true,
-	},
-})
-
 --------------------------------
 ---- WINDOWS AND WORKSPACES ----
 --------------------------------
+
+-- See https://wiki.hypr.land/Configuring/Basics/Window-Rules/
+-- and https://wiki.hypr.land/Configuring/Basics/Workspace-Rules/
 
 -- Example window rules that are useful
 
@@ -276,6 +271,12 @@ local suppressMaximizeRule = hl.window_rule({
 	suppress_event = "maximize",
 })
 -- suppressMaximizeRule:set_enabled(false)
+
+hl.config({
+	xwayland = {
+		force_zero_scaling = true,
+	},
+})
 
 hl.window_rule({
 	-- Fix some dragging issues with XWayland
@@ -329,13 +330,4 @@ hl.window_rule({
 	match = { float = true },
 
 	border_size = 3,
-})
-
--- gamescope (Fallout 4 etc.): take the whole monitor and allow direct scanout
-hl.window_rule({
-	name = "gamescope-fullscreen",
-	match = { class = "^(gamescope)$" },
-
-	fullscreen = true,
-	immediate = true,
 })

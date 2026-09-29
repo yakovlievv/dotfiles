@@ -52,19 +52,11 @@ return function(programs)
 	hl.bind(mainMod .. " + T", hl.dsp.workspace.toggle_special("ayugram"))
 
 	-- UTILITIES --
-
-	-- Emulated Insert key (keyboard has none): sent straight to the focused window, no virtual device
-	hl.bind(mainMod .. " + SHIFT + I", hl.dsp.send_shortcut({ mods = "", key = "Insert" }))
 	hl.bind(
 		mainMod .. " + S",
 		hl.dsp.exec_cmd(
 			'grim -g "$(slurp -b 1e1e2eaa -c cba6f7ff -s 00000000 -w 2)" - | tee ~/Pictures/screenshots/$(date +%Y-%m-%d_%H-%M-%S).png | wl-copy'
 		)
-	)
-	-- Color picker: hex → clipboard, swaync toast with the value
-	hl.bind(
-		mainMod .. " + SHIFT + S",
-		hl.dsp.exec_cmd('c=$(hyprpicker -f hex) && wl-copy "$c" && notify-send -a hyprpicker "Copied $c"')
 	)
 	-- SYSTEM MANIPULATION --
 
