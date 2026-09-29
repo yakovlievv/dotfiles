@@ -1,0 +1,133 @@
+/* Kanagawa wave — flat, utilitarian, matches waybar/kanagawa.css */
+* {
+    sumiInk0:    #16161D;
+    sumiInk1:    #181820;
+    sumiInk3:    #1F1F28;
+    sumiInk4:    #2A2A37;
+    sumiInk5:    #363646;
+    sumiInk6:    #54546D;
+    waveBlue1:   #223249;
+    waveBlue2:   #2D4F67;
+    fujiWhite:   #DCD7BA;
+    oldWhite:    #C8C093;
+    fujiGray:    #727169;
+    crystalBlue: #7E9CD8;
+    carpYellow:  #E6C384;
+    samuraiRed:  #E82424;
+
+    background-color: transparent;
+    text-color:       @oldWhite;
+}
+
+window {
+    location:         center;
+    anchor:           center;
+    width:            560px;
+    border-radius:    0;
+    background-color: @sumiInk3;
+    border:           1px solid;
+    border-color:     @sumiInk6;
+    padding:          0;
+}
+
+mainbox {
+    spacing:  0;
+    children: ["inputbar", "listview"];
+}
+
+inputbar {
+    padding:          8px 12px;
+    background-color: @sumiInk1;
+    border:           0 0 1px 0;
+    border-color:     @sumiInk5;
+    spacing:          8px;
+    children:         ["prompt", "entry"];
+}
+
+prompt {
+    text-color: @crystalBlue;
+}
+
+entry {
+    placeholder:       "";
+    placeholder-color: @fujiGray;
+    text-color:        @fujiWhite;
+    cursor-color:      @fujiWhite;
+}
+
+listview {
+    lines:        10;
+    columns:      1;
+    spacing:      0;
+    padding:      4px 0;
+    scrollbar:    false;
+    fixed-height: false;
+}
+
+element {
+    padding:       5px 12px;
+    spacing:       10px;
+    border-radius: 0;
+}
+
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color:       @oldWhite;
+}
+
+element normal.active,
+element alternate.active {
+    background-color: transparent;
+    text-color:       @carpYellow;
+}
+
+element normal.urgent,
+element alternate.urgent {
+    background-color: transparent;
+    text-color:       @samuraiRed;
+}
+
+element selected.normal {
+    background-color: @waveBlue1;
+    text-color:       @fujiWhite;
+    border:           0 0 0 2px;
+    border-color:     @crystalBlue;
+}
+
+element selected.active {
+    background-color: @waveBlue1;
+    text-color:       @carpYellow;
+    border:           0 0 0 2px;
+    border-color:     @carpYellow;
+}
+
+element selected.urgent {
+    background-color: @waveBlue1;
+    text-color:       @samuraiRed;
+    border:           0 0 0 2px;
+    border-color:     @samuraiRed;
+}
+
+element-icon {
+    size:             1em;
+    background-color: transparent;
+    vertical-align:   0.5;
+}
+
+element-text {
+    background-color: transparent;
+    text-color:       inherit;
+    vertical-align:   0.5;
+}
+
+message {
+    padding:          8px 12px;
+    border:           0 0 1px 0;
+    border-color:     @sumiInk5;
+    background-color: @sumiInk1;
+}
+
+textbox {
+    text-color: @oldWhite;
+}
