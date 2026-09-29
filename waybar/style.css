@@ -1,138 +1,310 @@
-@import "mocha.css";
+@import "kanagawa.css";
 
-/* Global Styles */
-* {
-  font-family: "JetBrainsMono Nerd Font Mono";
-  font-size: 16px;
-  min-height: 0;
-  font-weight: bold;
+/*
+ * Palette discipline:
+ *   text    -> @oldWhite   (everything by default)
+ *   muted   -> @fujiGray   (window title, date, disabled states)
+ *   accent  -> @crystalBlue (logo, active workspace, clickable controls)
+ *   warm    -> @waveRed     (logout only)
+ *   alert   -> @samuraiRed  (urgent / critical only)
+ *
+ * Motion follows the same rule: things only move to report a state
+ * (urgent, critical, unread, lots of updates), never as decoration.
+ */
+
+/* ---------- animations ---------- */
+
+/* alternate direction, so each cycle fades there and back */
+@keyframes alert-pulse {
+  from { color: @samuraiRed; }
+  to   { color: @winterRed; }
 }
 
-/* Waybar */
+@keyframes alert-underline {
+  from { color: @samuraiRed; border-bottom-color: @samuraiRed; }
+  to   { color: @sumiInk6;   border-bottom-color: @winterRed; }
+}
+
+@keyframes notify-breathe {
+  from { color: @carpYellow; }
+  to   { color: @boatYellow1; }
+}
+
+/* one-shot flash when a workspace becomes active */
+@keyframes ws-enter {
+  from { color: @fujiWhite; border-bottom-color: transparent; }
+  to   { color: @crystalBlue; border-bottom-color: @crystalBlue; }
+}
+
+* {
+  font-family: "JetBrainsMono Nerd Font";
+  font-size: 12px;
+  min-height: 0;
+  font-weight: normal;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+}
+
 window#waybar {
-  background: transparent;
-  transition-property: background-color;
-  transition-duration: 0.1s;
+  background: @sumiInkDeep;
+  color: @oldWhite;
+  border: 1px solid @sumiInkEdge;
 }
 
 .module {
-  margin-top: 6px;
-  padding: 0px 5px;
-  background-color: @mantle;
-  border-radius: 7px;
+  margin: 0;
+  padding: 0 10px;
+  background: transparent;
+  color: @oldWhite;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
-button:hover {
-  color: @lavender;
+tooltip {
+  background: @sumiInk3;
+  border: 1px solid @sumiInk4;
+  color: @oldWhite;
 }
 
+/* ---------- left ---------- */
+
+/*
+ * Logo is the one accent glyph. Workspaces are app glyphs (or a dot) with a
+ * 2px underline as the only active marker; no borders between the three modules,
+ * spacing does the separating. Window title is muted so it never competes.
+ */
 #custom-logo {
-  color: @blue;
-  margin-left: 6px;
-  padding: 0 16px;
+  color: @crystalBlue;
+  padding: 0 12px;
+  font-size: 14px;
 }
 
-/* Workspaces */
+#custom-logo:hover {
+  background: @sumiInk3;
+  color: @lightBlue;
+}
+
 #workspaces {
-  padding: 0 15px;
-  margin-left: 6px;
+  padding: 0;
 }
 
-#workspaces button {
-  padding: 0 6px;
-  color: @surface0;
+#custom-ws1, #custom-ws2, #custom-ws3, #custom-ws4, #custom-ws5, #custom-ws-ayugram {
+  padding: 0 8px;
+  margin: 0;
+  color: @sumiInk6;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
-#workspaces button.active {
-  color: @lavender;
+/* has windows */
+#workspaces .occupied {
+  color: @oldWhite;
 }
 
-/* Window & Clock */
+#custom-ws1:hover, #custom-ws2:hover, #custom-ws3:hover, #custom-ws4:hover, #custom-ws5:hover, #custom-ws-ayugram:hover {
+  color: @fujiWhite;
+  background: @sumiInk1;
+}
+
+#workspaces .active {
+  color: @crystalBlue;
+  border-bottom: 2px solid @crystalBlue;
+  animation: ws-enter 0.35s ease-out;
+}
+
+#custom-ws-ayugram {
+  color: @springBlue;
+}
+
+#workspaces .urgent {
+  color: @samuraiRed;
+  border-bottom: 2px solid @samuraiRed;
+  animation: alert-underline 0.9s ease-in-out infinite alternate;
+}
+
 #window {
-  opacity: 0.5;
-  margin-left: 6px;
-  padding: 0 20px;
-}
-#custom-separator {
-  border-radius: 0px;
-  margin-top: 5px;
-  color: @surface0;
-}
-#clock.clk1 {
-  color: @lavender;
-  padding: 0 0 0 20px;
-  border-top-right-radius: 0px;
-  border-bottom-right-radius: 0px;
-  margin: 5px 0px 0px 15px;
+  color: @fujiGray;
+  padding: 0 14px;
 }
 
-#clock.clk2 {
-  margin-top: 5px;
-  color: @lavender;
-  border-radius: 0px;
-  padding: 0px;
+/* hide the padding when nothing is focused */
+window#waybar.empty #window {
+  padding: 0;
 }
 
-#clock.clk3 {
-  margin: 5px 15px 0px 0px;
-  color: @lavender;
-  padding: 0 20px 0 0;
-  border-top-left-radius: 0px;
-  border-bottom-left-radius: 0px;
+/* ---------- center ---------- */
+
+/* time-of-day glyph hugs the clock; the only place the warm colours appear */
+#custom-daytime {
+  padding: 0 0 0 12px;
+  font-size: 15px;
 }
-/* Language */
+
+/* the glyph carries a trailing space (see daytime.py), so the clock needs little padding */
+#custom-daytime + #clock {
+  padding-left: 2px;
+}
+
+#custom-daytime.dawn  { color: @surimiOrange; }
+#custom-daytime.day   { color: @carpYellow; }
+#custom-daytime.dusk  { color: @sakuraPink; }
+#custom-daytime.night { color: @springViolet2; }
+
+#clock {
+  color: @oldWhite;
+  padding: 0 12px;
+}
+
+#clock:hover {
+  background: @sumiInk3;
+}
+
+/* ---------- right ---------- */
+
+/*
+ * One flat cluster, no band, no per-module borders. A single hairline
+ * separates it from the bar. Readouts are fujiGray, controls oldWhite;
+ * colour appears only to report a state (connected, muted, pending,
+ * warning). Logout stays the single warm counterpoint.
+ */
+#tray,
+#cpu,
+#temperature,
+#memory,
+#disk,
+#network,
+#pulseaudio,
+#bluetooth,
+#language,
+#custom-updates,
+#custom-sunset,
+#custom-monitor,
+#custom-swaync,
+#custom-power {
+  padding: 0 8px;
+}
+
+#tray {
+  padding: 0 10px;
+  border-right: 1px solid @sumiInk4;
+  margin-right: 4px;
+}
+
+#tray > .passive {
+  -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+  -gtk-icon-effect: highlight;
+}
+
+/* readouts */
+#cpu,
+#temperature,
+#memory,
+#disk,
 #language {
-  color: @peach;
-  padding: 0 15px;
-  margin-right: 6px;
+  color: @fujiGray;
 }
 
-/* Pulseaudio */
-#pulseaudio {
-  border-top-right-radius: 0px;
-  border-bottom-right-radius: 0px;
-  color: @green;
-  padding: 0 15px;
+.hw-drawer {
+  color: @fujiGray;
 }
 
-/* Bluetooth */
-#bluetooth {
-  color: @sky;
-  padding: 0 15px;
-  margin-right: 6px;
-  border-top-left-radius: 0px;
-  border-bottom-left-radius: 0px;
+#cpu.warning {
+  color: @carpYellow;
 }
 
-/* CPU */
-#cpu {
-  color: @red;
-  padding: 0 15px;
-  border-top-right-radius: 0px;
-  border-bottom-right-radius: 0px;
+#cpu.critical,
+#temperature.critical {
+  color: @samuraiRed;
+  animation: alert-pulse 0.7s ease-in-out infinite alternate;
 }
 
-/* Temperature */
-#temperature {
-  color: @blue;
-  padding: 0 15px;
-  margin-right: 6px;
-  border-top-left-radius: 0px;
-  border-bottom-left-radius: 0px;
+/* updates: muted readout, breathes once the backlog gets big */
+#custom-updates {
+  color: @fujiGray;
 }
 
-/* Custom Logout */
-#custom-wlogout {
-  color: @red;
-  padding: 0 15px;
-  border-top-left-radius: 0px;
-  border-bottom-left-radius: 0px;
-  margin-right: 6px;
+#custom-updates.many {
+  animation: notify-breathe 2s ease-in-out infinite alternate;
 }
-/* Custom Swaync */
+
+#language {
+  padding: 0 6px;
+}
+
+/* controls */
+#network,
+#pulseaudio,
+#bluetooth,
 #custom-swaync {
-  color: @blue;
-  padding: 0 15px;
-  border-top-right-radius: 0px;
-  border-bottom-right-radius: 0px;
+  color: @oldWhite;
+}
+
+#bluetooth.connected {
+  color: @crystalBlue;
+}
+
+#pulseaudio.muted,
+#bluetooth.disabled,
+#bluetooth.off,
+#network.disconnected {
+  color: @sumiInk6;
+}
+
+#custom-swaync.notification,
+#custom-swaync.dnd-notification,
+#custom-swaync.inhibited-notification,
+#custom-swaync.dnd-inhibited-notification {
+  color: @carpYellow;
+  animation: notify-breathe 1.6s ease-in-out infinite alternate;
+}
+
+/* night light: dim when off, warm when the filter is on */
+#custom-sunset {
+  color: @sumiInk6;
+}
+
+#custom-sunset.on {
+  color: @surimiOrange;
+}
+
+/* monitor: dim while blacked out */
+#custom-monitor.off {
+  color: @sumiInk6;
+}
+
+#custom-swaync.dnd-none,
+#custom-swaync.dnd-inhibited-none {
+  color: @sumiInk6;
+}
+
+#cpu:hover,
+#network:hover,
+#pulseaudio:hover,
+#bluetooth:hover,
+#language:hover,
+#custom-updates:hover,
+#custom-sunset:hover,
+#custom-monitor:hover,
+#custom-swaync:hover {
+  background: @sumiInk3;
+  color: @lightBlue;
+}
+
+/* power: warm counterpoint, inverted on hover */
+#custom-power {
+  color: @waveRed;
+  padding: 0 12px;
+}
+
+#custom-power:hover {
+  background: @waveRed;
+  color: @sumiInkDeep;
 }

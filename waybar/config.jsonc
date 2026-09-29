@@ -1,101 +1,296 @@
 {
   "position": "top",
+  "height": 28,
+  "spacing": 0,
   "modules-left": [
     "custom/logo",
-    "hyprland/workspaces",
+    "group/workspaces",
     "hyprland/window"
   ],
   "modules-center": [
-    "clock#clk1",
-    "custom/separator",
-    "clock#clk2",
-    "custom/separator",
-    "clock#clk3"
+    "custom/daytime",
+    "clock"
   ],
-  "clock#clk2": {
-    "format": "{:%A}",
-    "interval": 60,
-    "tooltip": false
-  },
-  "custom/separator": {
-    "format": " | ",
-    "tooltip": false
-  },
-  "clock#clk1": {
-    "format": "{:%H:%M}",
-    "interval": 1,
-    "tooltip": false
-  },
-  "clock#clk3": {
-    "format": "{:%d/%m}",
-    "exec": "date '+'",
-    "interval": 60,
-    "tooltip": false
-  },
   "modules-right": [
-    "hyprland/language",
+    "tray",
+    "custom/updates",
+    "group/hw",
+    "network",
     "pulseaudio",
     "bluetooth",
-    "cpu",
-    "temperature",
+    "hyprland/language",
+    "custom/sunset",
+    "custom/monitor",
     "custom/swaync",
-    "custom/wlogout"
+    "custom/power"
   ],
+  /* ---------- left ---------- */
+  /*
+   * Workspaces are five custom buttons driven by scripts/workspace.py (the
+   * built-in hyprland/workspaces module can't do per-count icons and its click
+   * handler is broken on Hyprland's Lua dispatcher). Each button shows a dot
+   * when empty, one app glyph per window (up to 3, then two glyphs and "+"),
+   * and takes the accent when active. The ayugram special workspace only
+   * appears while it is toggled in.
+   */
   "custom/logo": {
-    "format": "<span size='150%' rise='-2000'>󰣇</span>",
+    "format": "󰣇",
     "on-click": "wofi --show drun",
+    "on-click-right": "hyprctl reload",
     "tooltip": false
   },
-  "hyprland/workspaces": {
-    "format": "",
-    // "persistent-workspaces": {
-    //     "*": 5
-    // }
+  "group/workspaces": {
+    "orientation": "horizontal",
+    "modules": [
+      "custom/ws1",
+      "custom/ws2",
+      "custom/ws3",
+      "custom/ws4",
+      "custom/ws5",
+      "custom/ws-ayugram"
+    ]
+  },
+  "custom/ws1": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py 1",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 1 })'",
+    "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
+    "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"
+  },
+  "custom/ws2": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py 2",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 2 })'",
+    "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
+    "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"
+  },
+  "custom/ws3": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py 3",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 3 })'",
+    "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
+    "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"
+  },
+  "custom/ws4": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py 4",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 4 })'",
+    "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
+    "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"
+  },
+  "custom/ws5": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py 5",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 5 })'",
+    "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
+    "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"
+  },
+  "custom/ws-ayugram": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py special:ayugram",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "hyprctl dispatch 'hl.dsp.workspace.toggle_special(\"ayugram\")'"
+  },
+  "hyprland/window": {
+    "format": "{title}",
+    "max-length": 48,
+    "separate-outputs": true,
+    "icon": false,
+    "rewrite": {
+      "(.*) — Zen Browser": "$1",
+      "(.*) — Mozilla Firefox": "$1",
+      "(.*) - Google Chrome": "$1",
+      "(.*) - Chromium": "$1",
+      "(.*) - Visual Studio Code": "$1",
+      "(.*) - Doom Emacs": "$1"
+    }
+  },
+  /* ---------- center ---------- */
+  /*
+   * One clock. Time carries the weight, the date sits muted beside it.
+   * Hover for a calendar (scroll moves months, right-click flips month/year),
+   * left-click toggles the long form with the ISO week number.
+   */
+  /* sunrise / sun / sunset / moon in front of the time, by hour */
+  "custom/daytime": {
+    "exec": "$HOME/.config/waybar/scripts/daytime.py",
+    "return-type": "json",
+    "format": "{}",
+    "interval": 60
+  },
+  "clock": {
+    "format": "<span size='large'>{:%H:%M</span>  <span color='#727169'>%a %d %b</span>}",
+    "format-alt": "{:%A %d %B %Y  <span color='#727169'>week %V</span>}",
+    "interval": 1,
+    "tooltip-format": "<tt>{calendar}</tt>",
+    "calendar": {
+      "mode": "month",
+      "weeks-pos": "left",
+      "on-scroll": 1,
+      "format": {
+        "months": "<span color='#C8C093'><b>{}</b></span>",
+        "weeks": "<span color='#54546D'>{:%V}</span>",
+        "weekdays": "<span color='#727169'>{}</span>",
+        "days": "<span color='#C8C093'>{}</span>",
+        "today": "<span color='#7E9CD8'><b><u>{}</u></b></span>"
+      }
+    },
+    "actions": {
+      "on-click-right": "mode",
+      "on-scroll-up": "shift_up",
+      "on-scroll-down": "shift_down"
+    }
+  },
+  /* ---------- right ---------- */
+  /*
+   * Icon-first. Text only where a number is worth reading at a glance
+   * (cpu, volume). Everything else lives in tooltips or opens on click.
+   */
+  "tray": {
+    "icon-size": 14,
+    "spacing": 8
+  },
+  /* repo + AUR updates; hidden when there are none. Click to upgrade. */
+  "custom/updates": {
+    "exec": "$HOME/.config/waybar/scripts/updates.py",
+    "return-type": "json",
+    "format": "{}",
+    "interval": 1800,
+    "signal": 9,
+    "on-click": "ghostty -e sh -c 'yay; pkill -RTMIN+9 -x waybar'",
+    "on-click-right": "pkill -RTMIN+9 -x waybar"
+  },
+  "group/hw": {
+    "orientation": "inherit",
+    "drawer": {
+      "transition-duration": 250,
+      "children-class": "hw-drawer"
+    },
+    "modules": [
+      "cpu",
+      "temperature",
+      "memory",
+      "disk"
+    ]
+  },
+  "cpu": {
+    "format": " {usage}%",
+    "interval": 3,
+    "states": {
+      "warning": 70,
+      "critical": 90
+    },
+    "on-click": "ghostty -e btop",
+    "tooltip": false
+  },
+  "temperature": {
+    "hwmon-path-abs": "/sys/devices/platform/coretemp.0/hwmon",
+    "input-filename": "temp1_input",
+    "format": " {temperatureC}°",
+    "critical-threshold": 80,
+    "interval": 3,
+    "tooltip": false
+  },
+  "memory": {
+    "format": " {percentage}%",
+    "interval": 5,
+    "tooltip-format": "{used:0.1f} / {total:0.1f} GiB"
+  },
+  "disk": {
+    "path": "/",
+    "format": " {percentage_used}%",
+    "interval": 60,
+    "tooltip-format": "{used} / {total} used, {free} free"
+  },
+  "network": {
+    "format-ethernet": "󰈀",
+    "format-wifi": "{icon}",
+    "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+    "format-disconnected": "󰈂",
+    "tooltip-format-ethernet": "{ifname}  {ipaddr}/{cidr}\n {bandwidthDownBytes}   {bandwidthUpBytes}",
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)  {ipaddr}\n {bandwidthDownBytes}   {bandwidthUpBytes}",
+    "tooltip-format-disconnected": "disconnected",
+    "interval": 5,
+    "on-click": "ghostty -e nmtui"
   },
   "pulseaudio": {
     "format": "{icon} {volume}%",
-    "format-muted": "<span size='150%' rise='-2000'></span>",
+    "format-muted": "",
     "format-icons": {
-      "default": [
-        "<span size='150%' rise='-2000'></span>",
-        "<span size='150%' rise='-2000'></span>",
-        "<span size='150%' rise='-2000'></span>"
-      ]
+      "headphone": "",
+      "default": ["", "", ""]
     },
-    "on-click": "pavucontrol",
-    "tooltip": false
+    "scroll-step": 5,
+    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-click-right": "pavucontrol",
+    "tooltip-format": "{desc}"
   },
-  // "hyprland/window": {
-  //     "icon": true,
-  // },
   "bluetooth": {
-    "tooltip": false,
-    "on-click": "blueman-manager",
-  },
-  "cpu": {
-    "interval": 1,
-    "format": "{usage}% <span size='150%' rise='-2000'></span>",
-    "tooltip": false,
-    "interval": 5
-  },
-  "temperature": {
-    "format": "{temperatureC}°C ",
-    "tooltip": false,
+    "format": "󰂯",
+    "format-off": "󰂲",
+    "format-disabled": "󰂲",
+    "format-connected": "󰂱",
+    "tooltip-format": "{controller_alias}  {status}",
+    "tooltip-format-connected": "{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "tooltip-format-enumerate-connected-battery": "{device_alias}  {device_battery_percentage}%",
+    "on-click": "rofi-bluetooth",
+    "on-click-right": "blueman-manager"
   },
   "hyprland/language": {
-    "tooltip": false,
-    "format-en": "<span size='125%' rise='-2000'>󰌌</span> en",
-    "format-uk": "<span size='125%' rise='-2000'>󰌌</span> uk",
-    "format-ru": "<span size='125%' rise='-2000'>󰌌</span> ru"
+    "format-en": "en",
+    "format-uk": "uk",
+    "format-ru": "ru",
+    "on-click": "hyprctl switchxkblayout all next",
+    "tooltip": false
   },
-  "custom/wlogout": {
-    "format": "<span size='150%' rise='-2000'></span>",
-    "on-click": "wlogout",
-    "tooltip": false,
+  /* hyprsunset: click toggles, scroll up is warmer, scroll down cooler */
+  "custom/sunset": {
+    "exec": "$HOME/.config/waybar/scripts/sunset.py status",
+    "return-type": "json",
+    "format": "{}",
+    "interval": "once",
+    "signal": 8,
+    "on-click": "$HOME/.config/waybar/scripts/sunset.py toggle",
+    "on-scroll-up": "$HOME/.config/waybar/scripts/sunset.py warmer",
+    "on-scroll-down": "$HOME/.config/waybar/scripts/sunset.py cooler"
+  },
+  /* external monitor via DDC/CI: click blacks it out (brightness 0), click again restores */
+  "custom/monitor": {
+    "exec": "$HOME/.config/waybar/scripts/monitor.py status",
+    "return-type": "json",
+    "format": "{}",
+    "interval": "once",
+    "signal": 10,
+    "on-click": "$HOME/.config/waybar/scripts/monitor.py toggle"
   },
   "custom/swaync": {
-    "format": "<span size='150%' rise='-2000'></span>",
-    "on-click": "swaync-client -t",
-    "tooltip": false,
+    "format": "{icon}",
+    "format-icons": {
+      "notification": "󱅫",
+      "none": "󰂚",
+      "dnd-notification": "󰂛",
+      "dnd-none": "󰂛",
+      "inhibited-notification": "󱅫",
+      "inhibited-none": "󰂚",
+      "dnd-inhibited-notification": "󰂛",
+      "dnd-inhibited-none": "󰂛"
+    },
+    "return-type": "json",
+    "exec": "swaync-client -swb",
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw",
+    "escape": true,
+    "tooltip": false
+  },
+  "custom/power": {
+    "format": "",
+    "on-click": "rofi -show power -modes power:rofi-power",
+    "tooltip": false
   }
 }
