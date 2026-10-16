@@ -30,7 +30,7 @@
    * built-in hyprland/workspaces module can't do per-count icons and its click
    * handler is broken on Hyprland's Lua dispatcher). Each button shows a dot
    * when empty, one app glyph per window (up to 3, then two glyphs and "+"),
-   * and takes the accent when active. The ayugram special workspace only
+   * and takes the accent when active. The telegram special workspace (Telegram or AyuGram) only
    * appears while it is toggled in.
    */
   "custom/logo": {
@@ -47,7 +47,7 @@
       "custom/ws3",
       "custom/ws4",
       "custom/ws5",
-      "custom/ws-ayugram"
+      "custom/ws-telegram"
     ]
   },
   "custom/ws1": {
@@ -90,11 +90,11 @@
     "on-scroll-up": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e-1\" })'",
     "on-scroll-down": "hyprctl dispatch 'hl.dsp.focus({ workspace = \"e+1\" })'"
   },
-  "custom/ws-ayugram": {
-    "exec": "$HOME/.config/waybar/scripts/workspace.py special:ayugram",
+  "custom/ws-telegram": {
+    "exec": "$HOME/.config/waybar/scripts/workspace.py special:telegram",
     "return-type": "json",
     "format": "{}",
-    "on-click": "hyprctl dispatch 'hl.dsp.workspace.toggle_special(\"ayugram\")'"
+    "on-click": "hyprctl dispatch 'hl.dsp.workspace.toggle_special(\"telegram\")'"
   },
   "hyprland/window": {
     "format": "{title}",
@@ -210,7 +210,13 @@
   "network": {
     "format-ethernet": "󰈀",
     "format-wifi": "{icon}",
-    "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+    "format-icons": [
+      "󰤯",
+      "󰤟",
+      "󰤢",
+      "󰤥",
+      "󰤨"
+    ],
     "format-disconnected": "󰈂",
     "tooltip-format-ethernet": "{ifname}  {ipaddr}/{cidr}\n {bandwidthDownBytes}   {bandwidthUpBytes}",
     "tooltip-format-wifi": "{essid} ({signalStrength}%)  {ipaddr}\n {bandwidthDownBytes}   {bandwidthUpBytes}",
@@ -223,7 +229,11 @@
     "format-muted": "",
     "format-icons": {
       "headphone": "",
-      "default": ["", "", ""]
+      "default": [
+        "",
+        "",
+        ""
+      ]
     },
     "scroll-step": 5,
     "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",

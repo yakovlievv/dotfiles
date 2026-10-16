@@ -49,7 +49,7 @@ return function(programs)
 	hl.bind(mainMod .. " + F", hl.dsp.exec_cmd(fileManager))
 	hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd("rofi -show combi"))
 
-	hl.bind(mainMod .. " + T", hl.dsp.workspace.toggle_special("ayugram"))
+	hl.bind(mainMod .. " + T", hl.dsp.workspace.toggle_special("telegram"))
 
 	-- UTILITIES --
 
@@ -66,6 +66,8 @@ return function(programs)
 		mainMod .. " + SHIFT + S",
 		hl.dsp.exec_cmd('c=$(hyprpicker -f hex) && wl-copy "$c" && notify-send -a hyprpicker "Copied $c"')
 	)
+	-- Em dash (—) typed into the focused window
+	hl.bind(mainMod .. " + minus", hl.dsp.exec_cmd("wtype —"))
 	-- SYSTEM MANIPULATION --
 
 	-- Logout

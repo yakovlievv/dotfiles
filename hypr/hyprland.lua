@@ -33,7 +33,8 @@ hl.monitor({
 hl.on("hyprland.start", function()
 	hl.exec_cmd("waybar & hyprpaper & syncthing --no-browser & xsettingsd")
 	hl.exec_cmd("hyprctl setcursor theme Bibata-Modern-Classic 24")
-	hl.exec_cmd("AyuGram")
+	-- Telegram client: prefer AyuGram when installed, fall back to stock Telegram
+	hl.exec_cmd("command -v AyuGram >/dev/null && exec AyuGram || exec Telegram")
 	hl.exec_cmd("emacs --daemon")
 end)
 
@@ -309,12 +310,13 @@ hl.window_rule({
 	float = true,
 })
 
-hl.workspace_rule({ workspace = "special:ayugram", gaps_out = 20 })
+-- Telegram scratchpad (SUPER+T): stock Telegram or AyuGram, matched by class
+hl.workspace_rule({ workspace = "special:telegram", gaps_out = 20 })
 
 hl.window_rule({
-	name = "ayugram-scratchpad",
-	match = { title = "AyuGram" },
-	workspace = "special:ayugram silent",
+	name = "telegram-scratchpad",
+	match = { class = "^(org\\.telegram\\.desktop|com\\.ayugram\\.desktop)$" },
+	workspace = "special:telegram silent",
 })
 
 hl.window_rule({

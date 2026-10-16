@@ -23,3 +23,6 @@ emacs/minimal-server-conf/elpa
 emacs/minimal-server-conf/transient
 emacs/minimal-server-conf/org-roam.db
 emacs/minimal-server-conf/eln-cache/31.1-fff6fc40
+
+# syncthing device keys/API key — never commit
+syncthing/

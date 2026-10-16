@@ -27,6 +27,11 @@ Kept out of the vault's git history; org-attach only stores a symlink."
   "Path to the ffmpeg binary used for capture."
   :type 'string :group 'voice-note)
 
+(defcustom voice-note-input-format "avfoundation"
+  "ffmpeg input format (-f) used for capture.
+\"avfoundation\" on macOS; \"pulse\" on Linux (PipeWire serves it too)."
+  :type 'string :group 'voice-note)
+
 (defcustom voice-note-input-device ":MacBook Air Microphone"
   "AVFoundation input spec, as \"VIDEO:AUDIO\".
 Prefer a device *name* over an index: indices shift around when an
@@ -96,6 +101,12 @@ separately from https://huggingface.co/ggerganov/whisper.cpp."
 (defcustom voice-note-player-executable "afplay"
   "Command used to play a recording back."
   :type 'string :group 'voice-note)
+
+(defcustom voice-note-player-args '("--rate" "%s")
+  "Arguments placed before the file when playing a recording.
+Each is passed through `format' with the playback rate, so \"%s\"
+becomes the rate.  afplay: (\"--rate\" \"%s\"); mpv: (\"--speed=%s\")."
+  :type '(repeat string) :group 'voice-note)
 
 (defcustom voice-note-playback-rate 1.0
   "Playback speed.  afplay accepts 0.4 to 3.0."
@@ -175,7 +186,7 @@ Captured when recording *starts*, so wandering off mid-thought is safe.")
          :noquery t
          :command (append (list voice-note-ffmpeg-executable
                                 "-hide_banner" "-loglevel" "error" "-nostdin"
-                                "-f" "avfoundation" "-i" voice-note-input-device)
+                                "-f" voice-note-input-format "-i" voice-note-input-device)
                           voice-note-ffmpeg-args
                           (list "-y" voice-note--file))
          :sentinel #'voice-note--record-sentinel))
@@ -324,9 +335,12 @@ Captured when recording *starts*, so wandering off mid-thought is safe.")
              :name "voice-note-play"
              :buffer (get-buffer-create " *voice-note-play*")
              :noquery t
-             :command (list voice-note-player-executable
-                            "--rate" (number-to-string voice-note-playback-rate)
-                            file)))
+             :command (append (list voice-note-player-executable)
+                              (mapcar (lambda (a)
+                                        (format a (number-to-string
+                                                   voice-note-playback-rate)))
+                                      voice-note-player-args)
+                              (list file))))
       (message "Playing %s%s" (file-name-nondirectory file)
                (if (= voice-note-playback-rate 1.0) ""
                  (format " at %sx" voice-note-playback-rate))))))

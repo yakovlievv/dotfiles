@@ -91,7 +91,7 @@ tooltip {
   padding: 0;
 }
 
-#custom-ws1, #custom-ws2, #custom-ws3, #custom-ws4, #custom-ws5, #custom-ws-ayugram {
+#custom-ws1, #custom-ws2, #custom-ws3, #custom-ws4, #custom-ws5, #custom-ws-telegram {
   padding: 0 8px;
   margin: 0;
   color: @sumiInk6;
@@ -106,7 +106,7 @@ tooltip {
   color: @oldWhite;
 }
 
-#custom-ws1:hover, #custom-ws2:hover, #custom-ws3:hover, #custom-ws4:hover, #custom-ws5:hover, #custom-ws-ayugram:hover {
+#custom-ws1:hover, #custom-ws2:hover, #custom-ws3:hover, #custom-ws4:hover, #custom-ws5:hover, #custom-ws-telegram:hover {
   color: @fujiWhite;
   background: @sumiInk1;
 }
@@ -117,7 +117,7 @@ tooltip {
   animation: ws-enter 0.35s ease-out;
 }
 
-#custom-ws-ayugram {
+#custom-ws-telegram {
   color: @springBlue;
 }
 

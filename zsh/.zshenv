@@ -15,6 +15,8 @@ export XDG_DOWNLOAD_DIR="$HOME/down"
 export PATH="$XDG_BIN_HOME:$HOME/bin:$XDG_CONFIG_HOME/emacs/bin:$HOME/.local/share/nvim/mason/bin:$PATH"
 
 # moving other files to correct paths
+# export STCONFDIR=$XDG_CONFIG_HOME/syncthing
+# export STDATADIR=$XDG_STATE_HOME/syncthing
 export HISTDIR="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
 [[ -d "$HISTDIR" ]] || mkdir -p "$HISTDIR"
 export HISTFILE="$HISTDIR/zsh_history"

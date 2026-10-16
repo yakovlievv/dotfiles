@@ -24,6 +24,7 @@
        modeline          ; snazzy, Atom-inspired modeline, plus API
        nav-flash
        ophints           ; highlight the region an operation acts on
+       smooth-scroll     ; pixel-precise trackpad scrolling (ultra-scroll)
        (popup +defaults)   ; tame sudden yet inevitable temporary windows
        (vc-gutter +pretty) ; vcs diff in the fringe
        treemacs

@@ -7,7 +7,7 @@ Prints waybar JSON whenever the workspace changes:
   more than 3      -> the first two glyphs and a "+"
 A special workspace prints nothing (hidden) unless it is toggled in.
 
-Usage: workspace.py <name>    e.g. workspace.py 3  |  workspace.py special:ayugram
+Usage: workspace.py <name>    e.g. workspace.py 3  |  workspace.py special:telegram
 """
 import json
 import os
