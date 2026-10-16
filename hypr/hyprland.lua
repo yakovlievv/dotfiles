@@ -46,6 +46,9 @@ end)
 
 hl.env("GTK_THEME", "Catppuccin-Mocha-Lavender")
 
+-- systemd ssh-agent.socket, so GUI apps (emacs/magit) reach the agent too
+hl.env("SSH_AUTH_SOCK", "/run/user/1000/ssh-agent.socket")
+
 hl.env("HYPRCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_THEME", "Bibata-Modern-Classic")
 
