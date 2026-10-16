@@ -18,10 +18,8 @@ _cache_eval fnm fnm env --use-on-cd --version-file-strategy=recursive --shell zs
 
 # ┌─ ssh-agent (macOS: handled by keychain — add UseKeychain+AddKeysToAgent to ~/.ssh/config)
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if ! pgrep -u "$USER" ssh-agent >/dev/null; then
-        eval "$(ssh-agent -s)"
-        ssh-add ~/.ssh/id_ed25519 2>/dev/null
-    fi
+    # systemd user socket (ssh-agent.socket); keys get added on first use via AddKeysToAgent
+    export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
 fi
 
 # ┌─ History
