@@ -76,9 +76,12 @@ def shell(command):
 
 
 def win(mode):
-    """Resize the frontmost window with win.js ("almost" or "maximize")."""
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "win.js")
-    return shell(f"osascript -l JavaScript '{script}' {mode}")
+    """Resize the frontmost window with bin/win ("almost" or "maximize").
+
+    bin/win is built from win.swift:  swiftc -O win.swift -o bin/win
+    """
+    binary = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", "win")
+    return shell(f"'{binary}' {mode}")
 
 
 def vicinae(entrypoint):
@@ -110,7 +113,7 @@ BINDS = {
     ("ctrl", "s"): shell(
         "osascript -e 'tell application \"loginwindow\" to «event aevtrsdn»'"
     ),
-    # windows: H/L are macOS's native tiling (fn+ctrl+arrow), A/M go through win.js
+    # windows: H/L are macOS's native tiling (fn+ctrl+arrow), A/M go through bin/win
     ("", "h"): send("left_arrow", "fn", "left_control"),   # tile left half
     ("", "l"): send("right_arrow", "fn", "left_control"),  # tile right half
     ("", "a"): win("almost"),    # 90% of the screen, centered

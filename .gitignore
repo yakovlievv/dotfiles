@@ -17,3 +17,4 @@ emacs/config.el
 
 # syncthing device keys/API key — never commit
 syncthing/
+karabiner/bin/
