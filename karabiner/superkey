@@ -40,7 +40,7 @@ WIN = os.path.join(HERE, "bin", "win")
 VICINAE = "/opt/homebrew/bin/vicinae"
 AGENT = "local.superkey"
 SCREENSHOT_AGENT = "local.screenshot"
-SCREENSHOTS = os.path.expanduser("~/Pictures/Screenshots")
+SCREENSHOT_DIRS = [os.path.expanduser("~/Pictures/Screenshots")]
 PREFIX = "Super"  # every generated rule's description starts with this
 
 KEYS = (
@@ -292,15 +292,15 @@ def install():
     subprocess.run(["swiftc", "-O", os.path.join(HERE, "win.swift"), "-o", WIN], check=True)
     print(f"built {WIN}")
 
-    agent(AGENT, ["/usr/bin/python3", os.path.join(HERE, "superkey"), "--notify"], CONF)
+    agent(AGENT, ["/usr/bin/python3", os.path.join(HERE, "superkey"), "--notify"], [CONF])
     print(f"started {AGENT}: saving super.conf applies it")
-    agent(SCREENSHOT_AGENT, [os.path.join(HERE, "screenshot")], SCREENSHOTS)
+    agent(SCREENSHOT_AGENT, [os.path.join(HERE, "screenshot")], SCREENSHOT_DIRS)
     print(f"started {SCREENSHOT_AGENT}: new screenshots get renamed and copied to the clipboard")
     apply()
 
 
 def agent(label, program, watch):
-    """(Re)start a launchd agent that runs program whenever watch changes."""
+    """(Re)start a launchd agent that runs program whenever a path in watch changes."""
     args = "".join(f"\n        <string>{a}</string>" for a in program)
     log = f"/tmp/{label.split('.')[-1]}.log"
     plist = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -311,7 +311,7 @@ def agent(label, program, watch):
     <key>ProgramArguments</key>
     <array>{args}
     </array>
-    <key>WatchPaths</key><array><string>{watch}</string></array>
+    <key>WatchPaths</key><array>{"".join(f"<string>{w}</string>" for w in watch)}</array>
     <key>StandardOutPath</key><string>{log}</string>
     <key>StandardErrorPath</key><string>{log}</string>
 </dict>

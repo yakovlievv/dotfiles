@@ -1,16 +1,20 @@
 #!/bin/sh
 # Run by the local.screenshot launchd agent whenever ~/Pictures/Screenshots changes.
-# Super+S / Super+Shift+S send the native ⌘⇧4 / ⌘⇧3 (floating thumbnail and all);
-# once macOS saves the file, this renames it like the arch bind
+# Super+S / Super+Shift+S send the native screenshot shortcuts (floating thumbnail
+# and all); once macOS saves the file, this renames it like the arch bind
 # (2026-10-17_16-55-03.png) and copies it to the clipboard.
-dir="$HOME/Pictures/Screenshots"
+# macOS must save there: set it in the screenshot toolbar (Super+5 → Options →
+# Save to → Other Location…). `defaults write com.apple.screencapture location`
+# is ignored, and launchd jobs can't read ~/Desktop.
+dest="$HOME/Pictures/Screenshots"
 
-for f in "$dir"/Screenshot*.png; do
+for f in "$dest"/Screenshot*.png; do
     [ -f "$f" ] || continue
-    # only fresh ones, so old macOS-named shots in the folder are left alone
+    # only fresh ones, so older macOS-named shots are left alone
     [ $(( $(date +%s) - $(stat -f %m "$f") )) -lt 60 ] || continue
-    new="$dir/$(date -r "$(stat -f %m "$f")" +%Y-%m-%d_%H-%M-%S).png"
+    new="$dest/$(date -r "$(stat -f %m "$f")" +%Y-%m-%d_%H-%M-%S).png"
     [ -e "$new" ] && new="${new%.png}-$$.png"
     mv "$f" "$new"
     /usr/bin/osascript -e "set the clipboard to (read (POSIX file \"$new\") as «class PNGf»)"
+    echo "$(date +%T) $f -> $new"
 done
