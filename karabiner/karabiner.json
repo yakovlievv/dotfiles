@@ -707,6 +707,9 @@
                                     {
                                         "key_code": "4",
                                         "modifiers": ["left_control", "left_option", "left_shift", "left_command"]
+                                    },
+                                    {
+                                        "shell_command": "'/Users/yako/dotfiles/karabiner/screenshot' wait"
                                     }
                                 ],
                                 "type": "basic"
@@ -1572,6 +1575,9 @@
                                     {
                                         "key_code": "3",
                                         "modifiers": ["left_command", "left_shift"]
+                                    },
+                                    {
+                                        "shell_command": "'/Users/yako/dotfiles/karabiner/screenshot' wait"
                                     }
                                 ],
                                 "type": "basic"

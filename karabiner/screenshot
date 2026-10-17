@@ -1,20 +1,60 @@
 #!/bin/sh
-# Run by the local.screenshot launchd agent whenever ~/Pictures/Screenshots changes.
-# Super+S / Super+Shift+S send the native screenshot shortcuts (floating thumbnail
-# and all); once macOS saves the file, this renames it like the arch bind
-# (2026-10-17_16-55-03.png) and copies it to the clipboard.
-# macOS must save there: set it in the screenshot toolbar (Super+5 → Options →
-# Save to → Other Location…). `defaults write com.apple.screencapture location`
-# is ignored, and launchd jobs can't read ~/Desktop.
+# Native macOS screenshots (floating thumbnail and all), but also on the clipboard
+# right away and named like the arch bind. Two modes:
+#
+#   screenshot wait   started by the `screenshot` action in super.conf together with
+#                     the native shortcut. Polls for the shot and copies it as soon
+#                     as macOS writes its temp file ($TMPDIR/TemporaryItems/
+#                     NSIRD_screencaptureui_*/), while the thumbnail is still up.
+#                     The real file only lands when the thumbnail goes away (~5s).
+#   screenshot        run by the local.screenshot launchd agent when
+#                     ~/Pictures/Screenshots changes: renames new shots to
+#                     2026-10-17_16-55-03.png (the time the shot was taken), and
+#                     copies them if `wait` didn't (thumbnail turned off).
+#
+# macOS must save to ~/Pictures/Screenshots: set it in the screenshot toolbar
+# (Super+5 → Options → Save to → Other Location…). `defaults write
+# com.apple.screencapture location` is ignored, and launchd can't read ~/Desktop.
+# launchd doesn't fire WatchPaths for TemporaryItems, hence the polling.
 dest="$HOME/Pictures/Screenshots"
+tmp="$(getconf DARWIN_USER_TEMP_DIR)"
+copied="${tmp}screenshot-copied" # shots already on the clipboard
+
+clip() {
+    /usr/bin/osascript -e "set the clipboard to (read (POSIX file \"$1\") as «class PNGf»)"
+    basename "$1" >> "$copied"
+    echo "$(date +%T) copied $1"
+}
+
+if [ "$1" = wait ]; then
+    start="${tmp}screenshot-start.$$"
+    touch "$start"
+    trap 'rm -f "$start"' EXIT
+    i=0
+    while [ $i -lt 1200 ]; do # 2 minutes, in case the region selection takes a while
+        f=$(find "${tmp}TemporaryItems" "$dest" -maxdepth 2 -name 'Screenshot*.png' \
+                 -newer "$start" 2>/dev/null | head -1)
+        if [ -n "$f" ]; then
+            sleep 0.1 # let macOS finish writing it
+            grep -qxF "$(basename "$f")" "$copied" 2>/dev/null || clip "$f"
+            exit 0
+        fi
+        sleep 0.1
+        i=$((i + 1))
+    done
+    exit 0
+fi
 
 for f in "$dest"/Screenshot*.png; do
     [ -f "$f" ] || continue
-    # only fresh ones, so older macOS-named shots are left alone
-    [ $(( $(date +%s) - $(stat -f %m "$f") )) -lt 60 ] || continue
-    new="$dest/$(date -r "$(stat -f %m "$f")" +%Y-%m-%d_%H-%M-%S).png"
-    [ -e "$new" ] && new="${new%.png}-$$.png"
+    [ $(( $(date +%s) - $(stat -f %m "$f") )) -lt 60 ] || continue # old ones stay
+    name=$(basename "$f")
+    # "Screenshot 2026-10-17 at 17.48.53.png" -> 2026-10-17_17-48-53
+    stamp=$(echo "$name" | sed -nE 's/.*([0-9]{4}-[0-9]{2}-[0-9]{2}) at ([0-9]{1,2})\.([0-9]{2})\.([0-9]{2}).*/\1_\2-\3-\4/p')
+    [ -n "$stamp" ] || stamp=$(date -r "$(stat -f %m "$f")" +%Y-%m-%d_%H-%M-%S)
+    new="$dest/$stamp.png"
+    [ -e "$new" ] && new="$dest/$stamp-$$.png"
     mv "$f" "$new"
-    /usr/bin/osascript -e "set the clipboard to (read (POSIX file \"$new\") as «class PNGf»)"
-    echo "$(date +%T) $f -> $new"
+    echo "$(date +%T) renamed $f -> $new"
+    grep -qxF "$name" "$copied" 2>/dev/null || clip "$new"
 done
