@@ -20,7 +20,8 @@ Command key is remapped to Left Command so it stays a normal Command key.
     superkey check      validate super.conf without writing anything
     superkey edit       open super.conf in $EDITOR, then apply
     superkey install    link `superkey` into ~/.local/bin, build bin/win and
-                        start the agent that applies super.conf on save
+                        start the agents that apply super.conf on save and
+                        rename + copy new screenshots to the clipboard
 
 Known collisions with macOS defaults (avoid or use on purpose):
     Super+Alt+3/4/5  = ctrl+shift+cmd+3/4/5  screenshot to clipboard
@@ -38,7 +39,8 @@ CONFIG = os.path.join(HERE, "karabiner.json")
 WIN = os.path.join(HERE, "bin", "win")
 VICINAE = "/opt/homebrew/bin/vicinae"
 AGENT = "local.superkey"
-AGENT_PLIST = os.path.expanduser(f"~/Library/LaunchAgents/{AGENT}.plist")
+SCREENSHOT_AGENT = "local.screenshot"
+SCREENSHOTS = os.path.expanduser("~/Pictures/Screenshots")
 PREFIX = "Super"  # every generated rule's description starts with this
 
 KEYS = (
@@ -290,30 +292,37 @@ def install():
     subprocess.run(["swiftc", "-O", os.path.join(HERE, "win.swift"), "-o", WIN], check=True)
     print(f"built {WIN}")
 
+    agent(AGENT, ["/usr/bin/python3", os.path.join(HERE, "superkey"), "--notify"], CONF)
+    print(f"started {AGENT}: saving super.conf applies it")
+    agent(SCREENSHOT_AGENT, [os.path.join(HERE, "screenshot")], SCREENSHOTS)
+    print(f"started {SCREENSHOT_AGENT}: new screenshots get renamed and copied to the clipboard")
+    apply()
+
+
+def agent(label, program, watch):
+    """(Re)start a launchd agent that runs program whenever watch changes."""
+    args = "".join(f"\n        <string>{a}</string>" for a in program)
+    log = f"/tmp/{label.split('.')[-1]}.log"
     plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>{AGENT}</string>
+    <key>Label</key><string>{label}</string>
     <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/python3</string>
-        <string>{os.path.join(HERE, "superkey")}</string>
-        <string>--notify</string>
+    <array>{args}
     </array>
-    <key>WatchPaths</key><array><string>{CONF}</string></array>
-    <key>StandardOutPath</key><string>/tmp/superkey.log</string>
-    <key>StandardErrorPath</key><string>/tmp/superkey.log</string>
+    <key>WatchPaths</key><array><string>{watch}</string></array>
+    <key>StandardOutPath</key><string>{log}</string>
+    <key>StandardErrorPath</key><string>{log}</string>
 </dict>
 </plist>
 """
-    with open(AGENT_PLIST, "w") as f:
+    path = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+    with open(path, "w") as f:
         f.write(plist)
     domain = f"gui/{os.getuid()}"
-    subprocess.run(["launchctl", "bootout", f"{domain}/{AGENT}"], capture_output=True)
-    subprocess.run(["launchctl", "bootstrap", domain, AGENT_PLIST], check=True)
-    print(f"started {AGENT}: saving super.conf applies it")
-    apply()
+    subprocess.run(["launchctl", "bootout", f"{domain}/{label}"], capture_output=True)
+    subprocess.run(["launchctl", "bootstrap", domain, path], check=True)
 
 
 def main():

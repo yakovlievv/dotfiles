@@ -1,15 +1,16 @@
 #!/bin/sh
-# screenshot [region|screen]: save to ~/Pictures/Screenshots and copy to the clipboard,
-# like the SUPER+S bind on arch. Called from super.conf.
-# Needs Screen Recording for Karabiner-Console-User-Server.
+# Run by the local.screenshot launchd agent whenever ~/Pictures/Screenshots changes.
+# Super+S / Super+Shift+S send the native ⌘⇧4 / ⌘⇧3 (floating thumbnail and all);
+# once macOS saves the file, this renames it like the arch bind
+# (2026-10-17_16-55-03.png) and copies it to the clipboard.
 dir="$HOME/Pictures/Screenshots"
-mkdir -p "$dir"
-file="$dir/$(date +%Y-%m-%d_%H-%M-%S).png"
 
-case "$1" in
-    screen) /usr/sbin/screencapture -m "$file" ;;
-    *) /usr/sbin/screencapture -i "$file" ;;
-esac
-
-[ -f "$file" ] || exit 0 # cancelled with Esc
-/usr/bin/osascript -e "set the clipboard to (read (POSIX file \"$file\") as «class PNGf»)"
+for f in "$dir"/Screenshot*.png; do
+    [ -f "$f" ] || continue
+    # only fresh ones, so old macOS-named shots in the folder are left alone
+    [ $(( $(date +%s) - $(stat -f %m "$f") )) -lt 60 ] || continue
+    new="$dir/$(date -r "$(stat -f %m "$f")" +%Y-%m-%d_%H-%M-%S).png"
+    [ -e "$new" ] && new="${new%.png}-$$.png"
+    mv "$f" "$new"
+    /usr/bin/osascript -e "set the clipboard to (read (POSIX file \"$new\") as «class PNGf»)"
+done
