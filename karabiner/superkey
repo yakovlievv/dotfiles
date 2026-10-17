@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""superkey: Super-key layer for Karabiner, driven by super.conf.
+
+Left Command is "Super". Holding it sends a lazy Right Command, so any
+Super+key with no bind behaves like Command+key (Super+Tab is the real app
+switcher). Every key in KEYS gets five layers, each encoded as a modifier
+combo that apps almost never use, so any app can record them as shortcuts:
+
+    Super+X         -> ctrl+opt+shift+cmd+X   (hyper, same as the old hyper key)
+    Super+Shift+X   -> ctrl+opt+cmd+X
+    Super+Alt+X     -> ctrl+shift+cmd+X
+    Super+Ctrl+X    -> opt+shift+cmd+X
+    Super+Cmd+X     -> ctrl+opt+shift+X       (Cmd = CapsLock held)
+
+Binds in super.conf override a combo with an action. The physical Right
+Command key is remapped to Left Command so it stays a normal Command key.
+
+    superkey            apply super.conf to karabiner.json
+    superkey list       print every bind
+    superkey check      validate super.conf without writing anything
+    superkey edit       open super.conf in $EDITOR, then apply
+    superkey install    link `superkey` into ~/.local/bin, build bin/win and
+                        start the agent that applies super.conf on save
+
+Known collisions with macOS defaults (avoid or use on purpose):
+    Super+Alt+3/4/5  = ctrl+shift+cmd+3/4/5  screenshot to clipboard
+    Super+Ctrl+V     = opt+shift+cmd+V       paste and match style
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+CONF = os.path.join(HERE, "super.conf")
+CONFIG = os.path.join(HERE, "karabiner.json")
+WIN = os.path.join(HERE, "bin", "win")
+VICINAE = "/opt/homebrew/bin/vicinae"
+AGENT = "local.superkey"
+AGENT_PLIST = os.path.expanduser(f"~/Library/LaunchAgents/{AGENT}.plist")
+PREFIX = "Super"  # every generated rule's description starts with this
+
+KEYS = (
+    list("abcdefghijklmnopqrstuvwxyz")
+    + list("1234567890")
+    + [
+        "hyphen", "equal_sign", "open_bracket", "close_bracket", "backslash",
+        "semicolon", "quote", "comma", "period", "slash",
+        "spacebar", "return_or_enter", "delete_or_backspace",
+        "left_arrow", "right_arrow", "up_arrow", "down_arrow",
+    ]
+)
+
+# names usable in super.conf -> Karabiner key codes (Karabiner names work too)
+KEY_ALIASES = {
+    "return": "return_or_enter", "enter": "return_or_enter",
+    "space": "spacebar", "backspace": "delete_or_backspace",
+    "left": "left_arrow", "right": "right_arrow", "up": "up_arrow", "down": "down_arrow",
+    "minus": "hyphen", "-": "hyphen", "equal": "equal_sign", "=": "equal_sign",
+    "[": "open_bracket", "]": "close_bracket", "\\": "backslash",
+    ";": "semicolon", "'": "quote", ",": "comma", ".": "period", "/": "slash",
+    "tab": "tab", "escape": "escape", "esc": "escape",
+}
+
+# layer -> (extra modifiers held with Super, modifiers sent)
+LAYERS = {
+    "":      ([],               ["left_control", "left_option", "left_shift", "left_command"]),
+    "shift": (["shift"],        ["left_control", "left_option", "left_command"]),
+    "alt":   (["option"],       ["left_control", "left_shift", "left_command"]),
+    "ctrl":  (["control"],      ["left_option", "left_shift", "left_command"]),
+    "cmd":   (["left_command"], ["left_control", "left_option", "left_shift"]),
+}
+LAYER_NAMES = {"shift": "shift", "alt": "alt", "opt": "alt", "option": "alt",
+               "ctrl": "ctrl", "control": "ctrl", "cmd": "cmd", "command": "cmd"}
+
+SEND_MODIFIERS = {"cmd": "left_command", "command": "left_command",
+                  "shift": "left_shift", "ctrl": "left_control", "control": "left_control",
+                  "alt": "left_option", "opt": "left_option", "option": "left_option",
+                  "fn": "fn"}
+
+ACTIONS = ("toggle", "send", "vicinae", "win", "shell", "pass")
+LINE = re.compile(r"^(SUPER(?:\s*\+\s*\S+)*)\s+(\w+)\s*(.*)$", re.IGNORECASE)
+
+
+class ConfError(Exception):
+    pass
+
+
+def key_code(name):
+    name = name.lower()
+    code = KEY_ALIASES.get(name, name)
+    if len(code) == 1 and not code.isalnum():
+        raise ConfError(f"unknown key {name!r}")
+    return code
+
+
+def parse_send(arg):
+    parts = [p.strip() for p in arg.split("+") if p.strip()]
+    if not parts:
+        raise ConfError("send needs a shortcut, e.g. cmd+shift+4")
+    *mods, key = parts
+    try:
+        modifiers = [SEND_MODIFIERS[m.lower()] for m in mods]
+    except KeyError as e:
+        raise ConfError(f"unknown modifier {e.args[0]!r} (use cmd shift ctrl alt fn)")
+    return key_code(key), modifiers
+
+
+def parse(path=CONF):
+    """super.conf -> ({(layer, key): (action, arg)}, set of passthrough combos)."""
+    binds, passthrough, seen = {}, set(), {}
+    with open(path) as f:
+        for n, raw in enumerate(f, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                m = LINE.match(line)
+                if not m:
+                    raise ConfError("expected: SUPER [+ MOD] + KEY  action  argument")
+                combo, action, arg = m.group(1), m.group(2).lower(), m.group(3).strip()
+                tokens = [t.strip() for t in combo.split("+")][1:]
+                if not tokens:
+                    raise ConfError("combo has no key")
+                *mods, key = tokens
+                if len(mods) > 1:
+                    raise ConfError("only one modifier with SUPER (SHIFT, ALT, CTRL or CMD)")
+                layer = LAYER_NAMES.get(mods[0].lower()) if mods else ""
+                if layer is None:
+                    raise ConfError(f"unknown modifier {mods[0]!r} (use SHIFT, ALT, CTRL or CMD)")
+                key = key_code(key)
+                if key not in KEYS:
+                    raise ConfError(f"key {key!r} can't be bound (tab always passes through)")
+                if action not in ACTIONS:
+                    raise ConfError(f"unknown action {action!r} (use {', '.join(ACTIONS)})")
+                if action == "pass":
+                    if arg:
+                        raise ConfError("pass takes no argument")
+                elif not arg:
+                    raise ConfError(f"{action} needs an argument")
+                if action == "send":
+                    arg = parse_send(arg)
+                if action == "win" and arg not in ("almost", "maximize"):
+                    raise ConfError("win takes almost or maximize")
+                if (layer, key) in seen:
+                    raise ConfError(f"combo already bound on line {seen[(layer, key)]}")
+            except ConfError as e:
+                raise ConfError(f"super.conf:{n}: {e}\n    {line}") from None
+            seen[(layer, key)] = n
+            if action == "pass":
+                passthrough.add((layer, key))
+            else:
+                binds[(layer, key)] = (action, arg)
+    return binds, passthrough
+
+
+def from_event(layer, key):
+    extra, _ = LAYERS[layer]
+    return {"key_code": key, "modifiers": {"mandatory": ["right_command"] + extra}}
+
+
+def basic(layer, key, to, conditions=None):
+    m = {"from": from_event(layer, key), "to": to, "type": "basic"}
+    if conditions:
+        m = {"conditions": conditions, **m}
+    return m
+
+
+def manipulators(layer, key, bind):
+    if bind is None:
+        return [basic(layer, key, [{"key_code": key, "modifiers": LAYERS[layer][1]}])]
+    action, arg = bind
+    if action == "send":
+        return [basic(layer, key, [{"key_code": arg[0], "modifiers": arg[1]}])]
+    if action == "shell":
+        return [basic(layer, key, [{"shell_command": arg}])]
+    if action == "vicinae":
+        return [basic(layer, key, [{"shell_command": f"{VICINAE} cmd launch {arg}"}])]
+    if action == "win":
+        return [basic(layer, key, [{"shell_command": f"'{WIN}' {arg}"}])]
+    if action == "toggle":
+        regex = "^" + arg.replace(".", "\\.") + "$"
+        frontmost = [{"bundle_identifiers": [regex], "type": "frontmost_application_if"}]
+        return [
+            basic(layer, key, [{"key_code": "h", "modifiers": ["left_command"]}], frontmost),
+            basic(layer, key, [{"shell_command": f"open -b {arg}"}]),
+        ]
+    raise ValueError(action)
+
+
+def rules(binds, passthrough):
+    out = [{
+        "description": f"{PREFIX} key: Left Command → lazy Right Command (Super), Right Command → Left Command [generated by superkey]",
+        "manipulators": [
+            {"from": {"key_code": "left_command", "modifiers": {"optional": ["any"]}},
+             "to": [{"key_code": "right_command", "lazy": True}],
+             "type": "basic"},
+            {"from": {"key_code": "right_command", "modifiers": {"optional": ["any"]}},
+             "to": [{"key_code": "left_command"}],
+             "type": "basic"},
+        ],
+    }]
+    for layer in LAYERS:
+        ms = []
+        for key in KEYS:
+            if (layer, key) not in passthrough:
+                ms += manipulators(layer, key, binds.get((layer, key)))
+        name = "Super" + (f"+{layer.capitalize()}" if layer else "")
+        out.append({"description": f"{PREFIX} layer: {name}+key [generated by superkey]",
+                    "manipulators": ms})
+    return out
+
+
+def dump(value, indent=0):
+    """JSON in Karabiner's own style: objects expanded, scalar lists inline."""
+    pad = " " * indent
+    if isinstance(value, dict):
+        if not value:
+            return "{}"
+        items = [f'{pad}    {json.dumps(k, ensure_ascii=False)}: {dump(v, indent + 4)}'
+                 for k, v in value.items()]
+        return "{\n" + ",\n".join(items) + f"\n{pad}}}"
+    if isinstance(value, list):
+        if all(not isinstance(v, (dict, list)) for v in value):
+            return "[" + ", ".join(json.dumps(v, ensure_ascii=False) for v in value) + "]"
+        items = [f"{pad}    {dump(v, indent + 4)}" for v in value]
+        return "[\n" + ",\n".join(items) + f"\n{pad}]"
+    return json.dumps(value, ensure_ascii=False)
+
+
+def apply():
+    binds, passthrough = parse()
+    with open(CONFIG) as f:
+        config = json.load(f)
+    profile = next(p for p in config["profiles"] if p.get("selected"))
+    existing = profile["complex_modifications"]["rules"]
+    kept = [r for r in existing if not r["description"].startswith(PREFIX)]
+    profile["complex_modifications"]["rules"] = kept + rules(binds, passthrough)
+    text = dump(config) + "\n"
+    with open(CONFIG) as f:
+        if f.read() == text:
+            print(f"superkey: {len(binds)} binds, nothing changed")
+            return
+    with open(CONFIG, "w") as f:
+        f.write(text)
+    print(f"superkey: applied {len(binds)} binds")
+
+
+def key_name(code):
+    """Karabiner key code -> the short name super.conf uses."""
+    return next((k for k, v in KEY_ALIASES.items() if v == code and k.isalpha()), code)
+
+
+def describe(layer, key, bind):
+    combo = "SUPER + " + (layer.upper() + " + " if layer else "") + key_name(key).upper()
+    if bind is None:
+        return f"{combo:<22} pass"
+    action, arg = bind
+    if action == "send":
+        names = {}
+        for short, code in SEND_MODIFIERS.items():
+            names.setdefault(code, short)
+        arg = "+".join([names[m] for m in arg[1]] + [key_name(arg[0])])
+    return f"{combo:<22} {action:<9} {arg}"
+
+
+def list_binds():
+    binds, passthrough = parse()
+    order = {layer: i for i, layer in enumerate(LAYERS)}
+    combos = sorted(set(binds) | passthrough, key=lambda c: (order[c[0]], KEYS.index(c[1])))
+    for layer, key in combos:
+        print(describe(layer, key, binds.get((layer, key))))
+
+
+def notify(message):
+    script = f"display notification {json.dumps(message)} with title \"superkey\""
+    subprocess.run(["osascript", "-e", script], check=False)
+
+
+def install():
+    link = os.path.expanduser("~/.local/bin/superkey")
+    os.makedirs(os.path.dirname(link), exist_ok=True)
+    if os.path.islink(link) or os.path.exists(link):
+        os.remove(link)
+    os.symlink(os.path.join(HERE, "superkey"), link)
+    print(f"linked {link}")
+
+    os.makedirs(os.path.dirname(WIN), exist_ok=True)
+    subprocess.run(["swiftc", "-O", os.path.join(HERE, "win.swift"), "-o", WIN], check=True)
+    print(f"built {WIN}")
+
+    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>{AGENT}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>{os.path.join(HERE, "superkey")}</string>
+        <string>--notify</string>
+    </array>
+    <key>WatchPaths</key><array><string>{CONF}</string></array>
+    <key>StandardOutPath</key><string>/tmp/superkey.log</string>
+    <key>StandardErrorPath</key><string>/tmp/superkey.log</string>
+</dict>
+</plist>
+"""
+    with open(AGENT_PLIST, "w") as f:
+        f.write(plist)
+    domain = f"gui/{os.getuid()}"
+    subprocess.run(["launchctl", "bootout", f"{domain}/{AGENT}"], capture_output=True)
+    subprocess.run(["launchctl", "bootstrap", domain, AGENT_PLIST], check=True)
+    print(f"started {AGENT}: saving super.conf applies it")
+    apply()
+
+
+def main():
+    args = sys.argv[1:]
+    notify_errors = "--notify" in args
+    args = [a for a in args if a != "--notify"]
+    cmd = args[0] if args else "apply"
+    try:
+        if cmd == "apply":
+            apply()
+        elif cmd == "list":
+            list_binds()
+        elif cmd == "check":
+            binds, _ = parse()
+            print(f"super.conf ok, {len(binds)} binds")
+        elif cmd == "edit":
+            editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "nvim"
+            subprocess.run([*editor.split(), CONF])
+            apply()
+        elif cmd == "install":
+            install()
+        else:
+            print(__doc__)
+            sys.exit(0 if cmd in ("-h", "--help", "help") else 2)
+    except ConfError as e:
+        print(e, file=sys.stderr)
+        if notify_errors:
+            notify(str(e).splitlines()[0] + " (not applied)")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
