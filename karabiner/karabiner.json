@@ -705,8 +705,7 @@
                                 },
                                 "to": [
                                     {
-                                        "key_code": "4",
-                                        "modifiers": ["left_command", "left_shift"]
+                                        "shell_command": "/Users/yako/dotfiles/karabiner/screenshot region"
                                     }
                                 ],
                                 "type": "basic"
@@ -1570,8 +1569,7 @@
                                 },
                                 "to": [
                                     {
-                                        "key_code": "3",
-                                        "modifiers": ["left_command", "left_shift"]
+                                        "shell_command": "/Users/yako/dotfiles/karabiner/screenshot screen"
                                     }
                                 ],
                                 "type": "basic"
