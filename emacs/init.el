@@ -15,7 +15,7 @@
        :ui
        tabs
        doom              ; what makes DOOM look the way it does
-       doom-dashboard    ; a nifty splash screen for Emacs
+       dashboard         ; a nifty splash screen for Emacs
        doom-quit
        (emoji +unicode)
        minimap

@@ -21,7 +21,7 @@ tracker). Not a coding setup.
 ## Doom modules (`init.el`)
 
 - **completion** company, vertico +icons
-- **ui** tabs, doom, doom-dashboard, doom-quit, emoji +unicode, minimap, ligatures, hl-todo, modeline, nav-flash, ophints, popup, vc-gutter +pretty, treemacs, vi-tilde-fringe, window-select, workspaces, zen
+- **ui** tabs, doom, dashboard, doom-quit, emoji +unicode, minimap, ligatures, hl-todo, modeline, nav-flash, ophints, popup, vc-gutter +pretty, treemacs, vi-tilde-fringe, window-select, workspaces, zen
 - **editor** format +onsave, evil +everywhere, file-templates, snippets, fold, whitespace, word-wrap, parinfer
 - **emacs** dired +icons, electric, ibuffer, undo, vc
 - **checkers** syntax, spell +hunspell, grammar
