@@ -29,7 +29,17 @@ guard mode == "almost" || mode == "maximize" else { fail("usage: win almost|maxi
 guard AXIsProcessTrusted() else { fail("not allowed Accessibility access") }
 // the system-wide AXFocusedApplication is unreliable from background processes
 guard let front = NSWorkspace.shared.frontmostApplication else { fail("no frontmost app") }
-let app = AXUIElementCreateApplication(front.processIdentifier)
+var pid = front.processIdentifier
+// Apps started through a launcher script (Emacs.app execs Emacs-arm64-11) report
+// pid -1 here; fall back to the owner of the frontmost on-screen window.
+if pid <= 0 {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                             kCGNullWindowID) as? [[String: Any]] ?? []
+    let top = windows.first { ($0[kCGWindowLayer as String] as? Int) == 0 }
+    guard let owner = top?[kCGWindowOwnerPID as String] as? pid_t else { fail("no frontmost window") }
+    pid = owner
+}
+let app = AXUIElementCreateApplication(pid)
 guard let winRef = attr(app, kAXFocusedWindowAttribute) ?? attr(app, kAXMainWindowAttribute) else {
     fail("no focused window")
 }
