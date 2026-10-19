@@ -14,7 +14,8 @@ _cache_eval() {
 
 _cache_eval starship starship init zsh
 _cache_eval zoxide zoxide init zsh
-_cache_eval fnm fnm env --use-on-cd --version-file-strategy=recursive --shell zsh
+# fnm can't be cached: its output holds a per-shell FNM_MULTISHELL_PATH, so a cache makes every shell share one Node version
+(($+commands[fnm])) && eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell zsh)"
 
 # ┌─ ssh-agent (macOS: handled by keychain — add UseKeychain+AddKeysToAgent to ~/.ssh/config)
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
