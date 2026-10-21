@@ -58,7 +58,7 @@ brew "syncthing"
 brew "cowsay"
 
 # Casks
-cask "ayugram"
+# cask "ayugram"  # disabled 2026-09-01 (fails Gatekeeper); install AyuGram.dmg from github.com/AyuGram/AyuGramDesktop releases
 cask "bitwarden"
 cask "canva"
 cask "chatgpt"
