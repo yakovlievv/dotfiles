@@ -16,6 +16,8 @@
 (package! dirvish)
 (package! guess-language)
 (package! org-gcal)
+;; the today panel's timeline (+endgame-today.el, SPC o t)
+(package! org-timeblock :pin "e61e5734b49f933ed178029f804a0499f3308e1e")
 ;; To install a package:
 ;;
 ;;   1. Declare them here in a `package!' statement,
