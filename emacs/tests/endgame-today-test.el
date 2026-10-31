@@ -254,4 +254,68 @@
               (should (equal (tick) '(nil "APPT"))))
           (kill-buffer))))))
 
+(ert-deftest +endgame-today-dashboard-watch-out-at-the-bottom ()
+  (+endgame-today-test--with-vault
+    (with-current-buffer (+endgame-today-dashboard)
+      (unwind-protect
+          (progn
+            (+endgame-today-refresh)
+            (let ((text (buffer-string)))
+              (should (< (string-match "AREAS" text) (string-match "WATCH OUT" text)))
+              (should (< (string-match "WATCH OUT" text) (string-match "RET tick" text)))))
+        (kill-buffer)))))
+
+(ert-deftest +endgame-today-note-shows-one-day-and-walks-the-days ()
+  (+endgame-today-test--with-vault
+    (let* ((win (selected-window))
+           (note (+endgame-today--note-show sat win)))
+      (unwind-protect
+          (with-current-buffer note
+            ;; only Saturday's heading, from its first line
+            (should (buffer-narrowed-p))
+            (should (string-prefix-p "* Saturday, 2026-10-31" (buffer-string)))
+            (should-not (string-match-p "Friday" (buffer-string)))
+            (should +endgame-today-note-mode)
+            (should (string-match-p "◂ C-k Fri 30 Oct" +endgame-today-note--header))
+            (should (string-match-p "Saturday 31 Oct · today · W44 day 6/7 · note 2/2"
+                                    +endgame-today-note--header))
+            (should (string-match-p "none ▸" +endgame-today-note--header))
+            ;; C-k: Friday, Saturday's indirect buffer is dropped
+            (+endgame-today-note/previous)
+            (should-not (buffer-live-p note))
+            (with-current-buffer (window-buffer win)
+              (should (string-prefix-p "* Friday, 2026-10-30" (buffer-string)))
+              (should (string-match-p "1d ago" +endgame-today-note--header))
+              (should (string-match-p "Sat 31 Oct C-j ▸" +endgame-today-note--header))
+              (should-error (+endgame-today-note/previous) :type 'user-error)
+              (+endgame-today-note/next))
+            (with-current-buffer (window-buffer win)
+              (should (string-prefix-p "* Saturday" (buffer-string)))))
+        (with-current-buffer (window-buffer win)
+          (when +endgame-today-note-mode (kill-buffer)))))))
+
+(ert-deftest +endgame-today-note-without-a-day-is-a-placeholder ()
+  (+endgame-today-test--with-vault
+    (let ((buf (+endgame-today--note-buffer (1+ sat))))
+      (unwind-protect
+          (with-current-buffer buf
+            (should-not (buffer-base-buffer))
+            (should (string-match-p "No daily note for 2026-11-01" (buffer-string)))
+            (should (string-match-p "◂ C-k Sat 31 Oct" +endgame-today-note--header)))
+        (kill-buffer buf)))))
+
+(ert-deftest +endgame-today-timeline-svg-in-theme-colours ()
+  (should (equal (+endgame-today--blend "#ffffff" "#000000" 0.5) "#808080"))
+  (should-not (+endgame-today--blend "unspecified-bg" "#000000" 0.5))
+  (let ((+endgame-today--svg-style
+         (list '(((:stroke . "#5b0103") . "#f38ba8") ((:fill . "#ffffff") . "#cdd6f4"))
+               11 "Iosevka")))
+    (should (equal (+endgame-today--svg-rect-a '(svg 1 2 3 4 :stroke "#5B0103" :fill "#000"))
+                   '(svg 1 2 3 4 :stroke "#f38ba8" :fill "#000")))
+    (should (equal (+endgame-today--svg-text-a '(svg "hi" :fill "#ffffff" :font-size 14))
+                   '(svg "hi" :fill "#cdd6f4" :font-size 11 :font-family "Iosevka"))))
+  (let ((+endgame-today--svg-style nil))
+    (should (equal (+endgame-today--svg-text-a '(svg "hi" :fill "#ffffff"))
+                   '(svg "hi" :fill "#ffffff")))))
+
 ;;; endgame-today-test.el ends here
