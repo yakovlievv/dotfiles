@@ -276,6 +276,8 @@
             (should (string-prefix-p "* Saturday, 2026-10-31" (buffer-string)))
             (should-not (string-match-p "Friday" (buffer-string)))
             (should +endgame-today-note-mode)
+            (should (local-variable-p 'tab-line-format))
+            (should-not tab-line-format)
             (should (string-match-p "‹ H Fri 30 Oct" +endgame-today-note--header))
             (should (string-match-p "Saturday 31 Oct · today · W44 day 6/7 · note 2/2"
                                     +endgame-today-note--header))
