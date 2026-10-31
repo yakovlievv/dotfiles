@@ -70,7 +70,7 @@ at its new size."
   :type 'integer)
 
 (defcustom +endgame-today-note-search-days 31
-  "How many days C-j / C-k in the panel's note look for the next daily note."
+  "How many days H / L in the panel's note look for the next daily note."
   :type 'integer)
 
 (defcustom +endgame-today-save-after-change t
@@ -1516,6 +1516,7 @@ columns the lines are laid out in."
 ;;;; The panel: timeline, dashboard, daily note
 
 (defvar org-timeblock-span)
+(defvar org-timeblock-column)
 (defvar org-timeblock-buffer)
 (defvar org-timeblock-list-buffer)
 (defvar org-timeblock-daterange)
@@ -1527,7 +1528,7 @@ columns the lines are laid out in."
 (declare-function +workspace-switch "workspaces")
 (declare-function +habits-heatmap--colours "config")
 
-;;;;; The daily note: one day, C-j / C-k to walk the days
+;;;;; The daily note: one day, H / L to walk the days
 
 (defvar-local +endgame-today-note--day nil
   "Absolute day the note buffer shows.")
@@ -1544,12 +1545,16 @@ columns the lines are laid out in."
   "One day's heading of a weekly journal note, in the today panel.
 \\<+endgame-today-note-mode-map>The header line shows the day, where it
 sits in its week, and the days before and after;
-\\[+endgame-today-note/next] and \\[+endgame-today-note/previous] (C-j and
-C-k in normal state) move to them."
+\\[+endgame-today-note/next] and \\[+endgame-today-note/previous] (L and H
+in normal state, like day later/earlier in the timeline) move to them,
+T goes back to today."
   :lighter nil
   (if +endgame-today-note-mode
       (setq-local header-line-format '(:eval +endgame-today-note--header))
-    (kill-local-variable 'header-line-format)))
+    (kill-local-variable 'header-line-format))
+  ;; evil only sees a minor mode's state keys once its keymaps are
+  ;; recomputed; turned on outside a command, that doesn't happen by itself
+  (when (fboundp 'evil-normalize-keymaps) (evil-normalize-keymaps)))
 
 (defun +endgame-today--note-name (abs)
   "Name of the indirect buffer narrowed to day ABS."
@@ -1600,10 +1605,10 @@ Looks `+endgame-today-note-search-days' days away at most."
                          (if pos (format " · note %d/%d" (1+ pos) (length days)) ""))
                         'face 'shadow))))
     (concat " "
-            (propertize (if prev (format "◂ C-k %s" (funcall short prev)) "◂ none")
+            (propertize (if prev (format "‹ H %s" (funcall short prev)) "‹ none")
                         'face (if prev '+endgame-today-time 'shadow))
             "   " here "   "
-            (propertize (if next (format "%s C-j ▸" (funcall short next)) "none ▸")
+            (propertize (if next (format "%s L ›" (funcall short next)) "none ›")
                         'face (if next '+endgame-today-time 'shadow)))))
 
 (defun +endgame-today--note-setup (abs)
@@ -1850,8 +1855,12 @@ scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
   "Show day ABS's timeline in WINDOW: org-timeblock, or a day agenda without it."
   (cond
    ((+endgame-today--timeline-p)
-    (let ((day (decode-time (+endgame-today--time abs)))
-          (org-timeblock-span 1))
+    (let ((day (decode-time (+endgame-today--time abs))))
+      ;; for good, not let-bound: its commands read the span later, and with
+      ;; the default 3 over a one-day range, H moved the selection to a
+      ;; column 2 that isn't drawn, after which j / k found nothing
+      (setq org-timeblock-span 1
+            org-timeblock-column 1)
       (set-window-buffer window (get-buffer-create org-timeblock-buffer))
       (with-selected-window window
         (unless (derived-mode-p 'org-timeblock-mode) (org-timeblock-mode))
@@ -1959,9 +1968,11 @@ bring the note back to today."
         :n "gr"  #'+endgame-today-refresh
         :n "q"   #'quit-window)
   (map! :map +endgame-today-note-mode-map
-        :n "C-j" #'+endgame-today-note/next
-        :n "C-k" #'+endgame-today-note/previous
-        :n "C-t" #'+endgame-today-note/today)
+        ;; C-j / C-k are Doom's heading jumps in org buffers; H / L match
+        ;; day earlier / later in the timeline
+        :n "L" #'+endgame-today-note/next
+        :n "H" #'+endgame-today-note/previous
+        :n "T" #'+endgame-today-note/today)
   ;; org-timeblock's own keys are single letters that evil's normal state
   ;; shadows (j, k, i, o, d, s, v…), so nothing worked there: the same
   ;; commands on vim-shaped keys
