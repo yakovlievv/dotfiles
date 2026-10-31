@@ -36,6 +36,12 @@
 (require 'org-element)
 (require 'org-id)
 
+(defvar text-scale-mode-step)
+(defvar text-scale-mode-amount)
+(defvar +endgame-today-note-mode)
+(defvar +endgame-today-note--day)
+(defvar +endgame-today-note--header)
+
 (defgroup +endgame-today nil
   "The today list and the today panel."
   :group 'org)
@@ -55,6 +61,17 @@
 (defcustom +endgame-today-note-height 0.45
   "Share of the right column's height the daily note gets."
   :type 'number)
+
+(defcustom +endgame-today-text-scale -1
+  "Text zoom of the panel's three windows, in `text-scale-mode' steps.
+Negative is smaller, so more fits. Each window can still be zoomed on
+its own with C-x C-- / C-x C-= / C-x C-0; the timeline redraws itself
+at its new size."
+  :type 'integer)
+
+(defcustom +endgame-today-note-search-days 31
+  "How many days C-j / C-k in the panel's note look for the next daily note."
+  :type 'integer)
 
 (defcustom +endgame-today-save-after-change t
   "Non-nil means a state change from the dashboard saves the heading's file.
@@ -937,7 +954,13 @@ refresh, and only a clock-out changes them; gr reads them now."
 A display spec rather than counted spaces: icons and dashes from a
 fallback font are wider than one column, which shifted counted text off
 the window."
-  (propertize " " 'display `(space :align-to (- right ,(1+ columns)))))
+  (propertize " " 'display `(space :align-to (- right ,(* (1+ columns) (+endgame-today--zoom))))))
+
+(defun +endgame-today--zoom ()
+  "How much the current buffer's text is zoomed, as a factor (1.0 = not)."
+  (if (bound-and-true-p text-scale-mode)
+      (expt text-scale-mode-step text-scale-mode-amount)
+    1.0))
 
 (defun +endgame-today--insert-item (item width)
   "Insert ITEM as one line of a WIDTH-column window."
@@ -1135,8 +1158,9 @@ Both as `+endgame-today-now' returns them."
   "Fill the dashboard (current buffer) with day ABS."
   (let* ((inhibit-read-only t)
          (win (get-buffer-window (current-buffer) t))
-         ;; one column short of the window, or the last one wraps
-         (width (1- (if win (window-max-chars-per-line win) 80)))
+         ;; one column short of the window, or the last one wraps; `remap'
+         ;; counts columns of the zoomed text (`+endgame-today-text-scale')
+         (width (1- (if win (window-body-width win 'remap) 80)))
          (date (+endgame-today--date abs))
          (data (+endgame-today-data date))
          (items (alist-get 'items data))
@@ -1171,7 +1195,6 @@ Both as `+endgame-today-now' returns them."
     (if items
         (dolist (item items) (+endgame-today--insert-item item width))
       (insert (propertize "   nothing planned. planning = scheduling (C-c C-s .)\n" 'face 'shadow)))
-    (+endgame-today--insert-watch-out (alist-get 'watch-out data))
     (let ((habits (+endgame-today--habit-week)))
       (when habits
         (insert "\n")
@@ -1184,6 +1207,7 @@ Both as `+endgame-today-now' returns them."
                                              (cons (ignore-errors (+endgame-today-area-time date items))
                                                    (ignore-errors (+endgame-today-area-week abs)))))))
       (+endgame-today--insert-areas day week))
+    (+endgame-today--insert-watch-out (alist-get 'watch-out data))
     (insert "\n" (propertize "RET tick · TAB visit · t state · s schedule · S unschedule · d deadline · I/O clock · gr refresh"
                              'face 'shadow))))
 
@@ -1214,8 +1238,15 @@ Interactively, also read the per-area numbers again."
         (+endgame-today-refresh)
         (+endgame-today--redraw-timeline)
         (when day-changed
-          (let ((win (get-buffer-window (+endgame-today--note-name (1- (org-today))) t)))
-            (when win (set-window-buffer win (+endgame-today--note-buffer (org-today))))))))))
+          ;; a note left on yesterday follows the day; any other day stays,
+          ;; with its header ("today", "2d ago") worked out again
+          (dolist (win (window-list nil 'no-mini))
+            (with-current-buffer (window-buffer win)
+              (when +endgame-today-note-mode
+                (if (eql +endgame-today-note--day (1- (org-today)))
+                    (+endgame-today--note-show (org-today) win)
+                  (setq +endgame-today-note--header
+                        (+endgame-today--note-header +endgame-today-note--day)))))))))))
 
 (defun +endgame-today--idle-refresh ()
   "Run a refresh a hook asked for."
@@ -1458,6 +1489,7 @@ On a line that isn't an item, run what the line leads to."
               truncate-lines t
               cursor-type 'bar)
   (setq-local display-line-numbers nil)
+  (text-scale-set +endgame-today-text-scale)
   (hl-line-mode 1)
   (add-hook 'window-buffer-change-functions #'+endgame-today--shown-h nil t)
   (add-hook 'kill-buffer-hook #'+endgame-today--stop-timer nil t)
@@ -1467,10 +1499,10 @@ On a line that isn't an item, run what the line leads to."
                        #'+endgame-today--tick))))
 
 (defun +endgame-today--no-line-numbers-a (&rest _)
-  "Before `display-line-numbers--turn-on': not in the dashboard.
+  "Before `display-line-numbers--turn-on': not in the dashboard or timeline.
 The global mode turns them on after the mode hook, and they'd eat the
 columns the lines are laid out in."
-  (derived-mode-p '+endgame-today-mode))
+  (derived-mode-p '+endgame-today-mode 'org-timeblock-mode 'org-timeblock-list-mode))
 
 (advice-add 'display-line-numbers--turn-on :before-until #'+endgame-today--no-line-numbers-a)
 
@@ -1487,30 +1519,121 @@ columns the lines are laid out in."
 (defvar org-timeblock-buffer)
 (defvar org-timeblock-list-buffer)
 (defvar org-timeblock-daterange)
+(defvar org-timeblock-mode-map)
 (declare-function org-timeblock-mode "org-timeblock")
 (declare-function org-timeblock-redraw-buffers "org-timeblock")
+(declare-function org-timeblock-redraw-timeblocks "org-timeblock")
 (declare-function +workspace-exists-p "workspaces")
 (declare-function +workspace-switch "workspaces")
 (declare-function +habits-heatmap--colours "config")
+
+;;;;; The daily note: one day, C-j / C-k to walk the days
+
+(defvar-local +endgame-today-note--day nil
+  "Absolute day the note buffer shows.")
+
+(defvar-local +endgame-today-note--header nil
+  "The note buffer's header line, worked out when the buffer is made.")
+
+(defvar-keymap +endgame-today-note-mode-map
+  :doc "Keys of the panel's daily note. Evil normal state gets them in Keys below."
+  "C-c C-j" #'+endgame-today-note/next
+  "C-c C-k" #'+endgame-today-note/previous)
+
+(define-minor-mode +endgame-today-note-mode
+  "One day's heading of a weekly journal note, in the today panel.
+\\<+endgame-today-note-mode-map>The header line shows the day, where it
+sits in its week, and the days before and after;
+\\[+endgame-today-note/next] and \\[+endgame-today-note/previous] (C-j and
+C-k in normal state) move to them."
+  :lighter nil
+  (if +endgame-today-note-mode
+      (setq-local header-line-format '(:eval +endgame-today-note--header))
+    (kill-local-variable 'header-line-format)))
 
 (defun +endgame-today--note-name (abs)
   "Name of the indirect buffer narrowed to day ABS."
   (format "today: %s" (+endgame-today--date abs)))
 
+(defun +endgame-today--note-day-p (abs)
+  "Non-nil when day ABS has a heading in its weekly note."
+  (when-let* ((m (+endgame-today--day-marker abs)))
+    (set-marker m nil)
+    t))
+
+(defun +endgame-today--note-neighbor (abs dir)
+  "The nearest day before (DIR -1) or after (DIR 1) ABS that has a note, or nil.
+Looks `+endgame-today-note-search-days' days away at most."
+  (cl-loop for i from 1 to +endgame-today-note-search-days
+           for day = (+ abs (* dir i))
+           when (+endgame-today--note-day-p day) return day))
+
+(defun +endgame-today--note-week-days (abs)
+  "The days that have a heading in day ABS's weekly note, in file order."
+  (let ((file (+endgame-today--day-file abs)))
+    (when (file-exists-p file)
+      (with-current-buffer (+endgame-today--buffer file)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (let (days)
+           (while (re-search-forward "^\\* .*?\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" nil t)
+             (push (+endgame-today--abs (match-string 1)) days))
+           (nreverse days)))))))
+
+(defun +endgame-today--note-header (abs)
+  "Header line of the note showing day ABS: previous day, the day, next day."
+  (let* ((prev (+endgame-today--note-neighbor abs -1))
+         (next (+endgame-today--note-neighbor abs 1))
+         (days (+endgame-today--note-week-days abs))
+         (pos (cl-position abs days))
+         (dow (calendar-day-of-week (calendar-gregorian-from-absolute abs)))
+         (week (format-time-string "W%V" (+endgame-today--time abs)))
+         (short (lambda (d) (format-time-string "%a %d %b" (+endgame-today--time d))))
+         (here (concat (propertize (format-time-string "%A %d %b" (+endgame-today--time abs))
+                                   'face '+endgame-today-header)
+                       (propertize
+                        (concat
+                         (cond ((= abs (org-today)) " · today")
+                               ((< abs (org-today)) (format " · %dd ago" (- (org-today) abs)))
+                               (t (format " · in %dd" (- abs (org-today)))))
+                         (format " · %s day %d/7" week (1+ (mod (+ dow 6) 7)))
+                         (if pos (format " · note %d/%d" (1+ pos) (length days)) ""))
+                        'face 'shadow))))
+    (concat " "
+            (propertize (if prev (format "◂ C-k %s" (funcall short prev)) "◂ none")
+                        'face (if prev '+endgame-today-time 'shadow))
+            "   " here "   "
+            (propertize (if next (format "%s C-j ▸" (funcall short next)) "none ▸")
+                        'face (if next '+endgame-today-time 'shadow)))))
+
+(defun +endgame-today--note-setup (abs)
+  "Make the current buffer the panel's note for day ABS."
+  (setq +endgame-today-note--day abs
+        +endgame-today-note--header (+endgame-today--note-header abs))
+  (+endgame-today-note-mode 1)
+  (when (fboundp 'text-scale-set) (text-scale-set +endgame-today-text-scale)))
+
 (defun +endgame-today--note-buffer (abs)
   "An indirect buffer of the weekly journal file narrowed to day ABS.
 Indirect, so the file's own buffer stays whole for other windows; it
-edits and saves the real file. Without the day, the whole file."
+edits and saves the real file. Without the day's heading, a placeholder
+that still walks the days, never the whole week."
   (let ((name (+endgame-today--note-name abs)))
-    (or (get-buffer name)
+    (or (let ((buf (get-buffer name)))
+          ;; a placeholder made before the day existed is stale once it does
+          (if (and buf (not (buffer-base-buffer buf)) (+endgame-today--note-day-p abs))
+              (progn (kill-buffer buf) nil)
+            buf))
         (let ((day (+endgame-today--day-marker abs)))
           (if (not day)
-              (let ((file (+endgame-today--day-file abs)))
-                (if (file-exists-p file) (find-file-noselect file)
-                  (with-current-buffer (get-buffer-create name)
-                    (insert "No daily note for this day yet.\n")
-                    (special-mode)
-                    (current-buffer))))
+              (with-current-buffer (get-buffer-create name)
+                (let ((inhibit-read-only t))
+                  (erase-buffer)
+                  (insert (propertize (format "No daily note for %s.\n" (+endgame-today--date abs))
+                                      'face 'shadow)))
+                (special-mode)
+                (+endgame-today--note-setup abs)
+                (current-buffer))
             (let ((base (marker-buffer day)))
               (with-current-buffer base
                 (when (fboundp 'my/org-full-setup-maybe) (my/org-full-setup-maybe)))
@@ -1520,17 +1643,203 @@ edits and saves the real file. Without the day, the whole file."
                 (org-narrow-to-subtree)
                 (org-fold-show-subtree)
                 (org-fold-hide-drawer-all)
+                (goto-char (point-min))
                 (set-marker day nil)
+                (+endgame-today--note-setup abs)
                 (current-buffer))))))))
 
+(defun +endgame-today--note-show (abs window)
+  "Show day ABS's note in WINDOW, dropping the note it showed before.
+The dropped one is an indirect buffer or a placeholder: killing it loses
+nothing, the edits are in the file's own buffer."
+  (let ((old (window-buffer window))
+        (new (+endgame-today--note-buffer abs)))
+    (unless (eq old new)
+      (set-window-buffer window new)
+      (set-window-start window (with-current-buffer new (point-min)))
+      (when (and (buffer-local-value '+endgame-today-note-mode old)
+                 (not (get-buffer-window old t)))
+        (kill-buffer old)))
+    new))
+
+(defun +endgame-today--note-step (dir n)
+  "Move the selected note window N daily notes in direction DIR (1 or -1)."
+  (let ((abs (or +endgame-today-note--day (user-error "Not a today-panel note"))))
+    (dotimes (_ n)
+      (setq abs (or (+endgame-today--note-neighbor abs dir)
+                    (user-error "No %s daily note in %d days"
+                                (if (> dir 0) "later" "earlier")
+                                +endgame-today-note-search-days))))
+    (+endgame-today--note-show abs (selected-window))))
+
+(defun +endgame-today-note/next (&optional n)
+  "Show the next day that has a daily note (N days with a prefix)."
+  (interactive "p")
+  (+endgame-today--note-step 1 (or n 1)))
+
+(defun +endgame-today-note/previous (&optional n)
+  "Show the previous day that has a daily note (N days with a prefix)."
+  (interactive "p")
+  (+endgame-today--note-step -1 (or n 1)))
+
+(defun +endgame-today-note/today ()
+  "Back to today's note."
+  (interactive)
+  (+endgame-today--note-show (org-today) (selected-window)))
+
+(defun +endgame-today--note-window ()
+  "The window of this frame showing a panel note, or nil."
+  (seq-find (lambda (w) (buffer-local-value '+endgame-today-note-mode (window-buffer w)))
+            (window-list)))
+
+;;;;; The timeline: org-timeblock, in the theme's colours and zoomable
+
 (defun +endgame-today--timeblock-files-a (fn)
-  "Around `org-timeblock-files': the panel's own short list while it's open.
+  "Around `org-timeblock-files': the panel's own short list for its day.
 org-timeblock opens every file it reads with its full setup; the agenda
-files would be ~150 of them."
-  (or +endgame-today--timeline-files (funcall fn)))
+files would be ~150 of them. Another day (H / L) needs them all."
+  (if (and +endgame-today--timeline-files
+           (bound-and-true-p org-timeblock-daterange)
+           (eql (+endgame-today--decoded-abs (car org-timeblock-daterange))
+                (when-let* ((buf (get-buffer +endgame-today-dashboard-buffer)))
+                  (buffer-local-value '+endgame-today--shown buf))))
+      +endgame-today--timeline-files
+    (funcall fn)))
+
+(defun +endgame-today--decoded-abs (time)
+  "Absolute day of the decoded TIME."
+  (calendar-absolute-from-gregorian
+   (list (decoded-time-month time) (decoded-time-day time) (decoded-time-year time))))
+
+(defun +endgame-today--rgb (color)
+  "COLOR as (R G B) in 0..1, or nil. Hex is read directly, it works in batch too."
+  (cond ((not (stringp color)) nil)
+        ((string-match "\\`#\\([[:xdigit:]]\\{2\\}\\)\\([[:xdigit:]]\\{2\\}\\)\\([[:xdigit:]]\\{2\\}\\)\\'" color)
+         (mapcar (lambda (i) (/ (string-to-number (match-string i color) 16) 255.0)) '(1 2 3)))
+        ((color-defined-p color) (color-name-to-rgb color))))
+
+(defun +endgame-today--blend (color base alpha)
+  "COLOR laid over BASE at ALPHA (0..1), as #rrggbb; nil if either isn't a colour."
+  (let ((a (+endgame-today--rgb color)) (b (+endgame-today--rgb base)))
+    (when (and a b)
+      (apply #'format "#%02x%02x%02x"
+             (cl-mapcar (lambda (x y) (round (* 255 (+ (* alpha x) (* (- 1 alpha) y))))) a b)))))
+
+(defun +endgame-today--fg (face &optional fallback)
+  "FACE's foreground as a colour string, or FALLBACK."
+  (let ((c (and (facep face) (face-attribute face :foreground nil 'default))))
+    (if (+endgame-today--rgb c) c fallback)))
+
+(defun +endgame-today--timeline-palette ()
+  "The theme's colours for the timeline, as an alist; nil without a theme bg."
+  (let ((bg (face-attribute 'default :background nil t))
+        (fg (face-attribute 'default :foreground nil t)))
+    (when (and (+endgame-today--rgb bg) (+endgame-today--rgb fg))
+      (require 'ansi-color nil t)
+      `((bg . ,bg) (fg . ,fg)
+        (dim . ,(+endgame-today--fg 'line-number (+endgame-today--blend fg bg 0.3)))
+        ,@(mapcar (lambda (c) (cons c (+endgame-today--fg (intern (format "ansi-color-%s" c))
+                                                            (+endgame-today--fg 'error))))
+                  '(red green yellow blue magenta cyan))))))
+
+(defun +endgame-today-timeline-faces ()
+  "Give org-timeblock's faces the current theme's colours.
+Blocks are the theme's red, green, … as text over a dim tint of it."
+  (when-let* ((pal (+endgame-today--timeline-palette)))
+    (let ((bg (alist-get 'bg pal)))
+      (dolist (c '(red green yellow blue magenta cyan))
+        (let ((col (alist-get c pal)))
+          (face-spec-set (intern (format "org-timeblock-%s" c))
+                         `((t :background ,(+endgame-today--blend col bg 0.28) :foreground ,col
+                              :extend t))
+                         'face-defface-spec)))
+      (face-spec-set 'org-timeblock-select
+                     `((t :background ,(+endgame-today--blend (alist-get 'blue pal) bg 0.4)))
+                     'face-defface-spec)
+      (face-spec-set 'org-timeblock-mark
+                     `((t :background ,(+endgame-today--blend (alist-get 'magenta pal) bg 0.5)))
+                     'face-defface-spec)
+      (face-spec-set 'org-timeblock-hours-line
+                     `((t :background ,(alist-get 'dim pal))) 'face-defface-spec)
+      (face-spec-set 'org-timeblock-current-time-indicator
+                     `((t :background ,(alist-get 'red pal))) 'face-defface-spec))))
+
+(defvar +endgame-today--svg-style nil
+  "While the timeline draws: (COLOURS SIZE FAMILY) for `+endgame-today--svg-a'.
+COLOURS maps org-timeblock's hard-coded ((ATTR . COLOUR) . THEME-COLOUR).")
+
+(defun +endgame-today--svg-fix (args n)
+  "ARGS of an svg call whose first N are positional, restyled by the theme."
+  (pcase-let ((`(,colours ,size ,family) +endgame-today--svg-style))
+    (let ((head (seq-take args n))
+          (plist (copy-sequence (nthcdr n args))))
+      (dolist (key '(:fill :stroke))
+        (when-let* ((v (plist-get plist key))
+                    (new (and (stringp v)
+                              (alist-get (cons key (downcase v)) colours nil nil #'equal))))
+          (setq plist (plist-put plist key new))))
+      (when (and (= n 2) size)          ; svg-text: the zoomed size, the buffer's font
+        (setq plist (plist-put plist :font-size size))
+        (when (and family (not (plist-get plist :font-family)))
+          (setq plist (plist-put plist :font-family family))))
+      (append head plist))))
+
+(defun +endgame-today--svg-rect-a (args)
+  "Filter-args of `svg-rectangle' while the timeline draws."
+  (if +endgame-today--svg-style (+endgame-today--svg-fix args 5) args))
+
+(defun +endgame-today--svg-text-a (args)
+  "Filter-args of `svg-text' while the timeline draws."
+  (if +endgame-today--svg-style (+endgame-today--svg-fix args 2) args))
+
+(defun +endgame-today--timeline-draw-a (fn &rest args)
+  "Around `org-timeblock-redraw-timeblocks': theme colours and the buffer's zoom.
+The timeline is one SVG exactly the window's size, so text-scale can't
+reach it: its font size and the line heights it lays text out with are
+scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
+  (if (not (display-graphic-p))
+      (apply fn args)
+    (let* ((zoom (with-current-buffer (get-buffer-create org-timeblock-buffer) (+endgame-today--zoom)))
+           (w (default-font-width))
+           (h (default-font-height))
+           (pal (+endgame-today--timeline-palette))
+           (red (alist-get 'red pal))
+           (bg (alist-get 'bg pal))
+           (+endgame-today--svg-style
+            (list (and pal
+                       `(((:stroke . "#5b0103") . ,red)                         ; events
+                         ((:fill . "#5b0103") . ,(+endgame-today--blend red bg 0.45)) ; deadlines
+                         ((:stroke . "#cdcdcd") . ,(alist-get 'dim pal))        ; block borders
+                         ((:fill . "#ffffff") . ,(alist-get 'fg pal))))         ; deadline text
+                  (max 6 (round (* zoom (aref (font-info (face-font 'default)) 2))))
+                  (face-attribute 'default :family nil t))))
+      (cl-letf (((symbol-function 'default-font-width) (lambda () (max 1 (round (* zoom w)))))
+                ((symbol-function 'default-font-height) (lambda () (max 1 (round (* zoom h))))))
+        (apply fn args)))))
+
+(defun +endgame-today--timeline-rezoom-h ()
+  "On `text-scale-mode-hook' in the timeline: draw it at the new size."
+  (when (derived-mode-p 'org-timeblock-mode)
+    (ignore-errors (org-timeblock-redraw-timeblocks))))
+
+(defun +endgame-today--timeline-mode-h ()
+  "In org-timeblock's buffers: no line numbers, the panel's zoom."
+  (when (bound-and-true-p display-line-numbers-mode) (display-line-numbers-mode -1))
+  (setq-local display-line-numbers nil)
+  (when (derived-mode-p 'org-timeblock-mode)
+    (add-hook 'text-scale-mode-hook #'+endgame-today--timeline-rezoom-h nil t))
+  (text-scale-set +endgame-today-text-scale))
 
 (with-eval-after-load 'org-timeblock
-  (advice-add 'org-timeblock-files :around #'+endgame-today--timeblock-files-a))
+  (advice-add 'org-timeblock-files :around #'+endgame-today--timeblock-files-a)
+  (advice-add 'org-timeblock-redraw-timeblocks :around #'+endgame-today--timeline-draw-a)
+  (advice-add 'svg-rectangle :filter-args #'+endgame-today--svg-rect-a)
+  (advice-add 'svg-text :filter-args #'+endgame-today--svg-text-a)
+  (add-hook 'org-timeblock-mode-hook #'+endgame-today--timeline-mode-h)
+  (add-hook 'org-timeblock-list-mode-hook #'+endgame-today--timeline-mode-h)
+  (+endgame-today-timeline-faces)
+  (add-hook (if (boundp 'doom-load-theme-hook) 'doom-load-theme-hook 'enable-theme-functions)
+            (lambda (&rest _) (+endgame-today-timeline-faces))))
 
 (defun +endgame-today--timeline-p ()
   "Non-nil when org-timeblock can draw in this frame."
@@ -1565,6 +1874,8 @@ files would be ~150 of them."
     (with-selected-window (get-buffer-window org-timeblock-buffer 'visible)
       (ignore-errors (org-timeblock-redraw-buffers)))))
 
+;;;;; The panel
+
 (defun +endgame-today--workspace ()
   "Switch to the panel's workspace (Doom) or tab, making it if needed.
 Returns non-nil when it was there already."
@@ -1583,7 +1894,8 @@ Returns non-nil when it was there already."
 
 (defun +endgame/today-panel ()
   "The today panel: timeline left, dashboard right, the daily note under it.
-Opens in its own workspace; run it again there to rebuild the layout."
+Opens in its own workspace; run it again there to rebuild the layout and
+bring the note back to today."
   (interactive)
   (when (fboundp '+endgame--ensure-day)  ; today's note, made the normal way (prompts)
     (+endgame--ensure-day (+endgame--today) t))
@@ -1592,6 +1904,8 @@ Opens in its own workspace; run it again there to rebuild the layout."
         (dash (+endgame-today-dashboard)))
     (if (and there (get-buffer-window dash))
         (progn (select-window (get-buffer-window dash))
+               (when-let* ((note (+endgame-today--note-window)))
+                 (+endgame-today--note-show abs note))
                (+endgame-today--refresh-panel))
       (delete-other-windows)
       (let* ((left (selected-window))
@@ -1602,7 +1916,7 @@ Opens in its own workspace; run it again there to rebuild the layout."
                                                       (window-total-height right))))
                                    'below)))
         (set-window-buffer right dash)
-        (set-window-buffer bottom (+endgame-today--note-buffer abs))
+        (+endgame-today--note-show abs bottom)
         (select-window right)
         (+endgame-today-refresh)
         (+endgame-today--timeline abs left)
@@ -1610,6 +1924,21 @@ Opens in its own workspace; run it again there to rebuild the layout."
         (forward-line 1)))))
 
 ;;;; Keys
+
+(defun +endgame-today/zoom-in ()
+  "Bigger text in this window (the timeline redraws at the new size)."
+  (interactive)
+  (text-scale-increase 1))
+
+(defun +endgame-today/zoom-out ()
+  "Smaller text in this window, so more fits."
+  (interactive)
+  (text-scale-decrease 1))
+
+(defun +endgame-today/zoom-reset ()
+  "Back to the panel's zoom, `+endgame-today-text-scale'."
+  (interactive)
+  (text-scale-set +endgame-today-text-scale))
 
 (when (fboundp 'map!)
   (map! :leader
@@ -1628,7 +1957,46 @@ Opens in its own workspace; run it again there to rebuild the layout."
         :n "I"   #'+endgame-today/clock-in
         :n "O"   #'org-clock-out
         :n "gr"  #'+endgame-today-refresh
-        :n "q"   #'quit-window))
+        :n "q"   #'quit-window)
+  (map! :map +endgame-today-note-mode-map
+        :n "C-j" #'+endgame-today-note/next
+        :n "C-k" #'+endgame-today-note/previous
+        :n "C-t" #'+endgame-today-note/today)
+  ;; org-timeblock's own keys are single letters that evil's normal state
+  ;; shadows (j, k, i, o, d, s, v…), so nothing worked there: the same
+  ;; commands on vim-shaped keys
+  (after! org-timeblock
+    (map! :map org-timeblock-mode-map
+          :n "j"   #'org-timeblock-forward-block
+          :n "k"   #'org-timeblock-backward-block
+          :n "h"   #'org-timeblock-backward-column
+          :n "l"   #'org-timeblock-forward-column
+          :n "H"   #'org-timeblock-day-earlier
+          :n "L"   #'org-timeblock-day-later
+          :n "gd"  #'org-timeblock-jump-to-day
+          :n "RET" #'org-timeblock-goto
+          :n "TAB" #'org-timeblock-goto-other-window
+          :n "t"   #'org-timeblock-todo
+          :n "s"   #'org-timeblock-schedule
+          :n "d"   #'org-timeblock-set-duration
+          :n "i"   #'org-timeblock-clock-in
+          :n "I"   #'org-timeblock-clock-in
+          :n "o"   #'org-clock-out
+          :n "O"   #'org-clock-out
+          :n "a"   #'org-timeblock-new-task
+          :n "+"   #'org-timeblock-new-task
+          :n "m"   #'org-timeblock-mark-block
+          :n "u"   #'org-timeblock-unmark-block
+          :n "U"   #'org-timeblock-unmark-all-blocks
+          :n "%"   #'org-timeblock-mark-by-regexp
+          :n "w"   #'org-timeblock-write
+          :n "v"   #'org-timeblock-switch-scaling
+          :n "V"   #'org-timeblock-change-span
+          :n "T"   #'org-timeblock-toggle-timeblock-list
+          :n "gr"  #'org-timeblock-redraw-buffers
+          :n "-"   #'+endgame-today/zoom-out
+          :n "="   #'+endgame-today/zoom-in
+          :n "0"   #'+endgame-today/zoom-reset)))
 
 (provide '+endgame-today)
 ;;; +endgame-today.el ends here
