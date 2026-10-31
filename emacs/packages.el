@@ -10,6 +10,7 @@
 (package! org-modern)
 (package! org-fragtog)
 (package! catppuccin-theme)
+(package! kanagawa-themes)
 (package! ob-mermaid)
 (package! savefold :recipe (:host github :repo "jcfk/savefold.el"))
 (package! valign)
@@ -69,3 +70,7 @@
 ;; (unpin! pinned-package another-pinned-package)
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;; (unpin! t)
+
+;; per-habit stats (streaks that honour the repeater, percentages); the
+;; habit heatmap data in doom-config.org calls into it
+(package! org-habit-stats :pin "d500f3a1b269b26097dd2f4cd414c3cb7c68ca23")

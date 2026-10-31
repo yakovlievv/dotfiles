@@ -87,7 +87,7 @@ Frame geometry 127×36 at (72, 79) applied to both `initial-frame-alist` and
 **Org local leader**: `l v` link preview, `l m` insert material link, `l e` insert
 external link, `l w` add vocab word, `l n` "create new lesson".
 Org normal: `+`/`-` inc/dec number at point, `g-`/`g+` in visual.
-Leader `n b` book gallery, `n j z`/`n j x` sleep / wake feeling.
+Leader `n b` book gallery, `n j z`/`n j x` sleep / morning log.
 
 ## Org link tooling
 
@@ -211,7 +211,7 @@ Both levels are roam nodes.
   pinned to the parsed date, and offers the sleep/feeling prompts.
 - `+org-journal/set-sleep` (`SPC n j z`) — stores `:SLEEP_TIME:` as an *inactive*
   range `[bed]--[wake]`, so `C-c C-y` computes duration and the agenda stays clean.
-- `+org-journal/set-wake-feeling` (`SPC n j x`) — `:WAKE_FEELING:` 1–10.
+- `+org-journal/set-morning-log` (`SPC n j x`) — `:MORNING_HEADACHE:`, `:MORNING_FRESHNESS:`, `:MORNING_MOOD:` 1–10 + free-text `:MORNING_NOTES:`.
 - Carryover: `TODO` and `STRT` items. Agenda integration on, encryption off.
 
 ## Encryption

@@ -74,3 +74,4 @@ for _cmd in cargo rustc rustup rustfmt clippy; do
     function $_cmd { _lazy_cargo "$@" }
 done
 unset _cmd
+export MACOSX_DEPLOYMENT_TARGET=26.0

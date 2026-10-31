@@ -79,6 +79,7 @@ bindkey -r '\ec'
 bindkey '^F' fzf-cd-widget
 bindkey '^Y' autosuggest-accept
 bindkey '^E' autosuggest-accept-word
+bindkey '^X^A' autosuggest-toggle # Ctrl+X then Ctrl+A
 
 # precmd() { echo "" } # Optional blank line after each thing
 
@@ -135,5 +136,5 @@ esac
 # The following lines have been added by Docker Desktop to enable Docker CLI completions.
 fpath=(/Users/yako/.docker/completions $fpath)
 autoload -Uz compinit
-(( ${+_comps[docker]} )) || compinit
+((${+_comps[docker]})) || compinit
 # End of Docker CLI completions
