@@ -956,6 +956,13 @@ fallback font are wider than one column, which shifted counted text off
 the window."
   (propertize " " 'display `(space :align-to (- right ,(* (1+ columns) (+endgame-today--zoom))))))
 
+(defun +endgame-today--no-tab-line ()
+  "No tab line in this buffer.
+centaur-tabs draws its tabs in the tab line, set by default for every
+buffer; the panel's buffers aren't in its tab groups, so it was an empty
+line on top of each window."
+  (setq-local tab-line-format nil))
+
 (defun +endgame-today--zoom ()
   "How much the current buffer's text is zoomed, as a factor (1.0 = not)."
   (if (bound-and-true-p text-scale-mode)
@@ -1490,6 +1497,7 @@ On a line that isn't an item, run what the line leads to."
               cursor-type 'bar)
   (setq-local display-line-numbers nil)
   (text-scale-set +endgame-today-text-scale)
+  (+endgame-today--no-tab-line)
   (hl-line-mode 1)
   (add-hook 'window-buffer-change-functions #'+endgame-today--shown-h nil t)
   (add-hook 'kill-buffer-hook #'+endgame-today--stop-timer nil t)
@@ -1550,8 +1558,10 @@ in normal state, like day later/earlier in the timeline) move to them,
 T goes back to today."
   :lighter nil
   (if +endgame-today-note-mode
-      (setq-local header-line-format '(:eval +endgame-today-note--header))
-    (kill-local-variable 'header-line-format))
+      (progn (setq-local header-line-format '(:eval +endgame-today-note--header))
+             (+endgame-today--no-tab-line))
+    (kill-local-variable 'header-line-format)
+    (kill-local-variable 'tab-line-format))
   ;; evil only sees a minor mode's state keys once its keymaps are
   ;; recomputed; turned on outside a command, that doesn't happen by itself
   (when (fboundp 'evil-normalize-keymaps) (evil-normalize-keymaps)))
@@ -1831,6 +1841,7 @@ scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
   "In org-timeblock's buffers: no line numbers, the panel's zoom."
   (when (bound-and-true-p display-line-numbers-mode) (display-line-numbers-mode -1))
   (setq-local display-line-numbers nil)
+  (+endgame-today--no-tab-line)
   (when (derived-mode-p 'org-timeblock-mode)
     (add-hook 'text-scale-mode-hook #'+endgame-today--timeline-rezoom-h nil t))
   (text-scale-set +endgame-today-text-scale))
