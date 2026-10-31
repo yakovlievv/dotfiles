@@ -1547,7 +1547,9 @@ columns the lines are laid out in."
 (defvar-keymap +endgame-today-note-mode-map
   :doc "Keys of the panel's daily note. Evil normal state gets them in Keys below."
   "C-c C-j" #'+endgame-today-note/next
-  "C-c C-k" #'+endgame-today-note/previous)
+  "C-c C-k" #'+endgame-today-note/previous
+  ;; SPC n j j: the entry goes in this buffer, not a new window on the file
+  "<remap> <org-journal-new-entry>" #'+endgame-today-note/new-entry)
 
 (define-minor-mode +endgame-today-note-mode
   "One day's heading of a weekly journal note, in the today panel.
@@ -1702,6 +1704,45 @@ nothing, the edits are in the file's own buffer."
   (interactive)
   (+endgame-today--note-show (org-today) (selected-window)))
 
+(defvar org-journal-time-prefix)
+(defvar org-journal-time-format)
+(defvar org-journal-time-format-post-midnight)
+(declare-function evil-insert-state "evil-states")
+
+(defun +endgame-today--entry-heading (abs &optional time)
+  "The time entry heading org-journal would write on day ABS at TIME (now).
+After midnight, inside `org-extend-today-until', an entry on the day
+before the calendar date gets the post-midnight format: \"00:18 (night)\"."
+  (let* ((time (or time (current-time)))
+         (dt (decode-time time))
+         (calendar-day (calendar-absolute-from-gregorian
+                        (list (decoded-time-month dt) (decoded-time-day dt) (decoded-time-year dt))))
+         (night (bound-and-true-p org-journal-time-format-post-midnight))
+         (fmt (if (and (= abs (1- calendar-day))
+                       (< (decoded-time-hour dt) (or (bound-and-true-p org-extend-today-until) 0))
+                       (stringp night) (not (string-empty-p night)))
+                  night
+                (or (bound-and-true-p org-journal-time-format) "%R "))))
+    (concat (or (bound-and-true-p org-journal-time-prefix) "** ")
+            (string-trim-right (format-time-string fmt time))
+            " ")))
+
+(defun +endgame-today-note/new-entry (&optional no-entry)
+  "A new time entry at the end of the day this note shows, in this buffer.
+What `org-journal-new-entry' writes, without it opening the weekly file
+in another window: SPC n j j lands here while the note is focused. With
+a prefix argument (NO-ENTRY), just go to the end of the day."
+  (interactive "P")
+  (unless +endgame-today-note--day (user-error "Not a today-panel note"))
+  (unless (buffer-base-buffer) (user-error "No daily note for this day yet"))
+  (goto-char (point-max))
+  (unless no-entry
+    (skip-chars-backward " \t\n")
+    (end-of-line)
+    (delete-region (point) (point-max))
+    (insert "\n" (+endgame-today--entry-heading +endgame-today-note--day))
+    (when (fboundp 'evil-insert-state) (evil-insert-state))))
+
 (defun +endgame-today--note-window ()
   "The window of this frame showing a panel note, or nil."
   (seq-find (lambda (w) (buffer-local-value '+endgame-today-note-mode (window-buffer w)))
@@ -1807,6 +1848,20 @@ COLOURS maps org-timeblock's hard-coded ((ATTR . COLOUR) . THEME-COLOUR).")
   "Filter-args of `svg-text' while the timeline draws."
   (if +endgame-today--svg-style (+endgame-today--svg-fix args 2) args))
 
+(defvar org-timeblock-svg)
+
+(defun +endgame-today--svg-image-a (args)
+  "Filter-args of `svg-image': the timeline's image at its own size.
+With `image-scaling-factor' at `auto', Emacs enlarges images by the
+font's width over 10 pixels; the timeline is drawn exactly the window's
+size, so a wide font pushed its right edge (block borders, the times)
+out of the window."
+  (if (and (bound-and-true-p org-timeblock-svg)
+           (eq (car args) org-timeblock-svg)
+           (not (plist-member (cdr args) :scale)))
+      (append args '(:scale 1))
+    args))
+
 (defun +endgame-today--timeline-draw-a (fn &rest args)
   "Around `org-timeblock-redraw-timeblocks': theme colours and the buffer's zoom.
 The timeline is one SVG exactly the window's size, so text-scale can't
@@ -1851,6 +1906,7 @@ scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
   (advice-add 'org-timeblock-redraw-timeblocks :around #'+endgame-today--timeline-draw-a)
   (advice-add 'svg-rectangle :filter-args #'+endgame-today--svg-rect-a)
   (advice-add 'svg-text :filter-args #'+endgame-today--svg-text-a)
+  (advice-add 'svg-image :filter-args #'+endgame-today--svg-image-a)
   (add-hook 'org-timeblock-mode-hook #'+endgame-today--timeline-mode-h)
   (add-hook 'org-timeblock-list-mode-hook #'+endgame-today--timeline-mode-h)
   (+endgame-today-timeline-faces)
