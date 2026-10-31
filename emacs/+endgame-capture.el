@@ -261,7 +261,8 @@ Nil when the entry has no plain active timestamp."
   "Read a non-empty title after PROMPT, escaped for a capture template."
   (let ((title (string-trim (read-string prompt))))
     (when (string-empty-p title) (user-error "Empty title"))
-    (replace-regexp-in-string "%" "\\\\%" title t t)))
+    ;; a % that starts an escape (%t, %^{…}) is escaped; org leaves a lone one
+    (replace-regexp-in-string "%\\([^ \t]\\)" "\\\\%\\1" title t)))
 
 (defun +endgame--appt-template ()
   "Capture template for an appointment: asks the title and a time."
@@ -889,37 +890,35 @@ without SOURCES are left out."
                     (org-clock-special-range block nil t (plist-get params :wstart) (plist-get params :mstart))
                   (list (plist-get params :tstart) (plist-get params :tend))))
          (params (org-combine-plists params (list :block nil :tstart (car range) :tend (nth 1 range))))
-         (pos (point-marker))
-         (first t))
-    (set-marker-insertion-type pos t)
+         out)
     (dolist (area (+endgame-areas))
       (when-let ((sources (+endgame-area-sources area)))
         (let* ((tables (+endgame--area-tables sources params))
                (total (apply #'+ (mapcar #'cadr tables)))
                (week (alist-get 'baselineWeek area))
-               (daily (alist-get 'baselineDay area)))
+               (daily (alist-get 'baselineDay area))
+               (header (concat "#+CAPTION: " (alist-get 'name area)
+                               " :" (alist-get 'tag area) ":"
+                               (if days (format " — planned %s, clocked %s"
+                                                (org-duration-from-minutes
+                                                 (+endgame-area-planned area (nth 0 days) (nth 1 days) sessions))
+                                                (org-duration-from-minutes total))
+                                 "")
+                               (if week (format ", baseline %s/week" (org-duration-from-minutes week)) "")
+                               (if daily (format ", %s/day" (org-duration-from-minutes daily)) "")
+                               (if block (format " (%s)" block) "")
+                               "\n")))
           (unless (and (plist-get params :skip0) (zerop total))
-            (goto-char pos)
-            (unless first (insert "\n"))
-            (setq first nil)
-            (org-clocktable-write-default
-             (point) tables
-             (org-combine-plists
-              params
-              (list :multifile t
-                    :header (concat "#+CAPTION: " (alist-get 'name area)
-                                    " :" (alist-get 'tag area) ":"
-                                    (if days (format " — planned %s, clocked %s"
-                                                     (org-duration-from-minutes
-                                                      (+endgame-area-planned area (nth 0 days) (nth 1 days) sessions))
-                                                     (org-duration-from-minutes total))
-                                      "")
-                                    (if week (format ", baseline %s/week" (org-duration-from-minutes week)) "")
-                                    (if daily (format ", %s/day" (org-duration-from-minutes daily)) "")
-                                    (if block (format " (%s)" block) "")
-                                    "\n"))))))))
-    (goto-char pos)
-    (set-marker pos nil)))
+            ;; each table on its own: the writer aligns in place, which
+            ;; would drag a shared insertion point into the table
+            (push (with-temp-buffer
+                    (let ((org-mode-hook nil)) (org-mode))
+                    (org-clocktable-write-default
+                     (point) tables
+                     (org-combine-plists params (list :multifile t :header header)))
+                    (string-trim-right (buffer-substring-no-properties (point-min) (point-max))))
+                  out)))))
+    (insert (string-join (nreverse out) "\n\n"))))
 
 ;;; Keys
 
