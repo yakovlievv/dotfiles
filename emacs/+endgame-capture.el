@@ -791,9 +791,18 @@ A list of alists: area, date, start, end, minutes, state, title, file,
 line. Killed sessions are left out."
   (let ((to (or to from))
         sessions)
-    (dolist (file (+endgame--rg-files
-                   (format "^[ \t]*:ROUTINE:[ \t]+%s[ \t]*$" (regexp-quote +endgame-session-routine))
-                   (list (expand-file-name org-journal-dir) +endgame-upcoming-file)))
+    (dolist (file (delete-dups
+                   (append
+                    (+endgame--rg-files
+                     (format "^[ \t]*:ROUTINE:[ \t]+%s[ \t]*$" (regexp-quote +endgame-session-routine))
+                     (list (expand-file-name org-journal-dir) +endgame-upcoming-file))
+                    ;; rg reads the disk: add what's only in a buffer so far
+                    (cl-loop for buf in (buffer-list)
+                             for f = (buffer-file-name buf)
+                             when (and f (buffer-modified-p buf)
+                                       (or (file-equal-p f +endgame-upcoming-file)
+                                           (file-in-directory-p f org-journal-dir)))
+                             collect f))))
       (with-current-buffer (org-get-agenda-file-buffer file)
         (org-with-wide-buffer
          (goto-char (point-min))
