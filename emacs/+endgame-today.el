@@ -519,23 +519,58 @@ Syncthing and vault-api write the files under them."
       (agenda . ,(alist-get 'agenda item))
       (checkable . ,(funcall bool (alist-get 'checkable item))))))
 
+(defun +endgame-today--json-time (time)
+  "TIME as HH:MM, or nil."
+  (and time (format-time-string "%H:%M" time)))
+
 (defun +endgame-today-json (&optional date)
   "The today list for DATE (YYYY-MM-DD, nil for org's today) as a JSON string.
 For vault-api, through emacsclient: never prompts, changes nothing.
-  {date, today, items: [{ref id title state done kind start end tags area
-   file line progress rollover overdue agenda checkable}],
-   ahead: [same], counts: {done, total}}
-start/end are HH:MM or null; ref is the :ID:, or file:line without one."
+  {date, today, week: {number, year, file, priority},
+   items: [{ref id title state done kind start end tags area file line
+            progress rollover overdue agenda checkable}],
+   ahead: [items], counts: {done, total},
+   clocking: {title, since, minutes} | null,
+   next: {item fields..., in} | null,
+   inbox_count, watch_out: {inbox, deadlines: [items], rollovers: [items]},
+   clocked: {total, headings: [{title, note, minutes, running}]}}
+start/end/since are HH:MM or null; minutes are integers; ref is the
+:ID:, or file:line without one; next's in is minutes until it starts,
+negative once it has."
   (let ((inhibit-interaction t))
     (+endgame-today--revert)
-    (let* ((data (+endgame-today-items date))
+    (let* ((data (+endgame-today-data date))
+           (items (lambda (key alist) (vconcat (mapcar #'+endgame-today--json-item (alist-get key alist)))))
+           (clocking (alist-get 'clocking data))
+           (next (alist-get 'next data))
+           (clocked (alist-get 'clocked data))
+           (watch (alist-get 'watch-out data))
            (json-encoding-pretty-print nil))
       (json-encode
        `((date . ,(alist-get 'date data))
          (today . ,(+endgame-today--date (org-today)))
-         (items . ,(vconcat (mapcar #'+endgame-today--json-item (alist-get 'items data))))
-         (ahead . ,(vconcat (mapcar #'+endgame-today--json-item (alist-get 'ahead data))))
-         (counts . ,(alist-get 'counts data)))))))
+         (week . ,(alist-get 'week data))
+         (items . ,(funcall items 'items data))
+         (ahead . ,(funcall items 'ahead data))
+         (counts . ,(alist-get 'counts data))
+         (clocking . ,(and clocking
+                           `((title . ,(alist-get 'title clocking))
+                             (since . ,(+endgame-today--json-time (alist-get 'since clocking)))
+                             (minutes . ,(alist-get 'minutes clocking)))))
+         (next . ,(and next (append (+endgame-today--json-item next)
+                                    `((in . ,(alist-get 'in next))))))
+         (inbox_count . ,(alist-get 'inbox data))
+         (watch_out . ((inbox . ,(alist-get 'inbox watch))
+                       (deadlines . ,(funcall items 'deadlines watch))
+                       (rollovers . ,(funcall items 'rollovers watch))))
+         (clocked . ((total . ,(alist-get 'total clocked))
+                     (headings . ,(vconcat
+                                   (mapcar (lambda (r)
+                                             `((title . ,(alist-get 'title r))
+                                               (note . ,(alist-get 'note r))
+                                               (minutes . ,(alist-get 'minutes r))
+                                               (running . ,(if (alist-get 'running r) t :json-false))))
+                                           (alist-get 'headings clocked)))))))))))
 
 ;;;; The block agenda (the cheap version)
 
@@ -619,8 +654,9 @@ It starts at `org-extend-today-until' and ends at that hour the next day."
   "Time clocked on DATE (YYYY-MM-DD, nil for today), from every CLOCK line.
 The day is org's day, so with `org-extend-today-until' 5 it runs from
 05:00 to 05:00. A running clock counts up to now. Returns an alist:
-total (minutes), running (title or nil), and headings: a list of
-alists of title, note, minutes, running, marker, longest first."
+total (minutes), running (title or nil) and since (when that clock
+started), and headings: a list of alists of title, note, minutes,
+running, marker, longest first."
   (let* ((abs (+endgame-today--abs date))
          (window (+endgame-today--clock-window abs))
          (now (current-time))
@@ -652,20 +688,21 @@ alists of title, note, minutes, running, marker, longest first."
                                             by))))
                      (plist-put row :minutes (+ (plist-get row :minutes) min))
                      (when open
-                       (plist-put row :running t)
-                       (setq running (plist-get row :title))))))))))))
+                       (plist-put row :running start)
+                       (setq running row)))))))))))
     (let (rows)
       (maphash (lambda (_ row)
                  (setq total (+ total (plist-get row :minutes)))
                  (push `((title . ,(plist-get row :title))
                          (note . ,(plist-get row :note))
                          (minutes . ,(round (plist-get row :minutes)))
-                         (running . ,(plist-get row :running))
+                         (running . ,(and (plist-get row :running) t))
                          (marker . ,(plist-get row :marker)))
                        rows))
                by)
       `((total . ,(round total))
-        (running . ,running)
+        (running . ,(and running (plist-get running :title)))
+        (since . ,(and running (plist-get running :running)))
         (headings . ,(sort rows (lambda (a b) (> (alist-get 'minutes a) (alist-get 'minutes b)))))))))
 
 (defun +endgame-today-area-time (&optional date items)
@@ -693,6 +730,136 @@ from the sessions in ITEMS (the today list) and clocked is nil."
                                               items)))
                (clocked . nil))))
          (+endgame-today-areas))))))
+
+;;;; The day around the list: header, now, watch out
+
+(defvar org-clock-start-time)
+(defvar org-clock-marker)
+
+(defcustom +endgame-today-rollover-limit 3
+  "Rollovers (org's Sched. Nx) from which a task is an offender to decide on."
+  :type 'integer)
+
+(defun +endgame-today--inbox-file ()
+  "The inbox note: captures wait there until they're processed."
+  (or (bound-and-true-p +endgame-inbox-file)
+      (+endgame-today--vault-file "roam/20261031024803-inbox.org")))
+
+(defun +endgame-today-inbox-count ()
+  "Open top-level tasks in the inbox note."
+  (let ((file (+endgame-today--inbox-file)))
+    (if (not (file-exists-p file))
+        0
+      (with-current-buffer (+endgame-today--buffer file)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (let ((n 0))
+           (while (re-search-forward "^\\* " nil t)
+             (when (member (org-get-todo-state) org-not-done-keywords)
+               (setq n (1+ n))))
+           n))))))
+
+(defun +endgame-today--priority (file)
+  "The weekly priority in weekly journal FILE, or nil.
+It's a paragraph in the root of the weekly note: the first prose above
+the first day, past the drawer, keywords and the week's clocktable."
+  (when (file-exists-p file)
+    (with-current-buffer (+endgame-today--buffer file)
+      (org-with-wide-buffer
+       (goto-char (point-min))
+       (let ((stop (save-excursion (if (re-search-forward "^\\* " nil t) (match-beginning 0) (point-max))))
+             (skip nil)
+             para)
+         (while (and (< (point) stop) (not (and para (looking-at-p "[ \t]*$"))))
+           (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
+                 (case-fold-search t))
+             (cond (skip (when (string-match-p skip line) (setq skip nil)))
+                   ((string-match-p "^[ \t]*:[A-Za-z_]+:[ \t]*$" line) (setq skip "^[ \t]*:END:"))
+                   ((string-match-p "^[ \t]*#\\+BEGIN" line) (setq skip "^[ \t]*#\\+END"))
+                   ((string-match-p "^[ \t]*\\(?:#\\|$\\||\\)" line))
+                   (t (push (string-trim line) para))))
+           (forward-line 1))
+         (and para (org-link-display-format (string-join (nreverse para) " "))))))))
+
+(defun +endgame-today-week (abs)
+  "Day ABS's week: ISO number and year, the weekly note, its priority."
+  (let ((time (+endgame-today--time abs))
+        (file (+endgame-today--day-file abs)))
+    `((number . ,(string-to-number (format-time-string "%V" time)))
+      (year . ,(string-to-number (format-time-string "%G" time)))
+      (file . ,(and (file-exists-p file) (+endgame-today--rel file)))
+      (priority . ,(+endgame-today--priority file)))))
+
+(defun +endgame-today--now-minutes (abs)
+  "Minutes from the midnight that starts day ABS to now.
+Past 24:00 after midnight, while org's day is still ABS."
+  (floor (float-time (time-subtract nil (+endgame-today--time abs 0))) 60))
+
+(defun +endgame-today-now (abs items clocked)
+  "What's going on on day ABS: (CLOCKING . NEXT).
+CLOCKING is the running clock (Emacs's own, else an open CLOCK line in
+CLOCKED, from `+endgame-today-clocked'): title, since, minutes, marker.
+NEXT is the first open timed item in ITEMS that hasn't ended, with in:
+minutes until it starts, negative when it already has. Only for today."
+  (let ((clocking
+         (cond ((and (fboundp 'org-clocking-p) (org-clocking-p))
+                (with-current-buffer (marker-buffer org-clock-marker)
+                  (org-with-wide-buffer
+                   (goto-char org-clock-marker)
+                   `((title . ,(car (+endgame-today--heading-parts)))
+                     (since . ,org-clock-start-time)
+                     (minutes . ,(floor (float-time (time-subtract nil org-clock-start-time)) 60))
+                     (marker . ,(copy-marker org-clock-marker))))))
+               ((alist-get 'running clocked)
+                (let ((row (seq-find (lambda (r) (alist-get 'running r)) (alist-get 'headings clocked))))
+                  `((title . ,(alist-get 'running clocked))
+                    (since . ,(alist-get 'since clocked))
+                    (minutes . ,(floor (float-time (time-subtract nil (alist-get 'since clocked))) 60))
+                    (marker . ,(alist-get 'marker row)))))))
+        (next
+         (when (= abs (org-today))
+           (let* ((now (+endgame-today--now-minutes abs))
+                  (item (seq-find (lambda (i)
+                                    (and (not (alist-get 'done i)) (alist-get 'start i)
+                                         (> (or (alist-get 'end i) (1+ (alist-get 'start i))) now)))
+                                  items)))
+             (and item (cons `(in . ,(- (alist-get 'start item) now)) item))))))
+    (cons clocking next)))
+
+(defun +endgame-today-data (&optional date)
+  "Everything the dashboard and the phone show for DATE (nil for today).
+`+endgame-today-items' plus week, inbox, clocked, clocking, next and
+watch_out (inbox count, deadlines ahead, rollover offenders)."
+  (let* ((data (+endgame-today-items date))
+         (abs (+endgame-today--abs (alist-get 'date data)))
+         (items (alist-get 'items data))
+         (clocked (+endgame-today-clocked (alist-get 'date data)))
+         (now (+endgame-today-now abs items clocked))
+         (inbox (+endgame-today-inbox-count)))
+    (append data
+            `((week . ,(+endgame-today-week abs))
+              (inbox . ,inbox)
+              (clocked . ,clocked)
+              (clocking . ,(car now))
+              (next . ,(cdr now))
+              (watch-out . ((inbox . ,inbox)
+                            (deadlines . ,(alist-get 'ahead data))
+                            (rollovers . ,(seq-filter
+                                           (lambda (i)
+                                             (and (not (alist-get 'done i))
+                                                  (or (>= (or (alist-get 'rollover i) 0)
+                                                          +endgame-today-rollover-limit)
+                                                      (alist-get 'overdue i))))
+                                           items))))))))
+
+(defun +endgame-today-area-week (abs)
+  "Clocked minutes per area tag over day ABS's week so far, or nil.
+Needs the capture module's `+endgame-areas-report'."
+  (when (fboundp '+endgame-areas-report)
+    (let* ((dow (calendar-day-of-week (calendar-gregorian-from-absolute abs)))
+           (monday (- abs (mod (+ dow 6) 7))))
+      (mapcar (lambda (a) (cons (alist-get 'tag a) (alist-get 'clocked a)))
+              (+endgame-areas-report (+endgame-today--date monday) (+endgame-today--date abs))))))
 
 ;;;; Dashboard
 
@@ -726,6 +893,31 @@ from the sessions in ITEMS (the today list) and clocked is nil."
 (defvar +endgame-today--pending nil
   "Idle timer of a refresh asked for by a hook.")
 
+(defcustom +endgame-today-slow-every 300
+  "Seconds the per-area numbers are kept before they're read again.
+They're clocktables over every area's sources, the slow part of a
+refresh, and only a clock-out changes them; gr reads them now."
+  :type 'integer)
+
+(defvar +endgame-today--slow-cache nil
+  "(DAY TIME . VALUE): the per-area numbers of the last refresh.")
+
+(defun +endgame-today--slow (abs fn)
+  "FN's value for day ABS, from the cache while it's fresh."
+  (if (and (eql (car +endgame-today--slow-cache) abs)
+           (< (float-time (time-subtract nil (cadr +endgame-today--slow-cache)))
+              +endgame-today-slow-every))
+      (cddr +endgame-today--slow-cache)
+    (let ((value (funcall fn)))
+      (setq +endgame-today--slow-cache (cons abs (cons (current-time) value)))
+      value)))
+
+(defun +endgame-today--forget-slow (&rest _)
+  "Read the per-area numbers again on the next refresh."
+  (setq +endgame-today--slow-cache nil))
+
+(add-hook 'org-clock-out-hook #'+endgame-today--forget-slow)
+
 (defvar +endgame-today--timeline-files nil
   "Files the panel's timeline reads, instead of every agenda file.")
 
@@ -737,6 +929,13 @@ from the sessions in ITEMS (the today list) and clocked is nil."
   "Mark START to the end of the line with ACTION (a command) and ITEM."
   (add-text-properties start (line-end-position)
                        `(+endgame-today-action ,action +endgame-today-item ,item)))
+
+(defun +endgame-today--align-right (columns)
+  "Space that pushes the next COLUMNS columns against the window's right edge.
+A display spec rather than counted spaces: icons and dashes from a
+fallback font are wider than one column, which shifted counted text off
+the window."
+  (propertize " " 'display `(space :align-to (- right ,(1+ columns)))))
 
 (defun +endgame-today--insert-item (item width)
   "Insert ITEM as one line of a WIDTH-column window."
@@ -768,12 +967,14 @@ from the sessions in ITEMS (the today list) and clocked is nil."
             " "
             (propertize title 'face (if done '+endgame-today-done 'default)))
     (when (not (string-empty-p right))
-      (insert (make-string (max 2 (- room (string-width title) -2)) ?\s))
-      (when (alist-get 'progress item)
-        (insert (propertize (alist-get 'progress item) 'face '+endgame-today-count) "  "))
-      (when late (insert (propertize late 'face '+endgame-today-late) "  "))
-      (when (alist-get 'area item)
-        (insert (propertize (alist-get 'area item) 'face 'org-tag))))
+      (insert (+endgame-today--align-right (string-width right))
+              (string-join
+               (delq nil (list (and (alist-get 'progress item)
+                                    (propertize (alist-get 'progress item) 'face '+endgame-today-count))
+                               (and late (propertize late 'face '+endgame-today-late))
+                               (and (alist-get 'area item)
+                                    (propertize (alist-get 'area item) 'face 'org-tag))))
+               "  ")))
     (+endgame-today--put-action start #'+endgame-today/toggle item)
     (insert "\n")))
 
@@ -812,11 +1013,9 @@ from the sessions in ITEMS (the today list) and clocked is nil."
     (insert (propertize "CLOCKED" 'face '+endgame-today-section)
             "  " (propertize (+endgame-today--duration (alist-get 'total clocked))
                              'face '+endgame-today-count)
-            (if (alist-get 'running clocked)
-                (propertize (format "   ▶ %s" (alist-get 'running clocked)) 'face 'success)
-              "")
+            (propertize "   RET: the day's clocktable" 'face 'shadow)
             "\n")
-    (+endgame-today--put-action start (if (alist-get 'running clocked) #'org-clock-goto #'+endgame-today/clock-report)))
+    (+endgame-today--put-action start #'+endgame-today/clock-report))
   (let ((rows (alist-get 'headings clocked)))
     (when (null rows)
       (insert (propertize "   nothing clocked yet\n" 'face 'shadow)))
@@ -830,34 +1029,105 @@ from the sessions in ITEMS (the today list) and clocked is nil."
         (+endgame-today--put-action s #'+endgame-today/visit row)
         (insert "\n")))))
 
-(defun +endgame-today--insert-areas (areas)
-  "Insert planned vs actual for AREAS (from `+endgame-today-area-time')."
+(defun +endgame-today--insert-areas (areas week)
+  "Insert today's planned vs clocked for AREAS, and the WEEK's clocked.
+AREAS is from `+endgame-today-area-time', WEEK an alist of tag and
+minutes from `+endgame-today-area-week'."
   (let ((rows (seq-filter (lambda (a) (or (> (or (alist-get 'planned a) 0) 0)
                                           (> (or (alist-get 'clocked a) 0) 0)
-                                          (alist-get 'baselineDay a)))
+                                          (> (or (cdr (assoc (alist-get 'tag a) week)) 0) 0)
+                                          (alist-get 'baselineDay a)
+                                          (alist-get 'baselineWeek a)))
                           areas)))
     (insert (propertize "AREAS" 'face '+endgame-today-section)
             (propertize (if (fboundp '+endgame-areas-report)
-                            "   planned · actual · baseline/day\n"
-                          "   planned (actual needs the capture module)\n")
+                            "   today: planned  clocked / base    week: clocked / base\n"
+                          "   planned today (clocked needs the capture module)\n")
                         'face 'shadow))
     (when (null rows)
       (insert (propertize "   no sessions planned\n" 'face 'shadow)))
     (dolist (a rows)
-      (let ((s (point))
-            (actual (alist-get 'clocked a)))
+      (let* ((s (point))
+             (planned (or (alist-get 'planned a) 0))
+             (actual (alist-get 'clocked a))
+             (wk (cdr (assoc (alist-get 'tag a) week)))
+             (base (lambda (m) (propertize (if m (format " / %-5s" (+endgame-today--duration m)) "        ")
+                                           'face 'shadow))))
         (insert "   " (truncate-string-to-width (or (alist-get 'name a) (alist-get 'tag a)) 18 nil ?\s "…")
-                "  " (propertize (format "%5s" (+endgame-today--duration (or (alist-get 'planned a) 0)))
-                                 'face '+endgame-today-time)
+                "  " (propertize (format "%5s" (+endgame-today--duration planned)) 'face '+endgame-today-time)
                 "  " (propertize (format "%5s" (if actual (+endgame-today--duration actual) "–"))
-                                 'face (if (and actual (>= actual (or (alist-get 'planned a) 0)))
+                                 'face (if (and actual (> planned 0) (>= actual planned))
                                            'success '+endgame-today-count))
-                (if (alist-get 'baselineDay a)
-                    (propertize (format "  / %s" (+endgame-today--duration (alist-get 'baselineDay a)))
-                                'face 'shadow)
+                (funcall base (alist-get 'baselineDay a))
+                (if week
+                    (concat "  " (propertize (format "%5s" (if wk (+endgame-today--duration wk) "–"))
+                                             'face '+endgame-today-count)
+                            (funcall base (alist-get 'baselineWeek a)))
                   ""))
         (+endgame-today--put-action s #'+endgame-today/visit-area a)
         (insert "\n")))))
+
+(defun +endgame-today--insert-now (clocking next)
+  "Insert the running CLOCKING and the NEXT timed item.
+Both as `+endgame-today-now' returns them."
+  (when clocking
+    (let ((s (point)))
+      (insert "   " (propertize (format "▶ %s" (+endgame-today--duration (alist-get 'minutes clocking)))
+                               'face 'success)
+              "  " (alist-get 'title clocking)
+              (propertize (format "  since %s" (format-time-string "%H:%M" (alist-get 'since clocking)))
+                          'face 'shadow))
+      (+endgame-today--put-action s #'+endgame-today/visit
+                                  `((title . ,(alist-get 'title clocking))
+                                    (marker . ,(alist-get 'marker clocking))))
+      (insert "\n")))
+  (when next
+    (let ((s (point))
+          (in (alist-get 'in next)))
+      (insert "   " (propertize "▸" 'face '+endgame-today-time) " "
+              (propertize (if (> in 0)
+                              (+endgame-today--hhmm (alist-get 'start next))
+                            "now  ")
+                          'face '+endgame-today-time)
+              " " (alist-get 'title next)
+              (propertize (cond ((> in 90) (format "  in %s" (+endgame-today--duration in)))
+                                ((> in 0) (format "  in %d min" in))
+                                ((alist-get 'end next)
+                                 (format "  until %s" (+endgame-today--hhmm (alist-get 'end next))))
+                                (t ""))
+                          'face 'shadow))
+      (+endgame-today--put-action s #'+endgame-today/toggle next)
+      (insert "\n"))))
+
+(defun +endgame-today--insert-watch-out (watch)
+  "Insert WATCH (from `+endgame-today-data'): inbox, deadlines, rollovers."
+  (let ((inbox (alist-get 'inbox watch))
+        (deadlines (alist-get 'deadlines watch))
+        (rollovers (alist-get 'rollovers watch)))
+    (when (or (> inbox 0) deadlines rollovers)
+      (insert "\n" (propertize "WATCH OUT" 'face '+endgame-today-section) "\n")
+      (when (> inbox 0)
+        (let ((s (point)))
+          (insert "   " (propertize (format "%-11s" "inbox") 'face '+endgame-today-late)
+                  (format " %d to process" inbox))
+          (+endgame-today--put-action s #'+endgame-today/inbox)
+          (insert "\n")))
+      (dolist (item deadlines)
+        (let ((s (point)))
+          (insert "   " (propertize (format "%-11s" (or (alist-get 'agenda item) "")) 'face '+endgame-today-late)
+                  " " (alist-get 'title item))
+          (+endgame-today--put-action s #'+endgame-today/visit item)
+          (insert "\n")))
+      (dolist (item rollovers)
+        (let ((s (point)))
+          (insert "   " (propertize (format "%-11s" (if (alist-get 'rollover item)
+                                                       (format "Sched. %dx" (alist-get 'rollover item))
+                                                     (format "%dd late" (alist-get 'overdue item))))
+                                    'face 'error)
+                  " " (alist-get 'title item)
+                  (propertize "  do it, date it or kill it" 'face 'shadow))
+          (+endgame-today--put-action s #'+endgame-today/visit item)
+          (insert "\n"))))))
 
 (defun +endgame-today--render (abs)
   "Fill the dashboard (current buffer) with day ABS."
@@ -865,10 +1135,13 @@ from the sessions in ITEMS (the today list) and clocked is nil."
          (win (get-buffer-window (current-buffer) t))
          ;; one column short of the window, or the last one wraps
          (width (1- (if win (window-max-chars-per-line win) 80)))
-         (data (+endgame-today-items (+endgame-today--date abs)))
+         (date (+endgame-today--date abs))
+         (data (+endgame-today-data date))
          (items (alist-get 'items data))
          (counts (alist-get 'counts data))
-         (title (format-time-string "TODAY · %a %d %b" (+endgame-today--time abs)))
+         (week (alist-get 'week data))
+         (title (format "%s · W%02d" (format-time-string "TODAY · %a %d %b" (+endgame-today--time abs))
+                        (alist-get 'number week)))
          (count (format "%d/%d" (alist-get 'done counts) (alist-get 'total counts))))
     (setq +endgame-today--shown abs
           +endgame-today--dirty nil
@@ -881,34 +1154,42 @@ from the sessions in ITEMS (the today list) and clocked is nil."
     (erase-buffer)
     (let ((s (point)))
       (insert (propertize title 'face '+endgame-today-header)
-              (make-string (max 2 (- width (string-width title) (length count) 1)) ?\s)
+              (+endgame-today--align-right (length count))
               (propertize count 'face '+endgame-today-count) "\n")
       (+endgame-today--put-action s #'+endgame/today-agenda))
+    (let ((s (point)))
+      (insert "   " (if (alist-get 'priority week)
+                         (propertize (truncate-string-to-width (alist-get 'priority week) (- width 3) nil nil "…")
+                                     'face 'italic)
+                       (propertize "no weekly priority yet: RET to write it" 'face 'shadow)))
+      (+endgame-today--put-action s #'+endgame-today/week)
+      (insert "\n"))
+    (+endgame-today--insert-now (alist-get 'clocking data) (alist-get 'next data))
+    (insert "\n")
     (if items
         (dolist (item items) (+endgame-today--insert-item item width))
       (insert (propertize "   nothing planned. planning = scheduling (C-c C-s .)\n" 'face 'shadow)))
-    (when (alist-get 'ahead data)
-      (insert "\n" (propertize "AHEAD" 'face '+endgame-today-section) "\n")
-      (dolist (item (alist-get 'ahead data))
-        (let ((s (point)))
-          (insert "   " (propertize (format "%-11s" (or (alist-get 'agenda item) "")) 'face '+endgame-today-late)
-                  " " (alist-get 'title item))
-          (+endgame-today--put-action s #'+endgame-today/visit item)
-          (insert "\n"))))
-    (let ((week (+endgame-today--habit-week)))
-      (when week
+    (+endgame-today--insert-watch-out (alist-get 'watch-out data))
+    (let ((habits (+endgame-today--habit-week)))
+      (when habits
         (insert "\n")
-        (+endgame-today--insert-habits week width)))
+        (+endgame-today--insert-habits habits width)))
     (insert "\n")
-    (+endgame-today--insert-clocked (+endgame-today-clocked (+endgame-today--date abs)) width)
+    (+endgame-today--insert-clocked (alist-get 'clocked data) width)
     (insert "\n")
-    (+endgame-today--insert-areas (ignore-errors (+endgame-today-area-time (+endgame-today--date abs) items)))
+    (pcase-let ((`(,day . ,week)
+                 (+endgame-today--slow abs (lambda ()
+                                             (cons (ignore-errors (+endgame-today-area-time date items))
+                                                   (ignore-errors (+endgame-today-area-week abs)))))))
+      (+endgame-today--insert-areas day week))
     (insert "\n" (propertize "RET tick · TAB visit · t state · s schedule · S unschedule · d deadline · I/O clock · gr refresh"
                              'face 'shadow))))
 
 (defun +endgame-today-refresh (&rest _)
-  "Redraw the dashboard, keeping point on the same line."
+  "Redraw the dashboard, keeping point on the same line.
+Interactively, also read the per-area numbers again."
   (interactive)
+  (when (called-interactively-p 'any) (+endgame-today--forget-slow))
   (when-let* ((buf (get-buffer +endgame-today-dashboard-buffer)))
     (with-current-buffer buf
       (let ((ref (alist-get 'ref (get-text-property (point) '+endgame-today-item)))
@@ -1114,6 +1395,25 @@ On a line that isn't an item, run what the line leads to."
     (when (re-search-forward (format "^[ \t]*:AREA_TAG:[ \t]+%s[ \t]*$" (regexp-quote (alist-get 'tag area))) nil t)
       (org-back-to-heading t)
       (org-fold-show-entry))))
+
+(defun +endgame-today/week ()
+  "Open the weekly note at its top, where the week's priority is written."
+  (interactive)
+  (let ((file (+endgame-today--day-file (or +endgame-today--shown (org-today)))))
+    (unless (file-exists-p file) (user-error "No weekly note for this week yet"))
+    (find-file-other-window file)
+    (widen)
+    (goto-char (point-min))
+    (when (re-search-forward "^#\\+END:?[ \t]*$" (save-excursion (re-search-forward "^\\* " nil t)) t)
+      (forward-line 1))))
+
+(defun +endgame-today/inbox ()
+  "Open the inbox note to process it."
+  (interactive)
+  (find-file-other-window (+endgame-today--inbox-file))
+  (goto-char (point-min))
+  (re-search-forward "^\\* " nil t)
+  (beginning-of-line))
 
 (defun +endgame-today/heatmap ()
   "The full habit heatmaps."
