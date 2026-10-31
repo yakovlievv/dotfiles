@@ -188,7 +188,7 @@
           (life (+endgame-test--read +endgame-life-file)))
       (should (string-match-p "^\\* TODO copy room keys\n:PROPERTIES:\n:CREATED: +\\[[-0-9]+ [^]]+\\]\n:END:" inbox))
       (should (string-match-p (concat "^\\* TODO call the bank\nSCHEDULED: <" (+endgame--today)) inbox))
-      (should (string-match-p "^\\*\\* APPT barber <2031-01-06 Mon 14:00-14:45>" life))
+      (should (string-match-p "^\\*\\* APPT barber <2031-01-06 Mon 14:00-14:45>\n:PROPERTIES:\n:CALDAV_UID: [-0-9a-f]+\n:END:" life))
       (should (string-match-p "^\\*\\* TODO 50% off %t socks\nSCHEDULED: <2031-01-10 Fri>" life))
       ;; the appointment under Appointments, the errand under Errands
       (should (< (string-match "APPT barber" life) (string-match "^\\* Errands" life)
@@ -217,7 +217,7 @@
     (let ((up (+endgame-test--read +endgame-upcoming-file)))
       (should (string-match-p
                (concat "^\\* TODO learning session \\[0/3\\] :learning:\n:PROPERTIES:\n"
-                       ":ROUTINE:  Session routine\n:AREA:     learning\n:END:\n"
+                       ":ROUTINE:  Session routine\n:AREA:     learning\n:CALDAV_UID: [-0-9a-f]+\n:END:\n"
                        "<" +endgame-test-future " Wed 10:00-12:00>\n- \\[ \\] Start")
                up)))
     ;; a staged item from the calendar keeps its UID through the move
@@ -259,13 +259,13 @@
 (ert-deftest +endgame-routine-copy-gets-its-days-stamp ()
   (+endgame-test--with-vault
     (should (eq (+endgame-routine-add "Morning routine" +endgame-test-future "7am+0:15") 'upcoming))
-    (should (string-match-p (concat "^\\* TODO Morning routine \\[0/2\\]\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:END:\n"
+    (should (string-match-p (concat "^\\* TODO Morning routine \\[0/2\\]\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:CALDAV_UID: [-0-9a-f]+\n:END:\n"
                                     "<" +endgame-test-future " Wed 07:00-07:15>\n- \\[ \\] water")
                             (+endgame-test--read +endgame-upcoming-file)))
     (+endgame-day-ensure +endgame-test-future)
     (should (eq (+endgame-routine-add "Session routine" +endgame-test-future nil) 'day))
     (let ((week (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
-      (should (string-match-p (concat "^\\*\\*\\* TODO Morning routine \\[0/2\\]\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:END:\n<"
+      (should (string-match-p (concat "^\\*\\*\\* TODO Morning routine \\[0/2\\]\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:CALDAV_UID: [-0-9a-f]+\n:END:\n<"
                                       +endgame-test-future " Wed 07:00-07:15>")
                               week))
       (should (string-match-p (concat ":ROUTINE:  Session routine\n:END:\n<" +endgame-test-future " Wed>\n")

@@ -268,7 +268,8 @@ Nil when the entry has no plain active timestamp."
   "Capture template for an appointment: asks the title and a time."
   (let ((title (+endgame--read-title "Appointment: ")))
     (concat "* APPT " title " "
-            (+endgame--read-stamp "When (mon 2pm, mon 14:00-14:45, mon 2pm+0:45): " nil t))))
+            (+endgame--read-stamp "When (mon 2pm, mon 14:00-14:45, mon 2pm+0:45): " nil t)
+            "\n:PROPERTIES:\n:CALDAV_UID: " (+endgame--uid) "\n:END:")))
 
 (defun +endgame--errand-template ()
   "Capture template for an errand: asks the title, and a date that may stay empty."
@@ -312,10 +313,22 @@ Nil when the entry has no plain active timestamp."
   "Level of the first heading in TEXT, or 1."
   (if (string-match "^\\(\\*+\\) " text) (length (match-string 1 text)) 1))
 
+(defun +endgame--uid ()
+  "A fresh :CALDAV_UID: value. Set when an event is made, so the calendar
+keeps knowing it when it moves (upcoming → day, a refile, a new title)."
+  (org-id-uuid))
+
+(defun +endgame--timed-p (stamp)
+  "Non-nil when STAMP has a time of day: then it's a calendar event."
+  (string-match-p " [0-9]\\{1,2\\}:[0-9]\\{2\\}" stamp))
+
 (defun +endgame--stamp-copy (text stamp)
-  "TEXT (a copy from `+routines--copy') with STAMP on the line after its drawer."
+  "TEXT (a copy from `+routines--copy') with STAMP on the line after its drawer.
+A timed copy is a calendar event, so it also gets a :CALDAV_UID:."
   (if (string-match "^:END:\n" text)
-      (concat (substring text 0 (match-end 0)) stamp "\n" (substring text (match-end 0)))
+      (concat (substring text 0 (match-beginning 0))
+              (if (+endgame--timed-p stamp) (concat ":CALDAV_UID: " (+endgame--uid) "\n") "")
+              ":END:\n" stamp "\n" (substring text (match-end 0)))
     (replace-regexp-in-string "\\`\\(.*\n\\)" (concat "\\1" stamp "\n") text t)))
 
 (defun +endgame--append-to-do-list (day texts)
@@ -472,7 +485,12 @@ today's. A day heading that exists without an ID is set up in place."
               (org-journal-hide-entries-p nil)
               (org-journal-carryover-items
                (if (equal date (+endgame--today)) org-journal-carryover-items "")))
-          (org-journal-new-entry t time))))
+          ;; a new week file's header ends with a week clocktable that
+          ;; org-journal updates on the spot: a :scope agenda pass over
+          ;; every agenda file (seconds, more on a cold daemon) for a week
+          ;; with nothing clocked yet. It fills in at its first update.
+          (cl-letf (((symbol-function 'org-ctrl-c-ctrl-c) #'ignore))
+            (org-journal-new-entry t time)))))
     (let ((day (or (+endgame--day-marker date)
                    (error "org-journal made no heading for %s" date))))
       (with-current-buffer (marker-buffer day)
@@ -714,7 +732,8 @@ heading itself: :AREA:, or a local tag that is an area's AREA_TAG."
 (defun +endgame--session-text (tag stamp)
   "A fresh session for area TAG at STAMP, as a level 1 heading.
 The session routine copied the way `SPC n j r' copies it, titled
-\"TAG session\", with the area as tag and :AREA:, STAMP after the drawer."
+\"TAG session\", with the area as tag, :AREA: and a :CALDAV_UID:, STAMP
+after the drawer."
   (let* ((copy (+routines--copy +endgame-session-routine 1))
          (eol (string-match "\n" copy))
          (cookie (and (string-match " \\[[0-9]*/[0-9]*\\]\\'" (substring copy 0 eol))
@@ -722,10 +741,10 @@ The session routine copied the way `SPC n j r' copies it, titled
          (rest (substring copy (1+ eol)))
          (rest (if (string-match "^:END:\n" rest)
                    (concat (substring rest 0 (match-beginning 0))
-                           ":AREA:     " tag "\n:END:\n" stamp "\n"
+                           ":AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n" stamp "\n"
                            (substring rest (match-end 0)))
                  (concat ":PROPERTIES:\n:ROUTINE:  " +endgame-session-routine
-                         "\n:AREA:     " tag "\n:END:\n" stamp "\n" rest))))
+                         "\n:AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n" stamp "\n" rest))))
     (concat "* TODO " tag " session" (or cookie "") " :" tag ":\n" rest)))
 
 (defun +endgame-session-add (tag stamp &optional ask)
