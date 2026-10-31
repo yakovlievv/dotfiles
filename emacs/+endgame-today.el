@@ -1605,10 +1605,10 @@ Looks `+endgame-today-note-search-days' days away at most."
                          (if pos (format " · note %d/%d" (1+ pos) (length days)) ""))
                         'face 'shadow))))
     (concat " "
-            (propertize (if prev (format "◂ H %s" (funcall short prev)) "◂ none")
+            (propertize (if prev (format "‹ H %s" (funcall short prev)) "‹ none")
                         'face (if prev '+endgame-today-time 'shadow))
             "   " here "   "
-            (propertize (if next (format "%s L ▸" (funcall short next)) "none ▸")
+            (propertize (if next (format "%s L ›" (funcall short next)) "none ›")
                         'face (if next '+endgame-today-time 'shadow)))))
 
 (defun +endgame-today--note-setup (abs)

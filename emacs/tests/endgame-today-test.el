@@ -276,17 +276,17 @@
             (should (string-prefix-p "* Saturday, 2026-10-31" (buffer-string)))
             (should-not (string-match-p "Friday" (buffer-string)))
             (should +endgame-today-note-mode)
-            (should (string-match-p "◂ H Fri 30 Oct" +endgame-today-note--header))
+            (should (string-match-p "‹ H Fri 30 Oct" +endgame-today-note--header))
             (should (string-match-p "Saturday 31 Oct · today · W44 day 6/7 · note 2/2"
                                     +endgame-today-note--header))
-            (should (string-match-p "none ▸" +endgame-today-note--header))
+            (should (string-match-p "none ›" +endgame-today-note--header))
             ;; H: Friday, Saturday's indirect buffer is dropped
             (+endgame-today-note/previous)
             (should-not (buffer-live-p note))
             (with-current-buffer (window-buffer win)
               (should (string-prefix-p "* Friday, 2026-10-30" (buffer-string)))
               (should (string-match-p "1d ago" +endgame-today-note--header))
-              (should (string-match-p "Sat 31 Oct L ▸" +endgame-today-note--header))
+              (should (string-match-p "Sat 31 Oct L ›" +endgame-today-note--header))
               (should-error (+endgame-today-note/previous) :type 'user-error)
               (+endgame-today-note/next))
             (with-current-buffer (window-buffer win)
@@ -301,7 +301,7 @@
           (with-current-buffer buf
             (should-not (buffer-base-buffer))
             (should (string-match-p "No daily note for 2026-11-01" (buffer-string)))
-            (should (string-match-p "◂ H Sat 31 Oct" +endgame-today-note--header)))
+            (should (string-match-p "‹ H Sat 31 Oct" +endgame-today-note--header)))
         (kill-buffer buf)))))
 
 (ert-deftest +endgame-today-timeline-svg-in-theme-colours ()
