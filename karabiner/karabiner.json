@@ -458,6 +458,12 @@
                                 "type": "basic"
                             },
                             {
+                                "conditions": [
+                                    {
+                                        "bundle_identifiers": ["^com\\.apple\\.finder$"],
+                                        "type": "frontmost_application_if"
+                                    }
+                                ],
                                 "from": {
                                     "key_code": "f",
                                     "modifiers": {
@@ -466,8 +472,22 @@
                                 },
                                 "to": [
                                     {
-                                        "key_code": "f",
-                                        "modifiers": ["left_control", "left_option", "left_shift", "left_command"]
+                                        "key_code": "h",
+                                        "modifiers": ["left_command"]
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "f",
+                                    "modifiers": {
+                                        "mandatory": ["right_command"]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "open -b com.apple.finder"
                                     }
                                 ],
                                 "type": "basic"
@@ -717,7 +737,7 @@
                             {
                                 "conditions": [
                                     {
-                                        "bundle_identifiers": ["^ru\\.keepcoder\\.Telegram$"],
+                                        "bundle_identifiers": ["^one\\.ayugram\\.AyuGramDesktop$"],
                                         "type": "frontmost_application_if"
                                     }
                                 ],
@@ -744,7 +764,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "open -b ru.keepcoder.Telegram"
+                                        "shell_command": "open -b one.ayugram.AyuGramDesktop"
                                     }
                                 ],
                                 "type": "basic"

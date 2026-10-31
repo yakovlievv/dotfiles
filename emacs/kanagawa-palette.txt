@@ -1,0 +1,115 @@
+Kanagawa palette (kanagawa-themes, Fabiokleis/kanagawa-emacs)
+Generated from kanagawa-themes.el. Open with nvim-colorizer to see swatches.
+
+
+== wave (current) ==
+
+#16161D  sumi-ink-0        status line, minibuffer, popups (solaire)
+#181820  sumi-ink-1
+#1A1A22  sumi-ink-2
+#1F1F28  sumi-ink-3        editor background, line-number gutter
+#2A2A37  sumi-ink-4        Kanagawa's own gutter (overridden)
+#363646  sumi-ink-5        current line highlight
+#54546D  sumi-ink-6
+#223249  wave-blue-1
+#2D4F67  wave-blue-2
+#2B3328  winter-green
+#49443C  winter-yellow
+#43242B  winter-red
+#252535  winter-blue
+#76946A  autumn-green
+#C34043  autumn-red
+#DCA561  autumn-yellow
+#E82424  samurai-red
+#FF9E3B  ronin-yellow
+#6A9589  wave-aqua-1
+#658594  dragon-blue
+#C8C093  old-white
+#DCD7BA  fuji-white        default text
+#727169  fuji-gray         comments, line numbers, #+keyword lines
+#957FB8  oni-violet        current line number, keywords
+#B8B4D0  oni-violet-2
+#7E9CD8  crystal-blue
+#938AA9  spring-violet-1
+#9CABCA  spring-violet-2
+#7FB4CA  spring-blue
+#A3D4D5  light-blue
+#7AA89F  wave-aqua-2
+#98BB6C  spring-green
+#938056  boat-yellow-1
+#C0A36E  boat-yellow-2
+#E6C384  carp-yellow
+#D27E99  sakura-pink
+#E46876  wave-red
+#FF5D62  peach-red
+#FFA066  surimi-orange
+#717C7C  katana-gray
+
+== dragon ==
+
+#0D0C0C  dragon-black-0
+#12120F  dragon-black-1
+#1D1C19  dragon-black-2
+#181616  dragon-black-3
+#282727  dragon-black-4
+#393836  dragon-black-5
+#625E5A  dragon-black-6
+#C5C9C5  dragon-white
+#87A987  dragon-green
+#8A9A7B  dragon-green-2
+#A292A3  dragon-pink
+#B6927B  dragon-orange
+#B98D7B  dragon-orange-2
+#A6A69C  dragon-gray
+#9E9B93  dragon-gray-2
+#7A8382  dragon-gray-3
+#8BA4B0  dragon-blue-2
+#8992A7  dragon-violet
+#C4746E  dragon-red
+#8EA4A2  dragon-aqua
+#737C73  dragon-ash
+#949FB5  dragon-teal
+#C4B28A  dragon-yellow
+
+== lotus ==
+
+#545464  lotus-ink-1
+#43436C  lotus-ink-2
+#DCD7BA  lotus-gray
+#716E61  lotus-gray-2
+#8A8980  lotus-gray-3
+#D5CEA3  lotus-white-0
+#DCD5AC  lotus-white-1
+#E5DDB0  lotus-white-2
+#F2ECBC  lotus-white-3
+#E7DBA0  lotus-white-4
+#E4D794  lotus-white-5
+#A09CAC  lotus-violet-1
+#766B90  lotus-violet-2
+#C9CBD1  lotus-violet-3
+#624C83  lotus-violet-4
+#C7D7E0  lotus-blue-1
+#B5CBD2  lotus-blue-2
+#9FB5C9  lotus-blue-3
+#4D699B  lotus-blue-4
+#5D57A3  lotus-blue-5
+#6F894E  lotus-green
+#6E915F  lotus-green-2
+#B7D0AE  lotus-green-3
+#B35B79  lotus-pink
+#CC6D00  lotus-orange
+#E98A00  lotus-orange2
+#77713F  lotus-yellow
+#836F4A  lotus-yellow-2
+#DE9800  lotus-yellow-3
+#F9D791  lotus-yellow-4
+#C84053  lotus-red
+#D7474B  lotus-red-2
+#E82424  lotus-red-3
+#D9A594  lotus-red-4
+#597B75  lotus-aqua
+#5E857A  lotus-aqua-2
+#4E8CA2  lotus-teal-1
+#6693BF  lotus-teal-2
+#5A7785  lotus-teal-3
+#D7E3D8  lotus-cyan
