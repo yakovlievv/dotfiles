@@ -116,6 +116,7 @@
 (defvar +endgame-life-file)
 (defvar +endgame-inbox-file)
 (defvar org-timeblock-svg)
+(defvar org-journal-time-format-post-midnight)
 
 (defun +endgame-today-test--titles (items)
   (mapcar (lambda (i) (alist-get 'title i)) items))
@@ -325,5 +326,30 @@
     (should (equal (+endgame-today--svg-image-a (list org-timeblock-svg))
                    (list org-timeblock-svg :scale 1)))
     (should (equal (+endgame-today--svg-image-a '((svg (other)))) '((svg (other)))))))
+
+(ert-deftest +endgame-today-note-new-entry-in-place ()
+  (+endgame-today-test--with-vault
+    (let ((buf (+endgame-today--note-buffer sat))
+          (org-extend-today-until 5))
+      (unwind-protect
+          (with-current-buffer buf
+            (cl-letf (((symbol-function 'current-time)
+                       (lambda () (encode-time (list 0 30 14 31 10 2026 nil nil nil)))))
+              (+endgame-today-note/new-entry))
+            (should (string-suffix-p "prose, not a task\n** 14:30 " (buffer-string)))
+            ;; the real file's buffer has it, under Saturday
+            (with-current-buffer (buffer-base-buffer)
+              (save-restriction
+                (widen)
+                (should (string-match-p "\\* Saturday[^*]*\\(?:.*\n\\)*\\*\\* 14:30 \\'" (buffer-string))))))
+        (kill-buffer buf))))
+  ;; after midnight, an entry on the day before is a night one
+  (let ((org-extend-today-until 5)
+        (org-journal-time-format-post-midnight "%H:%M (night)")
+        (night (encode-time (list 0 18 0 1 11 2026 nil nil nil))))
+    (should (equal (+endgame-today--entry-heading (+endgame-today--abs "2026-10-31") night)
+                   "** 00:18 (night) "))
+    (should (equal (+endgame-today--entry-heading (+endgame-today--abs "2026-11-01") night)
+                   "** 00:18 "))))
 
 ;;; endgame-today-test.el ends here
