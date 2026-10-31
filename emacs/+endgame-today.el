@@ -1516,6 +1516,7 @@ columns the lines are laid out in."
 ;;;; The panel: timeline, dashboard, daily note
 
 (defvar org-timeblock-span)
+(defvar org-timeblock-column)
 (defvar org-timeblock-buffer)
 (defvar org-timeblock-list-buffer)
 (defvar org-timeblock-daterange)
@@ -1854,8 +1855,12 @@ scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
   "Show day ABS's timeline in WINDOW: org-timeblock, or a day agenda without it."
   (cond
    ((+endgame-today--timeline-p)
-    (let ((day (decode-time (+endgame-today--time abs)))
-          (org-timeblock-span 1))
+    (let ((day (decode-time (+endgame-today--time abs))))
+      ;; for good, not let-bound: its commands read the span later, and with
+      ;; the default 3 over a one-day range, H moved the selection to a
+      ;; column 2 that isn't drawn, after which j / k found nothing
+      (setq org-timeblock-span 1
+            org-timeblock-column 1)
       (set-window-buffer window (get-buffer-create org-timeblock-buffer))
       (with-selected-window window
         (unless (derived-mode-p 'org-timeblock-mode) (org-timeblock-mode))
