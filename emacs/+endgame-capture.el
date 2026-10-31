@@ -69,6 +69,25 @@
 
 ;;; Small helpers
 
+(defun +endgame--id-find-fallback-a (fn id &optional markerp)
+  "Around `org-id-find': when the id cache doesn't know ID, find its file
+with ripgrep, record it and look again. `org-id-locations' is a shared
+cache that daemons never rescan, so a note made on another machine (the
+routines note was) is unknown to them, and a habit copy made by the
+server lost the steps of the routine it links."
+  (or (funcall fn id markerp)
+      (when-let* ((id (and id (format "%s" id)))
+                  ((string-match-p "\\`[[:alnum:]-]+\\'" id))
+                  ((executable-find "rg"))
+                  (file (car (ignore-errors
+                               (process-lines "rg" "-l" "-m1" "--glob" "*.org"
+                                              (concat "^\\s*:ID:\\s+" (regexp-quote id) "\\s*$")
+                                              (expand-file-name +endgame-vault-dir))))))
+        (org-id-add-location id file)
+        (funcall fn id markerp))))
+
+(advice-add 'org-id-find :around #'+endgame--id-find-fallback-a)
+
 (defun +endgame--date-time (&optional date)
   "DATE (\"YYYY-MM-DD\") as a time at noon; nil is org's today."
   (if date
