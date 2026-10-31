@@ -1807,6 +1807,20 @@ COLOURS maps org-timeblock's hard-coded ((ATTR . COLOUR) . THEME-COLOUR).")
   "Filter-args of `svg-text' while the timeline draws."
   (if +endgame-today--svg-style (+endgame-today--svg-fix args 2) args))
 
+(defvar org-timeblock-svg)
+
+(defun +endgame-today--svg-image-a (args)
+  "Filter-args of `svg-image': the timeline's image at its own size.
+With `image-scaling-factor' at `auto', Emacs enlarges images by the
+font's width over 10 pixels; the timeline is drawn exactly the window's
+size, so a wide font pushed its right edge (block borders, the times)
+out of the window."
+  (if (and (bound-and-true-p org-timeblock-svg)
+           (eq (car args) org-timeblock-svg)
+           (not (plist-member (cdr args) :scale)))
+      (append args '(:scale 1))
+    args))
+
 (defun +endgame-today--timeline-draw-a (fn &rest args)
   "Around `org-timeblock-redraw-timeblocks': theme colours and the buffer's zoom.
 The timeline is one SVG exactly the window's size, so text-scale can't
@@ -1851,6 +1865,7 @@ scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
   (advice-add 'org-timeblock-redraw-timeblocks :around #'+endgame-today--timeline-draw-a)
   (advice-add 'svg-rectangle :filter-args #'+endgame-today--svg-rect-a)
   (advice-add 'svg-text :filter-args #'+endgame-today--svg-text-a)
+  (advice-add 'svg-image :filter-args #'+endgame-today--svg-image-a)
   (add-hook 'org-timeblock-mode-hook #'+endgame-today--timeline-mode-h)
   (add-hook 'org-timeblock-list-mode-hook #'+endgame-today--timeline-mode-h)
   (+endgame-today-timeline-faces)

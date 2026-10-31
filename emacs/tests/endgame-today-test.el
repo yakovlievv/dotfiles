@@ -115,6 +115,7 @@
 (defvar +endgame-areas-file)
 (defvar +endgame-life-file)
 (defvar +endgame-inbox-file)
+(defvar org-timeblock-svg)
 
 (defun +endgame-today-test--titles (items)
   (mapcar (lambda (i) (alist-get 'title i)) items))
@@ -318,6 +319,11 @@
                    '(svg "hi" :fill "#cdd6f4" :font-size 11 :font-family "Iosevka"))))
   (let ((+endgame-today--svg-style nil))
     (should (equal (+endgame-today--svg-text-a '(svg "hi" :fill "#ffffff"))
-                   '(svg "hi" :fill "#ffffff")))))
+                   '(svg "hi" :fill "#ffffff"))))
+  ;; the timeline's image is never enlarged, other images are left alone
+  (let ((org-timeblock-svg (list 'svg nil)))
+    (should (equal (+endgame-today--svg-image-a (list org-timeblock-svg))
+                   (list org-timeblock-svg :scale 1)))
+    (should (equal (+endgame-today--svg-image-a '((svg (other)))) '((svg (other)))))))
 
 ;;; endgame-today-test.el ends here
