@@ -354,6 +354,8 @@ finished tasks are there too. Its buffer is hidden and killed after."
         (org-agenda-contributing-files nil)
         (org-agenda-sticky nil)
         (org-agenda-start-on-weekday nil)
+        ;; `org-agenda-mode' resets the log from its start value
+        (org-agenda-start-with-log-mode '(closed))
         (org-agenda-show-log '(closed))
         (org-agenda-use-time-grid nil)    ; grid lines are no items
         (org-agenda-window-setup 'current-window)
@@ -596,7 +598,7 @@ Those are the day's own items the agenda block above can't see."
     ((agenda ""
              ((org-agenda-span 1)
               (org-agenda-start-day nil)
-              (org-agenda-show-log '(closed))
+              (org-agenda-start-with-log-mode '(closed))
               (org-agenda-overriding-header "Today")))
      (todo ""
            ((org-agenda-files (list (+endgame-today--day-file (org-today))))
