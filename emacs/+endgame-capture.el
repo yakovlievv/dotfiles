@@ -34,6 +34,7 @@
 (defvar org-journal-carryover-items)
 (defvar org-journal-find-file-fn)
 (defvar org-journal-hide-entries-p)
+(defvar org-journal-enable-agenda-integration)
 (declare-function org-journal-new-entry "org-journal")
 (declare-function org-journal--get-entry-path "org-journal")
 (declare-function +habits--day-time "config")
@@ -100,18 +101,45 @@ asks first, which from the server is an error."
         (with-current-buffer buf (revert-buffer t t t)))
       buf)))
 
+(defvar +endgame--saved nil
+  "Files saved while the innermost `+endgame--saving' ran, newest first.")
+
+(defvar +endgame--recording nil
+  "Non-nil while `+endgame--saving' runs: saves go into `+endgame--saved'.")
+
+(defun +endgame--record-save-a (&rest _)
+  "After `basic-save-buffer': inside `+endgame--saving', remember the file.
+An advice, not `after-save-hook': org buffers here carry a local value."
+  (when (and +endgame--recording (buffer-file-name)
+             (file-in-directory-p (buffer-file-name) +endgame-vault-dir))
+    (cl-pushnew (buffer-file-name) +endgame--saved :test #'equal)))
+
+(advice-add 'basic-save-buffer :after #'+endgame--record-save-a)
+
 (defmacro +endgame--saving (&rest body)
   "Run BODY, then save every file buffer it left modified.
-Buffers that already had unsaved changes are left alone."
+Buffers that already had unsaved changes are left alone. Every file
+saved meanwhile (by BODY too) ends up in `+endgame--saved'."
   (declare (indent 0))
   (let ((dirty (make-symbol "dirty")))
-    `(let ((,dirty (seq-filter #'buffer-modified-p (buffer-list))))
+    `(let ((,dirty (seq-filter #'buffer-modified-p (buffer-list)))
+           (+endgame--recording t)
+           ;; org-journal's after-save hook would customize-save
+           ;; `org-agenda-files' into custom.el; the config builds that
+           ;; list with ripgrep anyway
+           (org-journal-enable-agenda-integration nil))
        (prog1 (progn ,@body)
          (dolist (buf (buffer-list))
            (when (and (buffer-file-name buf)
                       (buffer-modified-p buf)
                       (not (memq buf ,dirty)))
              (with-current-buffer buf (save-buffer))))))))
+
+(defun +endgame--relative (file)
+  "FILE relative to the vault when it's inside it."
+  (let ((root (file-truename +endgame-vault-dir))
+        (file (file-truename file)))
+    (if (string-prefix-p root file) (substring file (length root)) file)))
 
 (defun +endgame--json (value)
   "VALUE as a JSON string."
@@ -468,9 +496,13 @@ DATE is \"YYYY-MM-DD\", nil for org's today. Creates the day heading in
 its weekly file when missing (ID, :daily:, clocktable, DO list, habits
 due, carryover for today), asking nothing, then moves DATE's items from
 the upcoming note into the DO list. Safe to call again. Saves what it
-changes. Returns {\"date\",\"file\",\"created\",\"moved\"}."
-  (let* ((inhibit-interaction t)
-         (date (or date (+endgame--today))))
+changes. Returns {\"date\",\"file\",\"created\",\"moved\",\"files\"}:
+file is the week file (absolute), files every file it saved, relative
+to the vault."
+  (let ((inhibit-interaction t)
+        (date (or date (+endgame--today)))
+        (+endgame--saved nil)
+        result)
     (+endgame--saving
       (let* ((day (+endgame--day-marker date))
              (fresh (not (and day (org-entry-get day "ID")))))
@@ -482,12 +514,13 @@ changes. Returns {\"date\",\"file\",\"created\",\"moved\"}."
           (dolist (buf (list (marker-buffer day) (find-buffer-visiting +endgame-upcoming-file)))
             (when (and buf (buffer-modified-p buf))
               (with-current-buffer buf (save-buffer))))
-          (prog1 (+endgame--json
-                  `((date . ,date)
-                    (file . ,(buffer-file-name (marker-buffer day)))
-                    (created . ,(if fresh t :json-false))
-                    (moved . ,moved)))
-            (set-marker day nil)))))))
+          (setq result `((date . ,date)
+                         (file . ,(buffer-file-name (marker-buffer day)))
+                         (created . ,(if fresh t :json-false))
+                         (moved . ,moved)))
+          (set-marker day nil))))
+    (+endgame--json
+     (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
 
 ;;; Routines: SPC n j r
 
@@ -530,6 +563,37 @@ prompts included, so it gets its habits and staged items."
 (advice-add '+routines-insert-into-day :around #'+endgame--routines-insert-into-day-a)
 (advice-add '+routines--copy :filter-return #'+endgame--routines-copy-a)
 (advice-add '+routines/insert :around #'+endgame--routines-insert-a)
+
+;; The same, without the command: what the server calls
+
+(defun +endgame-routine-add (title date &optional time ask)
+  "Put routine TITLE into the day DATE (\"YYYY-MM-DD\"), stamped for that day.
+TIME is what the time prompt reads (\"9:00\", \"9am+0:30\"), nil or empty for
+none. A future day without a note gets it in the upcoming note instead; a
+missing day otherwise is made first (ASK: with the sleep and morning
+questions). Returns `day', `upcoming', or nil when the day already has it."
+  (let ((day (+endgame--day-marker date))
+        (+endgame--routine-time time))
+    (if (and (not day) (string> date (+endgame--today)))
+        (let ((+endgame--routine-day (+endgame--date-time date)))
+          (+endgame--append-to-upcoming (+routines--copy title 1))
+          'upcoming)
+      (let ((day (+endgame--ensure-day date ask)))
+        (with-current-buffer (marker-buffer day)
+          (org-with-wide-buffer
+           (goto-char day)
+           (and (+routines-insert-into-day title) 'day)))))))
+
+(defun +endgame-routine-json (title &optional date time)
+  "`+endgame-routine-add' for the server: asks nothing, saves, returns JSON.
+DATE nil is org's today. {\"where\": \"day\"|\"upcoming\"|\"exists\", \"files\"}."
+  (let ((inhibit-interaction t)
+        (+endgame--saved nil)
+        where)
+    (+endgame--saving
+      (setq where (+endgame-routine-add title (or date (+endgame--today)) time)))
+    (+endgame--json `((where . ,(if where (symbol-name where) "exists"))
+                      (files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved))))))))
 
 ;;; Areas
 
@@ -707,6 +771,18 @@ day that has no note yet (the day's creation moves it in)."
              (if (eq (+endgame-session-add tag stamp t) 'upcoming)
                  "staged in upcoming"
                "added to its day"))))
+
+(defun +endgame-session-json (tag stamp)
+  "`+endgame-session-add' for the server: asks nothing, saves, returns JSON.
+STAMP is an active timestamp or what org's date prompt reads.
+{\"where\": \"day\"|\"upcoming\", \"files\"}."
+  (let ((inhibit-interaction t)
+        (+endgame--saved nil)
+        where)
+    (+endgame--saving
+      (setq where (+endgame-session-add tag stamp)))
+    (+endgame--json `((where . ,(symbol-name where))
+                      (files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved))))))))
 
 (defun +endgame-sessions (from &optional to)
   "Sessions on the days FROM..TO (\"YYYY-MM-DD\"), in the journal and upcoming.
