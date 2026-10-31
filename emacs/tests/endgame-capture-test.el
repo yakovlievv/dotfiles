@@ -256,6 +256,16 @@
       (should (equal (alist-get 'planned (car report)) 120))
       (should-not (alist-get 'clocked (cadr report))))))
 
+(ert-deftest +endgame-server-never-makes-a-day ()
+  ;; the calendar or the phone (no ASK): today without a note stays staged
+  (+endgame-test--with-vault
+    (let ((today (+endgame--today)))
+      (should-not (+endgame--day-marker today))
+      (should (eq (+endgame-session-add "learning" (concat today " 10:00-12:00")) 'upcoming))
+      (should (eq (+endgame-routine-add "Morning routine" today "9:00") 'upcoming))
+      (should-not (+endgame--day-marker today))
+      (should (string-match-p "learning session" (+endgame-test--read +endgame-upcoming-file))))))
+
 (ert-deftest +endgame-routine-copy-gets-its-days-stamp ()
   (+endgame-test--with-vault
     (should (eq (+endgame-routine-add "Morning routine" +endgame-test-future "7am+0:15") 'upcoming))

@@ -1585,9 +1585,8 @@ Returns non-nil when it was there already."
   "The today panel: timeline left, dashboard right, the daily note under it.
 Opens in its own workspace; run it again there to rebuild the layout."
   (interactive)
-  (when (fboundp '+endgame-day-ensure)  ; creates today's note, never prompts
-    (condition-case err (+endgame-day-ensure nil)
-      (error (message "Today's note: %s" (error-message-string err)))))
+  (when (fboundp '+endgame--ensure-day)  ; today's note, made the normal way (prompts)
+    (+endgame--ensure-day (+endgame--today) t))
   (let ((abs (org-today))
         (there (+endgame-today--workspace))
         (dash (+endgame-today-dashboard)))

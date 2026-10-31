@@ -607,12 +607,12 @@ prompts included, so it gets its habits and staged items."
 (defun +endgame-routine-add (title date &optional time ask)
   "Put routine TITLE into the day DATE (\"YYYY-MM-DD\"), stamped for that day.
 TIME is what the time prompt reads (\"9:00\", \"9am+0:30\"), nil or empty for
-none. A future day without a note gets it in the upcoming note instead; a
-missing day otherwise is made first (ASK: with the sleep and morning
-questions). Returns `day', `upcoming', or nil when the day already has it."
+none. A day without a note gets it in the upcoming note instead, unless
+ASK (an Emacs command) and the day isn't in the future: then the day is
+made first, with the sleep and morning questions. Returns `day', `upcoming', or nil when the day already has it."
   (let ((day (+endgame--day-marker date))
         (+endgame--routine-time time))
-    (if (and (not day) (string> date (+endgame--today)))
+    (if (and (not day) (or (not ask) (string> date (+endgame--today))))
         (let ((+endgame--routine-day (+endgame--date-time date)))
           (+endgame--append-to-upcoming (+routines--copy title 1))
           'upcoming)
@@ -769,9 +769,10 @@ after the drawer."
 (defun +endgame-session-add (tag stamp &optional ask)
   "Add a session for area TAG at STAMP (an active timestamp, or what org's
 date prompt reads, like \"mon 14:00-17:00\"). Returns where it went:
-`day' (that day's DO list) or `upcoming' (a future day with no note yet).
-A missing day that isn't in the future is made first; ASK lets that ask
-the sleep and morning questions."
+`day' (that day's DO list) or `upcoming' (a day with no note yet).
+ASK (SPC n j s) makes a missing day that isn't in the future first, sleep
+and morning questions included. Without ASK (the server, the calendar) a
+day is never made: the session waits in upcoming until Vlad makes the day."
   (unless (+endgame--area tag) (user-error "No area with AREA_TAG %s" tag))
   (let* ((stamp (if (string-match-p (concat "\\`" org-tsr-regexp "\\'") stamp)
                     stamp
@@ -782,7 +783,7 @@ the sleep and morning questions."
     (cond (day
            (+endgame--append-to-do-list day (list text))
            'day)
-          ((string> date (+endgame--today))
+          ((or (not ask) (string> date (+endgame--today)))
            (+endgame--append-to-upcoming text)
            'upcoming)
           (t
