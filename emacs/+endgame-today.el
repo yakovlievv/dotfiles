@@ -1,0 +1,1333 @@
+;;; +endgame-today.el --- the today list and the today panel -*- lexical-binding: t; -*-
+
+;;; Commentary:
+;; The endgame's "today": every item due on a day, as data, and the views on it.
+;; Designed in the vault note "the endgame: org vault as the brain, thin clients
+;; for everything else" (id 9b510b89-c57e-40d3-b5b3-7807cd49e469).
+;;
+;; - `+endgame-today-items' / `+endgame-today-json': the today list for a date.
+;;   Tasks scheduled, due or overdue in their homes (straight from
+;;   `org-agenda-list', so the agenda files, skip settings and
+;;   `org-extend-today-until' are the agenda's own), APPTs, the day's own items
+;;   (routine, habit and session copies in the daily note's DO list) and items
+;;   staged for that day in the upcoming note. Timed first by time, untimed
+;;   below, one done counter. The JSON is what vault-api serves the phone.
+;; - `+endgame/today-agenda' (SPC o a d): the cheap version, a block agenda.
+;; - `+endgame/today-panel' (SPC o t): a workspace with three windows: the
+;;   org-timeblock timeline on the left, a dashboard on the right (the list
+;;   with checkboxes, habits with this week's heatmap, today's clocked time,
+;;   planned vs actual per area) and the real daily note under it, narrowed to
+;;   the day. The panel shows, it doesn't own: everything is read from the
+;;   vault on each refresh, and every line leads to an action on the heading.
+;;
+;; It leans on the literate Doom config when it's there (`my/org-fast-scan',
+;; `my/org-roam-refresh-agenda-files', the `+habits-heatmap-*' code) and on
+;; the capture module's `+endgame-areas-report' for planned vs actual, and works
+;; without them, which is how the tests run.
+
+;;; Code:
+
+(require 'cl-lib)
+(require 'subr-x)
+(require 'json)
+(require 'calendar)
+(require 'org)
+(require 'org-agenda)
+(require 'org-element)
+(require 'org-id)
+
+(defgroup +endgame-today nil
+  "The today list and the today panel."
+  :group 'org)
+
+(defcustom +endgame-today-refresh-interval 60
+  "Seconds between refreshes of a visible dashboard, for the clock and the date."
+  :type 'integer)
+
+(defcustom +endgame-today-workspace "today"
+  "Name of the workspace (or tab) the today panel opens in."
+  :type 'string)
+
+(defcustom +endgame-today-timeline-width 0.38
+  "Share of the frame's width the timeline gets."
+  :type 'number)
+
+(defcustom +endgame-today-note-height 0.45
+  "Share of the right column's height the daily note gets."
+  :type 'number)
+
+(defcustom +endgame-today-save-after-change t
+  "Non-nil means a state change from the dashboard saves the heading's file.
+The phone and the server read the files: an unsaved tick is invisible to them."
+  :type 'boolean)
+
+(defcustom +endgame-today-clocked-rows 6
+  "Headings listed under the clocked time, the longest first."
+  :type 'integer)
+
+(defvar +endgame-today-dashboard-buffer "*today*"
+  "Name of the dashboard buffer.")
+
+(defconst +endgame-today--agenda-buffer " *endgame-today-agenda*"
+  "The hidden agenda the today list is read from; killed after every build.")
+
+;;;; Dates
+
+(defun +endgame-today--abs (date)
+  "Absolute day of DATE, a YYYY-MM-DD string or nil for org's today."
+  (if (null date)
+      (org-today)
+    (pcase-let ((`(,y ,m ,d) (mapcar #'string-to-number (split-string date "-"))))
+      (calendar-absolute-from-gregorian (list m d y)))))
+
+(defun +endgame-today--date (abs)
+  "YYYY-MM-DD of absolute day ABS."
+  (pcase-let ((`(,m ,d ,y) (calendar-gregorian-from-absolute abs)))
+    (format "%04d-%02d-%02d" y m d)))
+
+(defun +endgame-today--time (abs &optional minutes)
+  "Emacs time of absolute day ABS, MINUTES after midnight (default noon)."
+  (pcase-let ((`(,m ,d ,y) (calendar-gregorian-from-absolute abs)))
+    (let ((min (or minutes 720)))
+      (encode-time 0 (% min 60) (/ min 60) d m y))))
+
+(defun +endgame-today--hhmm (minutes)
+  "MINUTES after midnight as HH:MM."
+  (and minutes (format "%02d:%02d" (/ minutes 60) (% minutes 60))))
+
+(defun +endgame-today--duration (minutes)
+  "MINUTES as H:MM."
+  (format "%d:%02d" (/ minutes 60) (% minutes 60)))
+
+;;;; Vault files
+
+(defun +endgame-today--vault-file (rel)
+  "Absolute path of REL, a path inside the vault (`org-directory')."
+  (expand-file-name rel org-directory))
+
+(defun +endgame-today--upcoming-file ()
+  "The staging note: future day-own items wait there for their day."
+  (or (bound-and-true-p +endgame-upcoming-file)
+      (+endgame-today--vault-file "roam/20261031030202-upcoming.org")))
+
+(defun +endgame-today--areas-file ()
+  "The area registry."
+  (or (bound-and-true-p +endgame-areas-file)
+      (+endgame-today--vault-file "roam/20261031030150-areas.org")))
+
+(defun +endgame-today--life-file ()
+  "The life note: Appointments and Errands."
+  (or (bound-and-true-p +endgame-life-file)
+      (+endgame-today--vault-file "roam/20261031024752-life.org")))
+
+(defun +endgame-today--rel (file)
+  "FILE relative to the vault, the way vault-api names notes."
+  (let ((root (file-truename (expand-file-name org-directory)))
+        (true (file-truename file)))
+    (if (string-prefix-p root true)
+        (file-relative-name true root)
+      (abbreviate-file-name file))))
+
+(defun +endgame-today--buffer (file)
+  "A buffer visiting FILE, opened the way the agenda opens its files.
+That's cheap: no per-file mode hooks (see the config's
+`my/org-agenda-delay-mode-hooks-a'), and the real setup runs when the
+buffer is first shown."
+  (or (org-find-base-buffer-visiting file)
+      (let ((org-inhibit-startup t))
+        (org-get-agenda-file-buffer file))))
+
+(defun +endgame-today--day-file (abs)
+  "The weekly journal file that holds day ABS."
+  (let ((time (+endgame-today--time abs)))
+    (if (and (require 'org-journal nil t) (fboundp 'org-journal--get-entry-path)
+             (boundp 'org-journal-file-format))
+        (org-journal--get-entry-path time)
+      ;; org-journal names a weekly file after the week's Monday
+      (let* ((dow (calendar-day-of-week (calendar-gregorian-from-absolute abs)))
+             (monday (- abs (mod (+ dow 6) 7))))
+        (expand-file-name
+         (format-time-string (or (bound-and-true-p org-journal-file-format) "week%V-%Y-%m-%d.org")
+                             (+endgame-today--time monday))
+         (or (bound-and-true-p org-journal-dir)
+             (+endgame-today--vault-file "roam/daily/")))))))
+
+(defun +endgame-today--day-marker (abs)
+  "Marker at day ABS's heading in its weekly journal file, or nil."
+  (let ((file (+endgame-today--day-file abs))
+        (date (+endgame-today--date abs)))
+    (when (file-exists-p file)
+      (with-current-buffer (+endgame-today--buffer file)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (when (re-search-forward
+                (format "^\\* .*[^0-9]%s\\(?:[^0-9]\\|$\\)" (regexp-quote date)) nil t)
+           (copy-marker (line-beginning-position))))))))
+
+;;;; Reading a heading
+
+(defconst +endgame-today--cookie-re "[ \t]*\\[[0-9]*\\(?:%\\|/[0-9]*\\)\\]"
+  "A statistics cookie in a heading.")
+
+(defconst +endgame-today--tag-token-re "[ \t]+\\(:[[:alnum:]_@#%:]+:\\)\\(?:[ \t]\\|$\\)"
+  "A :tag: written inside a heading's title, where org doesn't see it as a tag.")
+
+(defun +endgame-today--heading-parts ()
+  "Title, progress cookie and stray title tags of the heading at point.
+Links show as their description, timestamps and the cookie are dropped."
+  (let* ((raw (org-link-display-format (substring-no-properties (org-get-heading t t t t))))
+         (progress (and (string-match "\\[[0-9]*\\(?:%\\|/[0-9]*\\)\\]" raw) (match-string 0 raw)))
+         (title raw)
+         stray)
+    (while (string-match +endgame-today--tag-token-re title)
+      (setq stray (append stray (split-string (match-string 1 title) ":" t))
+            title (replace-match " " t t title)))
+    (setq title (replace-regexp-in-string +endgame-today--cookie-re "" title))
+    (setq title (replace-regexp-in-string (concat "[ \t]*" org-ts-regexp-both) "" title))
+    (list (string-trim (replace-regexp-in-string "[ \t]+" " " title)) progress stray)))
+
+(defun +endgame-today--stamps ()
+  "Active timestamps in the entry at point (heading and body, not children).
+Property and keyword lines don't count, like the agenda file scan."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((end (save-excursion (outline-next-heading) (point)))
+          out)
+      (while (re-search-forward org-ts-regexp end t)
+        (let ((beg (match-beginning 0)))
+          (unless (save-excursion
+                    (beginning-of-line)
+                    (looking-at-p "[ \t]*\\(?::[^: \t\n]+:\\|#\\+\\)"))
+            (save-excursion
+              (goto-char beg)
+              (let ((ts (org-element-timestamp-parser)))
+                (when ts
+                  (push ts out)
+                  (goto-char (org-element-property :end ts))))))))
+      (nreverse out))))
+
+(defun +endgame-today--stamp-abs (ts &optional end)
+  "Absolute day TS starts (or with END, ends) on."
+  (calendar-absolute-from-gregorian
+   (if end
+       (list (org-element-property :month-end ts) (org-element-property :day-end ts)
+             (org-element-property :year-end ts))
+     (list (org-element-property :month-start ts) (org-element-property :day-start ts)
+           (org-element-property :year-start ts)))))
+
+(defun +endgame-today--stamp-on-p (ts abs)
+  "Non-nil if timestamp TS falls on day ABS (its own day, or inside its range)."
+  (<= (+endgame-today--stamp-abs ts) abs (+endgame-today--stamp-abs ts t)))
+
+(defun +endgame-today--stamp-times (ts)
+  "(START . END) minutes of timestamp TS, nil when it has no time."
+  (let ((h (org-element-property :hour-start ts)))
+    (when h
+      (let* ((start (+ (* 60 h) (or (org-element-property :minute-start ts) 0)))
+             (he (org-element-property :hour-end ts))
+             (end (and he (+ (* 60 he) (or (org-element-property :minute-end ts) 0)))))
+        (cons start (and end (/= end start) end))))))
+
+(defun +endgame-today--entry-on (abs)
+  "Non-nil when the entry at point has an active timestamp on day ABS.
+The value is (START . END) minutes of the first timed one, or t."
+  (let ((on (seq-filter (lambda (ts) (+endgame-today--stamp-on-p ts abs))
+                        (+endgame-today--stamps))))
+    (and on (or (seq-some #'+endgame-today--stamp-times on) t))))
+
+;;;; Areas
+
+(defvar +endgame-today--areas-cache nil
+  "(FILE TICK . AREAS) of the last registry read.")
+
+(defun +endgame-today-areas ()
+  "The areas in the registry, in file order: alists of tag, name, category.
+Uses the capture module's `+endgame-areas' when it's loaded."
+  (if (fboundp '+endgame-areas)
+      (+endgame-areas)
+    (let ((file (+endgame-today--areas-file)))
+      (when (file-exists-p file)
+        (with-current-buffer (+endgame-today--buffer file)
+          (let ((tick (buffer-chars-modified-tick)))
+            (unless (and (equal (car +endgame-today--areas-cache) file)
+                         (eq (cadr +endgame-today--areas-cache) tick))
+              (setq +endgame-today--areas-cache
+                    (cons file
+                          (cons tick
+                                (org-with-wide-buffer
+                                 (delq nil
+                                       (org-map-entries
+                                        (lambda ()
+                                          (let ((tag (org-entry-get nil "AREA_TAG")))
+                                            (when (and tag (not (string-empty-p tag)))
+                                              `((tag . ,tag)
+                                                (name . ,(org-get-heading t t t t))
+                                                (category . ,(save-excursion
+                                                               (and (org-up-heading-safe)
+                                                                    (org-get-heading t t t t))))))))
+                                        "LEVEL=2")))))))
+            (cddr +endgame-today--areas-cache)))))))
+
+(defun +endgame-today--area (tags)
+  "Area of the heading at point: its :AREA:, or the first of TAGS that's an area."
+  (or (+endgame-today--prop "AREA")
+      (let ((areas (mapcar (lambda (a) (alist-get 'tag a)) (+endgame-today-areas))))
+        (seq-find (lambda (tag) (member tag areas)) tags))))
+
+;;;; The today list
+
+(defun +endgame-today--prop (name)
+  "Property NAME of the heading at point, its own, not inherited.
+Also read from a drawer org doesn't see because a line sits between it
+and the heading (a session's timestamp, written above its drawer)."
+  (or (org-entry-get nil name)
+      (save-excursion
+        (org-back-to-heading t)
+        (let ((end (save-excursion (outline-next-heading) (point))))
+          (and (re-search-forward "^[ \t]*:PROPERTIES:[ \t]*$" end t)
+               (let ((dend (save-excursion (re-search-forward "^[ \t]*:END:[ \t]*$" end t))))
+                 (and dend
+                      (re-search-forward (format "^[ \t]*:%s:[ \t]+\\(.*?\\)[ \t]*$" (regexp-quote name))
+                                         dend t)
+                      (match-string-no-properties 1))))))))
+
+(defun +endgame-today--kind (state)
+  "What the heading at point is, for the today list, given its todo STATE."
+  (let ((routine (+endgame-today--prop "ROUTINE")))
+    (cond ((+endgame-today--prop "HABIT_ID") 'habit)
+          ((equal routine "Session routine") 'session)
+          (routine 'routine)
+          ((or (equal state "APPT") (null state)) 'appt)
+          (t 'task))))
+
+(defun +endgame-today--item (abs &optional seen)
+  "The heading at point as a today-list item for day ABS.
+SEEN is what the agenda said about it: a plist of :type :time :end
+:extra, or nil when the heading was found in the daily note or staging."
+  (org-back-to-heading t)
+  (pcase-let* ((state (org-get-todo-state))
+               (`(,title ,progress ,stray) (+endgame-today--heading-parts))
+               (tags (append (mapcar #'substring-no-properties (org-get-tags nil t)) stray))
+               (type (plist-get seen :type))
+               (extra (replace-regexp-in-string
+                       "[ \t]+" " " (string-trim (or (plist-get seen :extra) ""))))
+               ;; a rollover sits on today without its old day's time
+               (late (and (member type '("past-scheduled" "deadline" "closed"))
+                          (plist-get seen :late)))
+               (own (+endgame-today--entry-on abs))
+               (times (cond ((and seen (not late) (not (equal type "closed")) (plist-get seen :time))
+                             (cons (plist-get seen :time) (plist-get seen :end)))
+                            ((consp own) own)))
+               (file (buffer-file-name (buffer-base-buffer)))
+               (id (org-entry-get nil "ID")))
+    `((ref . ,(or id (format "%s:%d" (+endgame-today--rel file) (line-number-at-pos nil t))))
+      (id . ,id)
+      (title . ,title)
+      (state . ,state)
+      (done . ,(and state (member state org-done-keywords) t))
+      (kind . ,(+endgame-today--kind state))
+      (start . ,(car times))
+      (end . ,(cdr times))
+      (tags . ,(delete-dups tags))
+      (area . ,(+endgame-today--area tags))
+      (file . ,(+endgame-today--rel file))
+      (line . ,(line-number-at-pos nil t))
+      (progress . ,progress)
+      (rollover . ,(and (string-match "Sched\\.[ \t]*\\([0-9]+\\)x" extra)
+                        (string-to-number (match-string 1 extra))))
+      (overdue . ,(and (string-match "\\([0-9]+\\) d\\. ago" extra)
+                       (string-to-number (match-string 1 extra))))
+      ;; org's leader when it says more than "Scheduled:"
+      (agenda . ,(and (not (string-empty-p extra)) (not (equal type "closed"))
+                      (not (equal extra (string-trim (car org-agenda-scheduled-leaders))))
+                      extra))
+      (checkable . ,(and state t))
+      (marker . ,(point-marker)))))
+
+(defun +endgame-today--agenda-lines (abs)
+  "What `org-agenda-list' shows on day ABS: (MARKER . PLIST) per line.
+The build is the agenda's own, with the closed log on so the day's
+finished tasks are there too. Its buffer is hidden and killed after."
+  (let ((org-agenda-buffer-tmp-name +endgame-today--agenda-buffer)
+        (org-agenda-buffer-name +endgame-today--agenda-buffer)
+        (org-agenda-buffer nil)
+        (org-agenda-contributing-files nil)
+        (org-agenda-sticky nil)
+        (org-agenda-start-on-weekday nil)
+        (org-agenda-show-log '(closed))
+        (org-agenda-use-time-grid nil)    ; grid lines are no items
+        (org-agenda-window-setup 'current-window)
+        (org-agenda-restore-windows-after-quit nil)
+        (org-agenda-finalize-hook nil)
+        (inhibit-message t)
+        lines)
+    (when (fboundp 'my/org-roam-refresh-agenda-files)
+      (my/org-roam-refresh-agenda-files))
+    (save-window-excursion
+      (if (fboundp 'my/org-fast-scan)
+          (my/org-fast-scan #'org-agenda-list nil abs 1)
+        (let ((org-mode-hook nil) (org-inhibit-startup t))
+          (org-agenda-list nil abs 1))))
+    (let ((buf (get-buffer +endgame-today--agenda-buffer)))
+      (unwind-protect
+          (with-current-buffer buf
+            (goto-char (point-min))
+            (while (not (eobp))
+              (let ((m (get-text-property (point) 'org-hd-marker))
+                    (type (get-text-property (point) 'type)))
+                (when (and m (marker-buffer m) type)
+                  (let* ((tod (get-text-property (point) 'time-of-day))
+                         (dur (get-text-property (point) 'duration))
+                         (ts (get-text-property (point) 'ts-date))
+                         (start (and (integerp tod) (+ (* 60 (/ tod 100)) (% tod 100)))))
+                    (push (cons (copy-marker m)
+                                (list :type type
+                                      :time start
+                                      :end (and start (numberp dur) (> dur 0) (+ start (round dur)))
+                                      :extra (get-text-property (point) 'extra)
+                                      :late (and (integerp ts) (< ts abs))))
+                          lines))))
+              (forward-line 1)))
+        (when (buffer-live-p buf) (kill-buffer buf))))
+    (nreverse lines)))
+
+(defun +endgame-today--planned-p (abs)
+  "Non-nil if the entry at point was planned for day ABS or earlier.
+For a task closed that day: it was on the list only if it had a date by then."
+  (or (seq-some (lambda (f) (let ((s (funcall f (point))))
+                              (and s (<= (time-to-days s) abs))))
+                '(org-get-scheduled-time org-get-deadline-time))
+      (+endgame-today--entry-on abs)))
+
+(defun +endgame-today--day-own-markers (abs)
+  "Markers at the day-own items of day ABS: its DO list, and staged ones.
+The DO list's direct children with a todo keyword, and top-level
+headings of the upcoming note with an active timestamp on that day."
+  (let (out)
+    (let ((day (+endgame-today--day-marker abs)))
+      (when day
+        (with-current-buffer (marker-buffer day)
+          (org-with-wide-buffer
+           (goto-char day)
+           (let* ((level (org-current-level))
+                  (end (save-excursion (org-end-of-subtree t t))))
+             (when (re-search-forward (format "^\\*\\{%d\\} DO list\\b" (1+ level)) end t)
+               (let ((do-end (save-excursion (org-end-of-subtree t t)))
+                     (re (format "^\\*\\{%d\\} " (+ level 2))))
+                 (while (re-search-forward re do-end t)
+                   (when (org-get-todo-state)
+                     (push (copy-marker (line-beginning-position)) out))))))))
+        (set-marker day nil)))
+    (let ((file (+endgame-today--upcoming-file)))
+      (when (file-exists-p file)
+        (with-current-buffer (+endgame-today--buffer file)
+          (org-with-wide-buffer
+           (goto-char (point-min))
+           (while (re-search-forward "^\\* " nil t)
+             (when (+endgame-today--entry-on abs)
+               (push (copy-marker (line-beginning-position)) out)))))))
+    (nreverse out)))
+
+(defun +endgame-today--sort (items)
+  "ITEMS timed first by start time, then untimed, open before done."
+  (let ((timed (seq-filter (lambda (i) (alist-get 'start i)) items))
+        (untimed (seq-remove (lambda (i) (alist-get 'start i)) items)))
+    (append (sort timed (lambda (a b) (< (alist-get 'start a) (alist-get 'start b))))
+            (seq-remove (lambda (i) (alist-get 'done i)) untimed)
+            (seq-filter (lambda (i) (alist-get 'done i)) untimed))))
+
+(defun +endgame-today-items (&optional date)
+  "The today list for DATE (YYYY-MM-DD, nil for org's today), as data.
+An alist: date, items, ahead (deadline warnings, not due yet) and
+counts (done, total: the checkable items). Each item is an alist of
+ref, id, title, state, done, kind (appt session routine habit task),
+start and end (minutes or nil), tags, area, file (relative to the
+vault), line, progress, rollover (org's Sched. Nx), overdue (days
+past a deadline), agenda (org's own leader text), checkable and marker."
+  (let* ((abs (+endgame-today--abs date))
+         (seen (make-hash-table :test #'equal))
+         items ahead)
+    (cl-flet ((key (m) (cons (marker-buffer m) (marker-position m)))
+              (add (m plist)
+                (with-current-buffer (marker-buffer m)
+                  (org-with-wide-buffer
+                   (goto-char m)
+                   (push (+endgame-today--item abs plist) items)))))
+      (dolist (line (+endgame-today--agenda-lines abs))
+        (pcase-let* ((`(,m . ,plist) line)
+                     (type (plist-get plist :type))
+                     (k (key m)))
+          (cond
+           ((gethash k seen))
+           ((equal type "upcoming-deadline")
+            (with-current-buffer (marker-buffer m)
+              (org-with-wide-buffer
+               (goto-char m)
+               (push (+endgame-today--item abs plist) ahead))))
+           ((and (equal type "closed")
+                 (not (with-current-buffer (marker-buffer m)
+                        (org-with-wide-buffer (goto-char m) (+endgame-today--planned-p abs))))))
+           (t (puthash k t seen) (add m plist)))
+          (set-marker m nil)))
+      (dolist (m (+endgame-today--day-own-markers abs))
+        (unless (gethash (key m) seen)
+          (puthash (key m) t seen)
+          (add m nil))
+        (set-marker m nil)))
+    (let* ((items (+endgame-today--sort (nreverse items)))
+           (checkable (seq-filter (lambda (i) (alist-get 'checkable i)) items)))
+      `((date . ,(+endgame-today--date abs))
+        (items . ,items)
+        (ahead . ,(nreverse ahead))
+        (counts . ((done . ,(seq-count (lambda (i) (alist-get 'done i)) checkable))
+                   (total . ,(length checkable))))))))
+
+;;;; JSON for the server
+
+(defun +endgame-today--revert ()
+  "Bring unmodified org buffers in line with disk.
+Syncthing and vault-api write the files under them."
+  (if (fboundp 'vault-agenda--revert)
+      (vault-agenda--revert)
+    (dolist (buf (buffer-list))
+      (let ((file (buffer-file-name buf)))
+        (when (and file (string-suffix-p ".org" file) (not (buffer-modified-p buf)))
+          (cond ((not (file-exists-p file)) (kill-buffer buf))
+                ((not (verify-visited-file-modtime buf))
+                 (with-current-buffer buf
+                   (let ((org-mode-hook nil) (org-inhibit-startup t))
+                     (revert-buffer t t))))))))))
+
+(defun +endgame-today--json-item (item)
+  "ITEM ready for `json-encode': times as HH:MM, false for nil flags, no marker."
+  (let ((bool (lambda (v) (if v t :json-false))))
+    `((ref . ,(alist-get 'ref item))
+      (id . ,(alist-get 'id item))
+      (title . ,(alist-get 'title item))
+      (state . ,(alist-get 'state item))
+      (done . ,(funcall bool (alist-get 'done item)))
+      (kind . ,(symbol-name (alist-get 'kind item)))
+      (start . ,(+endgame-today--hhmm (alist-get 'start item)))
+      (end . ,(+endgame-today--hhmm (alist-get 'end item)))
+      (tags . ,(vconcat (alist-get 'tags item)))
+      (area . ,(alist-get 'area item))
+      (file . ,(alist-get 'file item))
+      (line . ,(alist-get 'line item))
+      (progress . ,(alist-get 'progress item))
+      (rollover . ,(alist-get 'rollover item))
+      (overdue . ,(alist-get 'overdue item))
+      (agenda . ,(alist-get 'agenda item))
+      (checkable . ,(funcall bool (alist-get 'checkable item))))))
+
+(defun +endgame-today-json (&optional date)
+  "The today list for DATE (YYYY-MM-DD, nil for org's today) as a JSON string.
+For vault-api, through emacsclient: never prompts, changes nothing.
+  {date, today, items: [{ref id title state done kind start end tags area
+   file line progress rollover overdue agenda checkable}],
+   ahead: [same], counts: {done, total}}
+start/end are HH:MM or null; ref is the :ID:, or file:line without one."
+  (let ((inhibit-interaction t))
+    (+endgame-today--revert)
+    (let* ((data (+endgame-today-items date))
+           (json-encoding-pretty-print nil))
+      (json-encode
+       `((date . ,(alist-get 'date data))
+         (today . ,(+endgame-today--date (org-today)))
+         (items . ,(vconcat (mapcar #'+endgame-today--json-item (alist-get 'items data))))
+         (ahead . ,(vconcat (mapcar #'+endgame-today--json-item (alist-get 'ahead data))))
+         (counts . ,(alist-get 'counts data)))))))
+
+;;;; The block agenda (the cheap version)
+
+(defun +endgame-today--skip-unless-day-own ()
+  "Agenda skip function: keep today's DO list items that have no date today.
+Those are the day's own items the agenda block above can't see."
+  (let ((next (save-excursion (or (outline-next-heading) (point-max))))
+        (date (+endgame-today--date (org-today))))
+    (unless (and (save-excursion
+                   (and (org-up-heading-safe)
+                        (looking-at-p "\\*+ DO list\\b")
+                        (org-up-heading-safe)
+                        (= (org-current-level) 1)
+                        (string-match-p (regexp-quote date) (org-get-heading t t t t))))
+                 (not (+endgame-today--entry-on (org-today)))
+                 (not (org-get-scheduled-time (point)))
+                 (not (org-get-deadline-time (point))))
+      next)))
+
+(defun +endgame-today--agenda-command ()
+  "The today list as a block agenda, for `org-agenda-custom-commands'."
+  '("d" "Today list"
+    ((agenda ""
+             ((org-agenda-span 1)
+              (org-agenda-start-day nil)
+              (org-agenda-show-log '(closed))
+              (org-agenda-overriding-header "Today")))
+     (todo ""
+           ((org-agenda-files (list (+endgame-today--day-file (org-today))))
+            (org-agenda-skip-function #'+endgame-today--skip-unless-day-own)
+            (org-agenda-overriding-header "Day's own, no time"))))))
+
+(with-eval-after-load 'org
+  (setq org-agenda-custom-commands
+        (append (seq-remove (lambda (c) (equal (car c) "d")) org-agenda-custom-commands)
+                (list (+endgame-today--agenda-command)))))
+
+(defun +endgame/today-agenda ()
+  "The today list as a block agenda.
+Today's agenda, then the day's own items that have no date."
+  (interactive)
+  (org-agenda nil "d"))
+
+;;;; Dashboard data: habits, clock, areas
+
+(defun +endgame-today--habit-week ()
+  "This week's habit heatmap, or nil without the config's heatmap code."
+  (when (fboundp '+habits-heatmap-data)
+    (ignore-errors (+habits-heatmap-data 1))))
+
+(defun +endgame-today--clock-window (abs)
+  "(START . END) of org's day ABS as Emacs times.
+It starts at `org-extend-today-until' and ends at that hour the next day."
+  (let ((shift (* 60 (or org-extend-today-until 0))))
+    (cons (+endgame-today--time abs shift)
+          (+endgame-today--time (1+ abs) shift))))
+
+(defun +endgame-today--clock-files (abs)
+  "Vault files with a CLOCK line that may touch day ABS, plus modified org buffers."
+  (let* ((rg (executable-find "rg"))
+         (dates (mapcar #'+endgame-today--date (list (1- abs) abs (1+ abs))))
+         (files (when rg
+                  (with-temp-buffer
+                    (apply #'call-process rg nil t nil
+                           "--files-with-matches" "--no-messages" "--glob" "*.org"
+                           "--glob" "!**/templates/**" "--glob" "!**/config/**"
+                           (append
+                            (list "-e" (format "CLOCK: \\[(%s)" (string-join dates "|")))
+                            (list (expand-file-name (or (bound-and-true-p my/org-agenda-root)
+                                                        org-directory)))))
+                    (split-string (buffer-string) "\n" t)))))
+    (delete-dups
+     (append files
+             (delq nil (mapcar (lambda (b) (and (buffer-modified-p b)
+                                                 (with-current-buffer b (derived-mode-p 'org-mode))
+                                                 (buffer-file-name b)))
+                               (buffer-list)))
+             (unless rg (org-agenda-files))))))
+
+(defun +endgame-today-clocked (&optional date)
+  "Time clocked on DATE (YYYY-MM-DD, nil for today), from every CLOCK line.
+The day is org's day, so with `org-extend-today-until' 5 it runs from
+05:00 to 05:00. A running clock counts up to now. Returns an alist:
+total (minutes), running (title or nil), and headings: a list of
+alists of title, note, minutes, running, marker, longest first."
+  (let* ((abs (+endgame-today--abs date))
+         (window (+endgame-today--clock-window abs))
+         (now (current-time))
+         (by (make-hash-table :test #'equal))
+         (total 0) running)
+    (dolist (file (+endgame-today--clock-files abs))
+      (when (file-exists-p file)
+        (with-current-buffer (+endgame-today--buffer file)
+          (org-with-wide-buffer
+           (goto-char (point-min))
+           (while (re-search-forward
+                   "^[ \t]*CLOCK: \\(\\[[^]]+\\]\\)\\(?:--\\(\\[[^]]+\\]\\)\\)?" nil t)
+             (let* ((from-s (match-string 1))
+                    (to-s (match-string 2))
+                    (start (org-time-string-to-time from-s))
+                    (open (not to-s))
+                    (end (if open now (org-time-string-to-time to-s)))
+                    (from (if (time-less-p start (car window)) (car window) start))
+                    (to (if (time-less-p (cdr window) end) (cdr window) end))
+                    (min (/ (float-time (time-subtract to from)) 60)))
+               (when (> min 0)
+                 (save-excursion
+                   (org-back-to-heading t)
+                   (let* ((k (cons (current-buffer) (point)))
+                          (row (or (gethash k by)
+                                   (puthash k (list :title (car (+endgame-today--heading-parts))
+                                                    :note (or (org-get-title) (file-name-base file))
+                                                    :minutes 0 :marker (point-marker))
+                                            by))))
+                     (plist-put row :minutes (+ (plist-get row :minutes) min))
+                     (when open
+                       (plist-put row :running t)
+                       (setq running (plist-get row :title))))))))))))
+    (let (rows)
+      (maphash (lambda (_ row)
+                 (setq total (+ total (plist-get row :minutes)))
+                 (push `((title . ,(plist-get row :title))
+                         (note . ,(plist-get row :note))
+                         (minutes . ,(round (plist-get row :minutes)))
+                         (running . ,(plist-get row :running))
+                         (marker . ,(plist-get row :marker)))
+                       rows))
+               by)
+      `((total . ,(round total))
+        (running . ,running)
+        (headings . ,(sort rows (lambda (a b) (> (alist-get 'minutes a) (alist-get 'minutes b)))))))))
+
+(defun +endgame-today-area-time (&optional date items)
+  "Planned vs clocked minutes per area on DATE, in registry order.
+From the capture module's `+endgame-areas-report' when it's loaded: per
+area tag, name, category, planned, clocked (nil for an area with no
+SOURCES), baselineWeek, baselineDay. Without it, planned is summed here
+from the sessions in ITEMS (the today list) and clocked is nil."
+  (let ((date (or date (+endgame-today--date (org-today)))))
+    (if (fboundp '+endgame-areas-report)
+        (+endgame-areas-report date)
+      (let ((items (or items (alist-get 'items (+endgame-today-items date)))))
+        (mapcar
+         (lambda (area)
+           (let ((tag (alist-get 'tag area)))
+             `((tag . ,tag)
+               (name . ,(alist-get 'name area))
+               (category . ,(alist-get 'category area))
+               (planned . ,(apply #'+ (mapcar (lambda (i)
+                                                (if (and (eq (alist-get 'kind i) 'session)
+                                                         (equal (alist-get 'area i) tag)
+                                                         (alist-get 'start i) (alist-get 'end i))
+                                                    (- (alist-get 'end i) (alist-get 'start i))
+                                                  0))
+                                              items)))
+               (clocked . nil))))
+         (+endgame-today-areas))))))
+
+;;;; Dashboard
+
+(defface +endgame-today-header '((t :inherit org-level-1 :height 1.0))
+  "The dashboard's title line.")
+
+(defface +endgame-today-section '((t :inherit org-level-2 :height 1.0))
+  "A section heading of the dashboard.")
+
+(defface +endgame-today-time '((t :inherit org-date :underline nil))
+  "An item's time.")
+
+(defface +endgame-today-done '((t :inherit org-agenda-done))
+  "A done item.")
+
+(defface +endgame-today-late '((t :inherit org-scheduled-previously))
+  "Rollover and overdue marks.")
+
+(defface +endgame-today-count '((t :inherit org-checkbox-statistics-todo))
+  "Counters.")
+
+(defvar-local +endgame-today--shown nil
+  "Absolute day the dashboard shows.")
+
+(defvar-local +endgame-today--dirty nil
+  "Non-nil when something changed while the dashboard was out of sight.")
+
+(defvar +endgame-today--refresh-timer nil
+  "Periodic refresh of a visible dashboard.")
+
+(defvar +endgame-today--pending nil
+  "Idle timer of a refresh asked for by a hook.")
+
+(defvar +endgame-today--timeline-files nil
+  "Files the panel's timeline reads, instead of every agenda file.")
+
+(defun +endgame-today--kind-icon (kind)
+  "One character for KIND."
+  (pcase kind ('habit "↻") ('session "◆") ('routine "≡") ('appt "●") (_ " ")))
+
+(defun +endgame-today--put-action (start action &optional item)
+  "Mark START to the end of the line with ACTION (a command) and ITEM."
+  (add-text-properties start (line-end-position)
+                       `(+endgame-today-action ,action +endgame-today-item ,item)))
+
+(defun +endgame-today--insert-item (item width)
+  "Insert ITEM as one line of a WIDTH-column window."
+  (let* ((start (point))
+         (done (alist-get 'done item))
+         (box (cond ((not (alist-get 'checkable item)) "   ")
+                    (done "[x]")
+                    (t "[ ]")))
+         (time (if (alist-get 'start item)
+                   (concat (+endgame-today--hhmm (alist-get 'start item))
+                           (if (alist-get 'end item)
+                               (concat "–" (+endgame-today--hhmm (alist-get 'end item)))
+                             "      "))
+                 (make-string 11 ?\s)))
+         (late (cond ((alist-get 'rollover item) (format "Sched. %dx" (alist-get 'rollover item)))
+                     ((alist-get 'overdue item) (format "%dd late" (alist-get 'overdue item)))))
+         (right (string-join (delq nil (list (alist-get 'progress item)
+                                             late
+                                             (alist-get 'area item)))
+                             "  "))
+         (room (max 10 (- width 3 1 11 2 2 (length right) 2)))
+         (title (truncate-string-to-width (alist-get 'title item) room nil nil "…")))
+    (insert " "
+            (propertize box 'face (if done '+endgame-today-done 'org-checkbox))
+            " "
+            (propertize time 'face (if done '+endgame-today-done '+endgame-today-time))
+            " "
+            (propertize (+endgame-today--kind-icon (alist-get 'kind item)) 'face 'shadow)
+            " "
+            (propertize title 'face (if done '+endgame-today-done 'default)))
+    (when (not (string-empty-p right))
+      (insert (make-string (max 2 (- room (string-width title) -2)) ?\s))
+      (when (alist-get 'progress item)
+        (insert (propertize (alist-get 'progress item) 'face '+endgame-today-count) "  "))
+      (when late (insert (propertize late 'face '+endgame-today-late) "  "))
+      (when (alist-get 'area item)
+        (insert (propertize (alist-get 'area item) 'face 'org-tag))))
+    (+endgame-today--put-action start #'+endgame-today/toggle item)
+    (insert "\n")))
+
+(defun +endgame-today--insert-habits (week width)
+  "Insert this WEEK of habits (from `+habits-heatmap-data') in WIDTH columns."
+  (let* ((colours (+habits-heatmap--colours))
+         (all (alist-get 'all week))
+         (start (point))
+         (name-width (min 22 (max 10 (- width 22)))))
+    (insert (propertize "HABITS" 'face '+endgame-today-section)
+            (propertize (format "   %d/%d today · streak %dd · record %dd\n"
+                                (alist-get 'done all) (alist-get 'total all)
+                                (alist-get 'streak all) (alist-get 'record all))
+                        'face 'shadow))
+    (+endgame-today--put-action start #'+endgame-today/heatmap)
+    (insert (make-string (+ 3 name-width) ?\s)
+            (propertize "M T W T F S S\n" 'face 'shadow))
+    (cl-flet ((row (title grid action)
+                (let ((s (point)))
+                  (insert "   " (truncate-string-to-width title (1- name-width) nil ?\s "…") " ")
+                  (seq-doseq (cell (aref grid 0))
+                    (insert (if (eq (alist-get 'future cell) t)
+                                (propertize "·" 'face 'shadow)
+                              (propertize "■" 'face `(:foreground ,(aref colours (alist-get 'level cell)))
+                                          'help-echo (alist-get 'date cell)))
+                            " "))
+                  (+endgame-today--put-action s action)
+                  (insert "\n"))))
+      (row "all" (alist-get 'grid all) #'+endgame-today/heatmap)
+      (seq-doseq (h (alist-get 'habits week))
+        (row (alist-get 'title h) (alist-get 'grid h) #'+endgame-today/heatmap)))))
+
+(defun +endgame-today--insert-clocked (clocked width)
+  "Insert CLOCKED (from `+endgame-today-clocked') in WIDTH columns."
+  (let ((start (point)))
+    (insert (propertize "CLOCKED" 'face '+endgame-today-section)
+            "  " (propertize (+endgame-today--duration (alist-get 'total clocked))
+                             'face '+endgame-today-count)
+            (if (alist-get 'running clocked)
+                (propertize (format "   ▶ %s" (alist-get 'running clocked)) 'face 'success)
+              "")
+            "\n")
+    (+endgame-today--put-action start (if (alist-get 'running clocked) #'org-clock-goto #'+endgame-today/clock-report)))
+  (let ((rows (alist-get 'headings clocked)))
+    (when (null rows)
+      (insert (propertize "   nothing clocked yet\n" 'face 'shadow)))
+    (dolist (row (seq-take rows +endgame-today-clocked-rows))
+      (let ((s (point)))
+        (insert "   " (propertize (format "%5s" (+endgame-today--duration (alist-get 'minutes row)))
+                                  'face (if (alist-get 'running row) 'success '+endgame-today-time))
+                "  " (truncate-string-to-width (alist-get 'title row) (max 10 (- width 30)) nil nil "…")
+                "  " (propertize (truncate-string-to-width (alist-get 'note row) 18 nil nil "…")
+                                 'face 'shadow))
+        (+endgame-today--put-action s #'+endgame-today/visit row)
+        (insert "\n")))))
+
+(defun +endgame-today--insert-areas (areas)
+  "Insert planned vs actual for AREAS (from `+endgame-today-area-time')."
+  (let ((rows (seq-filter (lambda (a) (or (> (or (alist-get 'planned a) 0) 0)
+                                          (> (or (alist-get 'clocked a) 0) 0)
+                                          (alist-get 'baselineDay a)))
+                          areas)))
+    (insert (propertize "AREAS" 'face '+endgame-today-section)
+            (propertize (if (fboundp '+endgame-areas-report)
+                            "   planned · actual · baseline/day\n"
+                          "   planned (actual needs the capture module)\n")
+                        'face 'shadow))
+    (when (null rows)
+      (insert (propertize "   no sessions planned\n" 'face 'shadow)))
+    (dolist (a rows)
+      (let ((s (point))
+            (actual (alist-get 'clocked a)))
+        (insert "   " (truncate-string-to-width (or (alist-get 'name a) (alist-get 'tag a)) 18 nil ?\s "…")
+                "  " (propertize (format "%5s" (+endgame-today--duration (or (alist-get 'planned a) 0)))
+                                 'face '+endgame-today-time)
+                "  " (propertize (format "%5s" (if actual (+endgame-today--duration actual) "–"))
+                                 'face (if (and actual (>= actual (or (alist-get 'planned a) 0)))
+                                           'success '+endgame-today-count))
+                (if (alist-get 'baselineDay a)
+                    (propertize (format "  / %s" (+endgame-today--duration (alist-get 'baselineDay a)))
+                                'face 'shadow)
+                  ""))
+        (+endgame-today--put-action s #'+endgame-today/visit-area a)
+        (insert "\n")))))
+
+(defun +endgame-today--render (abs)
+  "Fill the dashboard (current buffer) with day ABS."
+  (let* ((inhibit-read-only t)
+         (win (get-buffer-window (current-buffer) t))
+         ;; one column short of the window, or the last one wraps
+         (width (1- (if win (window-max-chars-per-line win) 80)))
+         (data (+endgame-today-items (+endgame-today--date abs)))
+         (items (alist-get 'items data))
+         (counts (alist-get 'counts data))
+         (title (format-time-string "TODAY · %a %d %b" (+endgame-today--time abs)))
+         (count (format "%d/%d" (alist-get 'done counts) (alist-get 'total counts))))
+    (setq +endgame-today--shown abs
+          +endgame-today--dirty nil
+          +endgame-today--timeline-files
+          (delete-dups (append (mapcar (lambda (i) (+endgame-today--vault-file (alist-get 'file i))) items)
+                               (seq-filter #'file-exists-p
+                                           (list (+endgame-today--day-file abs)
+                                                 (+endgame-today--upcoming-file)
+                                                 (+endgame-today--life-file))))))
+    (erase-buffer)
+    (let ((s (point)))
+      (insert (propertize title 'face '+endgame-today-header)
+              (make-string (max 2 (- width (string-width title) (length count) 1)) ?\s)
+              (propertize count 'face '+endgame-today-count) "\n")
+      (+endgame-today--put-action s #'+endgame/today-agenda))
+    (if items
+        (dolist (item items) (+endgame-today--insert-item item width))
+      (insert (propertize "   nothing planned. planning = scheduling (C-c C-s .)\n" 'face 'shadow)))
+    (when (alist-get 'ahead data)
+      (insert "\n" (propertize "AHEAD" 'face '+endgame-today-section) "\n")
+      (dolist (item (alist-get 'ahead data))
+        (let ((s (point)))
+          (insert "   " (propertize (format "%-11s" (or (alist-get 'agenda item) "")) 'face '+endgame-today-late)
+                  " " (alist-get 'title item))
+          (+endgame-today--put-action s #'+endgame-today/visit item)
+          (insert "\n"))))
+    (let ((week (+endgame-today--habit-week)))
+      (when week
+        (insert "\n")
+        (+endgame-today--insert-habits week width)))
+    (insert "\n")
+    (+endgame-today--insert-clocked (+endgame-today-clocked (+endgame-today--date abs)) width)
+    (insert "\n")
+    (+endgame-today--insert-areas (ignore-errors (+endgame-today-area-time (+endgame-today--date abs) items)))
+    (insert "\n" (propertize "RET tick · TAB visit · t state · s schedule · S unschedule · d deadline · I/O clock · gr refresh"
+                             'face 'shadow))))
+
+(defun +endgame-today-refresh (&rest _)
+  "Redraw the dashboard, keeping point on the same line."
+  (interactive)
+  (when-let* ((buf (get-buffer +endgame-today-dashboard-buffer)))
+    (with-current-buffer buf
+      (let ((ref (alist-get 'ref (get-text-property (point) '+endgame-today-item)))
+            (line (line-number-at-pos))
+            (win (get-buffer-window buf t)))
+        (+endgame-today--render (org-today))
+        (goto-char (point-min))
+        (or (and ref (text-property-search-forward
+                      '+endgame-today-item ref
+                      (lambda (r item) (equal r (alist-get 'ref item)))))
+            (forward-line (1- line)))
+        (beginning-of-line)
+        (when win (set-window-point win (point)))))))
+
+(defun +endgame-today--refresh-panel ()
+  "Refresh the dashboard, and the timeline and note when the day changed."
+  (let ((buf (get-buffer +endgame-today-dashboard-buffer)))
+    (when buf
+      (let ((day-changed (not (eql (buffer-local-value '+endgame-today--shown buf) (org-today)))))
+        (+endgame-today-refresh)
+        (+endgame-today--redraw-timeline)
+        (when day-changed
+          (let ((win (get-buffer-window (+endgame-today--note-name (1- (org-today))) t)))
+            (when win (set-window-buffer win (+endgame-today--note-buffer (org-today))))))))))
+
+(defun +endgame-today--idle-refresh ()
+  "Run a refresh a hook asked for."
+  (setq +endgame-today--pending nil)
+  (+endgame-today--refresh-panel))
+
+(defun +endgame-today--changed-h (&rest _)
+  "Something in the vault changed: refresh the dashboard soon.
+When it's out of sight, refresh it once it's seen again."
+  (when-let* ((buf (get-buffer +endgame-today-dashboard-buffer)))
+    (if (get-buffer-window buf 'visible)
+        (unless +endgame-today--pending
+          (setq +endgame-today--pending
+                (run-with-idle-timer 0.5 nil #'+endgame-today--idle-refresh)))
+      (with-current-buffer buf (setq +endgame-today--dirty t)))))
+
+(defun +endgame-today--saved-h ()
+  "On `after-save-hook': an org file changed."
+  (when (derived-mode-p 'org-mode) (+endgame-today--changed-h)))
+
+(defun +endgame-today--tick ()
+  "The periodic refresh: the clock moves, and the day ends.
+A day ends at `org-extend-today-until', not midnight."
+  (let ((buf (get-buffer +endgame-today-dashboard-buffer)))
+    (cond ((not buf) (+endgame-today--stop-timer))
+          ((get-buffer-window buf 'visible) (+endgame-today--refresh-panel))
+          (t (with-current-buffer buf (setq +endgame-today--dirty t))))))
+
+(defun +endgame-today--stop-timer ()
+  "Stop the periodic refresh and forget the timeline's files."
+  (when (timerp +endgame-today--refresh-timer) (cancel-timer +endgame-today--refresh-timer))
+  (setq +endgame-today--refresh-timer nil
+        +endgame-today--timeline-files nil))
+
+(defun +endgame-today--shown-h (_window)
+  "The dashboard came into view: catch up on what changed meanwhile."
+  (when +endgame-today--dirty
+    (+endgame-today--changed-h)))
+
+(add-hook 'org-after-todo-state-change-hook #'+endgame-today--changed-h)
+(add-hook 'org-checkbox-statistics-hook #'+endgame-today--changed-h)
+(add-hook 'org-clock-in-hook #'+endgame-today--changed-h)
+(add-hook 'org-clock-out-hook #'+endgame-today--changed-h)
+(add-hook 'after-save-hook #'+endgame-today--saved-h)
+
+;;;; Dashboard actions
+
+(defun +endgame-today--at-point ()
+  "The item or row on this line, or an error."
+  (or (get-text-property (line-beginning-position) '+endgame-today-item)
+      (get-text-property (point) '+endgame-today-item)
+      (user-error "Nothing on this line")))
+
+(defun +endgame-today--marker (item)
+  "A live marker at ITEM's heading: its own, or found again by ID or file and line."
+  (let ((m (alist-get 'marker item)))
+    (or (and (markerp m) (marker-buffer m)
+             (with-current-buffer (marker-buffer m)
+               (org-with-wide-buffer
+                (goto-char m)
+                (and (org-at-heading-p)
+                     (or (not (alist-get 'title item))
+                         (string-prefix-p (alist-get 'title item)
+                                          (car (+endgame-today--heading-parts))))
+                     m))))
+        (let ((id (alist-get 'id item)))
+          (and id (org-id-find id 'marker)))
+        (let ((file (and (alist-get 'file item) (+endgame-today--vault-file (alist-get 'file item)))))
+          (when (and file (file-exists-p file))
+            (with-current-buffer (+endgame-today--buffer file)
+              (org-with-wide-buffer
+               (goto-char (point-min))
+               (forward-line (1- (alist-get 'line item)))
+               (and (org-at-heading-p) (point-marker))))))
+        (user-error "Can't find \"%s\" any more; gr to refresh" (alist-get 'title item)))))
+
+(defvar +endgame-today--was (make-hash-table :test #'equal)
+  "Item ref -> the open state it had when the dashboard ticked it.")
+
+(defun +endgame-today--reopen-state (item)
+  "The open state ITEM (the heading at point) had before it was done.
+What it had when the dashboard ticked it, else its newest state note,
+else APPT for an appointment, else its keyword sequence's first state."
+  (let ((end (save-excursion (outline-next-heading) (point)))
+        (open (lambda (s) (and s (member s org-not-done-keywords) s))))
+    (or (funcall open (gethash (alist-get 'ref item) +endgame-today--was))
+        (save-excursion
+          (and (re-search-forward "^[ \t]*- State \"[^\"]+\"[ \t]+from \"\\([^\"]+\\)\"" end t)
+               (funcall open (match-string 1))))
+        (and (eq (alist-get 'kind item) 'appt) (funcall open "APPT"))
+        (nth 2 (assoc (org-get-todo-state) org-todo-kwd-alist))
+        (car org-not-done-keywords))))
+
+(defun +endgame-today--save (buffer)
+  "Save BUFFER after a change from the dashboard, if that's wanted."
+  (when (and +endgame-today-save-after-change (buffer-modified-p buffer))
+    (with-current-buffer buffer (save-buffer))))
+
+(defmacro +endgame-today--at-item (&rest body)
+  "Run BODY at the heading of the item on this line, then save and refresh."
+  (declare (indent 0))
+  `(let* ((item (+endgame-today--at-point))
+          (m (+endgame-today--marker item)))
+     (unwind-protect
+         (with-current-buffer (marker-buffer m)
+           (org-with-wide-buffer
+            (goto-char m)
+            ,@body)
+           (+endgame-today--save (current-buffer)))
+       (+endgame-today-refresh)
+       (+endgame-today--redraw-timeline))))
+
+(defun +endgame-today/toggle ()
+  "Tick the item on this line: done, or back to the state it had.
+On a line that isn't an item, run what the line leads to."
+  (interactive)
+  (let ((action (get-text-property (line-beginning-position) '+endgame-today-action)))
+    (cond ((null action) (user-error "Nothing on this line"))
+          ((not (eq action #'+endgame-today/toggle)) (call-interactively action))
+          ((not (alist-get 'checkable (+endgame-today--at-point)))
+           (+endgame-today/visit))
+          (t (+endgame-today--at-item
+               (let ((state (org-get-todo-state)))
+                 (if (member state org-done-keywords)
+                     (org-todo (+endgame-today--reopen-state item))
+                   (puthash (alist-get 'ref item) state +endgame-today--was)
+                   (org-todo 'done))))))))
+
+(defun +endgame-today/todo ()
+  "Set the state of the item on this line, picking it."
+  (interactive)
+  (+endgame-today--at-item (call-interactively #'org-todo)))
+
+(defun +endgame-today/schedule ()
+  "Not today: give the item on this line a new date."
+  (interactive)
+  (+endgame-today--at-item (call-interactively #'org-schedule)))
+
+(defun +endgame-today/unschedule ()
+  "Not anytime soon: remove the item's SCHEDULED date, back to the backlog."
+  (interactive)
+  (+endgame-today--at-item (org-schedule '(4))))
+
+(defun +endgame-today/deadline ()
+  "Set the deadline of the item on this line."
+  (interactive)
+  (+endgame-today--at-item (call-interactively #'org-deadline)))
+
+(defun +endgame-today/clock-in ()
+  "Clock in to the item on this line."
+  (interactive)
+  (+endgame-today--at-item (org-clock-in)))
+
+(defun +endgame-today/visit ()
+  "Show the heading on this line: in the daily note window when it's today's."
+  (interactive)
+  (let* ((m (+endgame-today--marker (+endgame-today--at-point)))
+         (note (get-buffer (+endgame-today--note-name (or +endgame-today--shown (org-today)))))
+         (win (and note (get-buffer-window note)))
+         (in-note (and win (eq (buffer-base-buffer note) (marker-buffer m))
+                       (with-current-buffer note (<= (point-min) m (point-max))))))
+    (if in-note
+        (progn (select-window win) (goto-char m))
+      (pop-to-buffer (marker-buffer m))
+      (when (fboundp 'my/org-full-setup-maybe) (my/org-full-setup-maybe))
+      (widen)
+      (goto-char m))
+    (org-fold-show-context 'agenda)
+    (org-fold-show-entry)))
+
+(defun +endgame-today/visit-area ()
+  "Open the area registry at the area on this line."
+  (interactive)
+  (let* ((area (+endgame-today--at-point))
+         (file (+endgame-today--areas-file)))
+    (find-file-other-window file)
+    (widen)
+    (goto-char (point-min))
+    (when (re-search-forward (format "^[ \t]*:AREA_TAG:[ \t]+%s[ \t]*$" (regexp-quote (alist-get 'tag area))) nil t)
+      (org-back-to-heading t)
+      (org-fold-show-entry))))
+
+(defun +endgame-today/heatmap ()
+  "The full habit heatmaps."
+  (interactive)
+  (if (fboundp '+habits/heatmap)
+      (let ((display-buffer-overriding-action '(display-buffer-pop-up-window)))
+        (+habits/heatmap))
+    (user-error "No heatmap code loaded")))
+
+(defun +endgame-today/clock-report ()
+  "Go to the day's clocktable in the daily note and update it."
+  (interactive)
+  (let ((day (+endgame-today--day-marker (or +endgame-today--shown (org-today)))))
+    (unless day (user-error "No daily note for this day yet"))
+    (pop-to-buffer (marker-buffer day))
+    (goto-char day)
+    (when (re-search-forward "^#\\+BEGIN: clocktable" (save-excursion (org-end-of-subtree t t)) t)
+      (org-update-dblock))))
+
+(defvar-keymap +endgame-today-mode-map
+  :parent special-mode-map
+  "RET" #'+endgame-today/toggle
+  "x" #'+endgame-today/toggle
+  "TAB" #'+endgame-today/visit
+  "o" #'+endgame-today/visit
+  "t" #'+endgame-today/todo
+  "s" #'+endgame-today/schedule
+  "S" #'+endgame-today/unschedule
+  "d" #'+endgame-today/deadline
+  "I" #'+endgame-today/clock-in
+  "O" #'org-clock-out
+  "g" #'+endgame-today-refresh
+  "n" #'next-line
+  "p" #'previous-line)
+
+(define-derived-mode +endgame-today-mode special-mode "Today"
+  "The today dashboard: the today list, habits, clocked time, areas.
+\\{+endgame-today-mode-map}"
+  (setq-local revert-buffer-function (lambda (&rest _) (+endgame-today-refresh))
+              truncate-lines t
+              cursor-type 'bar)
+  (setq-local display-line-numbers nil)
+  (hl-line-mode 1)
+  (add-hook 'window-buffer-change-functions #'+endgame-today--shown-h nil t)
+  (add-hook 'kill-buffer-hook #'+endgame-today--stop-timer nil t)
+  (unless (timerp +endgame-today--refresh-timer)
+    (setq +endgame-today--refresh-timer
+          (run-at-time +endgame-today-refresh-interval +endgame-today-refresh-interval
+                       #'+endgame-today--tick))))
+
+(defun +endgame-today--no-line-numbers-a (&rest _)
+  "Before `display-line-numbers--turn-on': not in the dashboard.
+The global mode turns them on after the mode hook, and they'd eat the
+columns the lines are laid out in."
+  (derived-mode-p '+endgame-today-mode))
+
+(advice-add 'display-line-numbers--turn-on :before-until #'+endgame-today--no-line-numbers-a)
+
+(defun +endgame-today-dashboard ()
+  "The dashboard buffer, made if needed (not drawn)."
+  (let ((buf (get-buffer-create +endgame-today-dashboard-buffer)))
+    (with-current-buffer buf
+      (unless (derived-mode-p '+endgame-today-mode) (+endgame-today-mode)))
+    buf))
+
+;;;; The panel: timeline, dashboard, daily note
+
+(defvar org-timeblock-span)
+(defvar org-timeblock-buffer)
+(defvar org-timeblock-list-buffer)
+(defvar org-timeblock-daterange)
+(declare-function org-timeblock-mode "org-timeblock")
+(declare-function org-timeblock-redraw-buffers "org-timeblock")
+(declare-function +workspace-exists-p "workspaces")
+(declare-function +workspace-switch "workspaces")
+(declare-function +habits-heatmap--colours "config")
+
+(defun +endgame-today--note-name (abs)
+  "Name of the indirect buffer narrowed to day ABS."
+  (format "today: %s" (+endgame-today--date abs)))
+
+(defun +endgame-today--note-buffer (abs)
+  "An indirect buffer of the weekly journal file narrowed to day ABS.
+Indirect, so the file's own buffer stays whole for other windows; it
+edits and saves the real file. Without the day, the whole file."
+  (let ((name (+endgame-today--note-name abs)))
+    (or (get-buffer name)
+        (let ((day (+endgame-today--day-marker abs)))
+          (if (not day)
+              (let ((file (+endgame-today--day-file abs)))
+                (if (file-exists-p file) (find-file-noselect file)
+                  (with-current-buffer (get-buffer-create name)
+                    (insert "No daily note for this day yet.\n")
+                    (special-mode)
+                    (current-buffer))))
+            (let ((base (marker-buffer day)))
+              (with-current-buffer base
+                (when (fboundp 'my/org-full-setup-maybe) (my/org-full-setup-maybe)))
+              (with-current-buffer (make-indirect-buffer base name t)
+                (widen)
+                (goto-char day)
+                (org-narrow-to-subtree)
+                (org-fold-show-subtree)
+                (org-fold-hide-drawer-all)
+                (set-marker day nil)
+                (current-buffer))))))))
+
+(defun +endgame-today--timeblock-files-a (fn)
+  "Around `org-timeblock-files': the panel's own short list while it's open.
+org-timeblock opens every file it reads with its full setup; the agenda
+files would be ~150 of them."
+  (or +endgame-today--timeline-files (funcall fn)))
+
+(with-eval-after-load 'org-timeblock
+  (advice-add 'org-timeblock-files :around #'+endgame-today--timeblock-files-a))
+
+(defun +endgame-today--timeline-p ()
+  "Non-nil when org-timeblock can draw in this frame."
+  (and (display-graphic-p) (image-type-available-p 'svg)
+       (require 'org-timeblock nil t)))
+
+(defun +endgame-today--timeline (abs window)
+  "Show day ABS's timeline in WINDOW: org-timeblock, or a day agenda without it."
+  (cond
+   ((+endgame-today--timeline-p)
+    (let ((day (decode-time (+endgame-today--time abs)))
+          (org-timeblock-span 1))
+      (set-window-buffer window (get-buffer-create org-timeblock-buffer))
+      (with-selected-window window
+        (unless (derived-mode-p 'org-timeblock-mode) (org-timeblock-mode))
+        (setq org-timeblock-daterange (cons day day))
+        (org-timeblock-redraw-buffers))))
+   ((require 'org-timeblock nil t)      ; a terminal: its text list
+    (let ((day (decode-time (+endgame-today--time abs))))
+      (setq org-timeblock-daterange (cons day day))
+      (org-timeblock-redraw-buffers)
+      (set-window-buffer window org-timeblock-list-buffer)))
+   (t
+    (with-selected-window window
+      (let ((org-agenda-window-setup 'current-window)
+            (org-agenda-sticky nil))
+        (org-agenda-list nil abs 1))))))
+
+(defun +endgame-today--redraw-timeline ()
+  "Redraw a visible org-timeblock, which is cheap when nothing changed."
+  (when (and (featurep 'org-timeblock) (get-buffer-window org-timeblock-buffer 'visible))
+    (with-selected-window (get-buffer-window org-timeblock-buffer 'visible)
+      (ignore-errors (org-timeblock-redraw-buffers)))))
+
+(defun +endgame-today--workspace ()
+  "Switch to the panel's workspace (Doom) or tab, making it if needed.
+Returns non-nil when it was there already."
+  (let ((name +endgame-today-workspace))
+    (cond ((and (fboundp '+workspace-switch) (bound-and-true-p persp-mode))
+           (prog1 (+workspace-exists-p name)
+             (+workspace-switch name t)))
+          ((fboundp 'tab-bar-select-tab-by-name)
+           (let ((there (seq-find (lambda (tab) (equal (alist-get 'name tab) name))
+                                  (funcall tab-bar-tabs-function))))
+             (if there
+                 (tab-bar-select-tab-by-name name)
+               (tab-bar-new-tab)
+               (tab-bar-rename-tab name))
+             there)))))
+
+(defun +endgame/today-panel ()
+  "The today panel: timeline left, dashboard right, the daily note under it.
+Opens in its own workspace; run it again there to rebuild the layout."
+  (interactive)
+  (when (fboundp '+endgame-day-ensure)  ; creates today's note, never prompts
+    (condition-case err (+endgame-day-ensure nil)
+      (error (message "Today's note: %s" (error-message-string err)))))
+  (let ((abs (org-today))
+        (there (+endgame-today--workspace))
+        (dash (+endgame-today-dashboard)))
+    (if (and there (get-buffer-window dash))
+        (progn (select-window (get-buffer-window dash))
+               (+endgame-today--refresh-panel))
+      (delete-other-windows)
+      (let* ((left (selected-window))
+             (right (split-window left (max 30 (round (* +endgame-today-timeline-width
+                                                         (window-total-width left))))
+                                  'right))
+             (bottom (split-window right (- (round (* +endgame-today-note-height
+                                                      (window-total-height right))))
+                                   'below)))
+        (set-window-buffer right dash)
+        (set-window-buffer bottom (+endgame-today--note-buffer abs))
+        (select-window right)
+        (+endgame-today-refresh)
+        (+endgame-today--timeline abs left)
+        (goto-char (point-min))
+        (forward-line 1)))))
+
+;;;; Keys
+
+(when (fboundp 'map!)
+  (map! :leader
+        :desc "Today panel" "o t" #'+endgame/today-panel
+        :desc "Today list"  "o a d" #'+endgame/today-agenda
+        :desc "Today list"  "n a d" #'+endgame/today-agenda)
+  (map! :map +endgame-today-mode-map
+        :n "RET" #'+endgame-today/toggle
+        :n "x"   #'+endgame-today/toggle
+        :n "TAB" #'+endgame-today/visit
+        :n "o"   #'+endgame-today/visit
+        :n "t"   #'+endgame-today/todo
+        :n "s"   #'+endgame-today/schedule
+        :n "S"   #'+endgame-today/unschedule
+        :n "d"   #'+endgame-today/deadline
+        :n "I"   #'+endgame-today/clock-in
+        :n "O"   #'org-clock-out
+        :n "gr"  #'+endgame-today-refresh
+        :n "q"   #'quit-window))
+
+(provide '+endgame-today)
+;;; +endgame-today.el ends here
