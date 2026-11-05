@@ -125,7 +125,8 @@
          (progn ,@body)
        (dolist (b (buffer-list))
          (when (and (buffer-file-name b)
-                    (string-prefix-p +endgame-test-dir (buffer-file-name b)))
+                    ;; truenames: on macOS the temp dir is /var, a symlink to /private/var
+                    (string-prefix-p (file-truename +endgame-test-dir) (file-truename (buffer-file-name b))))
            (with-current-buffer b (set-buffer-modified-p nil))
            (kill-buffer b)))
        (delete-directory +endgame-test-dir t))))
