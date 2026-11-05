@@ -431,4 +431,31 @@
     (should (string-match-p "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <2031-01-11 Sat 15:30-16:30>\n"
                             (+endgame-test--read +endgame-upcoming-file)))))
 
+(ert-deftest +endgame-area-planned-counts-timed-entries-in-sources ()
+  ;; lessons in a tutoring lesson plan count as planned, like sessions;
+  ;; time covered twice (a session over a lesson) counts once
+  (+endgame-test--with-vault
+    (+endgame-session-add "learning" (concat "<" +endgame-test-future " Wed 10:00-12:00>"))
+    (should (equal (+endgame-area-planned "learning" +endgame-test-future) 120))
+    (with-current-buffer (find-file-noselect (expand-file-name "roam/curriculum.org" +endgame-test-dir))
+      (goto-char (point-max))
+      (insert "* Lesson 1 <" +endgame-test-future " Wed 11:30-12:30>\n"
+              "** Pre-lesson\n*** TODO prepare\nDEADLINE: <" +endgame-test-future " Wed>\n"
+              "* Lesson 2 <" +endgame-test-future " Wed 16:00-17:00>\n"
+              "* KILL Lesson 3 <" +endgame-test-future " Wed 18:00-19:00>\n"
+              "* DONE Lesson 5\nCLOSED: [" +endgame-test-future " Wed 20:00] SCHEDULED: <"
+              +endgame-test-future " Wed 19:00-20:00>\n"
+              "* TODO due then\nDEADLINE: <" +endgame-test-future " Wed 21:00-22:00>\n"
+              "* untimed <" +endgame-test-future " Wed>\n"
+              "* Lesson 4, other day <2031-01-09 Thu 16:00-17:00>\n")
+      (save-buffer))
+    (should (equal (+endgame-area-timed "learning" +endgame-test-future)
+                   `((,+endgame-test-future "11:30" 60) (,+endgame-test-future "16:00" 60)
+                     (,+endgame-test-future "19:00" 60))))
+    ;; 10:00-12:30, 16:00-17:00 and 19:00-20:00
+    (should (equal (+endgame-area-planned "learning" +endgame-test-future) 270))
+    (should (equal (+endgame-area-planned "learning" +endgame-test-future "2031-01-09") 330))
+    ;; an area without sources: only its sessions
+    (should (equal (+endgame-area-planned "piano" +endgame-test-future) 0))))
+
 ;;; endgame-capture-test.el ends here

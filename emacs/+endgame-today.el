@@ -1064,17 +1064,21 @@ line on top of each window."
 (defun +endgame-today--insert-areas (areas week)
   "Insert today's planned vs clocked for AREAS, and the WEEK's clocked.
 AREAS is from `+endgame-today-area-time', WEEK an alist of tag and
-minutes from `+endgame-today-area-week'."
+minutes from `+endgame-today-area-week'. One fixed width per column, the
+header's labels padded the same way, so every number sits under its
+label: plan, today / goal, week / goal."
   (let ((rows (seq-filter (lambda (a) (or (> (or (alist-get 'planned a) 0) 0)
                                           (> (or (alist-get 'clocked a) 0) 0)
                                           (> (or (cdr (assoc (alist-get 'tag a) week)) 0) 0)
                                           (alist-get 'baselineDay a)
                                           (alist-get 'baselineWeek a)))
-                          areas)))
-    (insert (propertize "AREAS" 'face '+endgame-today-section)
-            (propertize (if (fboundp '+endgame-areas-report)
-                            "   today: planned  clocked / base    week: clocked / base\n"
-                          "   planned today (clocked needs the capture module)\n")
+                          areas))
+        (name-width 18))
+    (insert (propertize (string-pad "AREAS" (+ 3 name-width)) 'face '+endgame-today-section)
+            (propertize (concat (format "  %5s  %5s %-7s" "plan" "today" "/ goal")
+                                (if week (format "  %5s %-7s" "week" "/ goal") "")
+                                (if (fboundp '+endgame-areas-report) "" "  (clocked needs the capture module)")
+                                "\n")
                         'face 'shadow))
     (when (null rows)
       (insert (propertize "   no sessions planned\n" 'face 'shadow)))
@@ -1083,9 +1087,9 @@ minutes from `+endgame-today-area-week'."
              (planned (or (alist-get 'planned a) 0))
              (actual (alist-get 'clocked a))
              (wk (cdr (assoc (alist-get 'tag a) week)))
-             (base (lambda (m) (propertize (if m (format " / %-5s" (+endgame-today--duration m)) "        ")
+             (base (lambda (m) (propertize (if m (format " / %-5s" (+endgame-today--duration m)) (make-string 8 ?\s))
                                            'face 'shadow))))
-        (insert "   " (truncate-string-to-width (or (alist-get 'name a) (alist-get 'tag a)) 18 nil ?\s "…")
+        (insert "   " (truncate-string-to-width (or (alist-get 'name a) (alist-get 'tag a)) name-width nil ?\s "…")
                 "  " (propertize (format "%5s" (+endgame-today--duration planned)) 'face '+endgame-today-time)
                 "  " (propertize (format "%5s" (if actual (+endgame-today--duration actual) "–"))
                                  'face (if (and actual (> planned 0) (>= actual planned))

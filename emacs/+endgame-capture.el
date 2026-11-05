@@ -1077,13 +1077,92 @@ line. Killed sessions are left out."
                      sessions)))))))
     (nreverse sessions)))
 
+(defun +endgame--days (from to)
+  "The days FROM..TO (\"YYYY-MM-DD\"), as a list of such strings."
+  (let ((a (org-time-string-to-absolute from))
+        (b (org-time-string-to-absolute to))
+        days)
+    (while (<= a b)
+      (let ((d (calendar-gregorian-from-absolute a)))
+        (push (format "%04d-%02d-%02d" (nth 2 d) (nth 0 d) (nth 1 d)) days))
+      (setq a (1+ a)))
+    (nreverse days)))
+
+(defun +endgame--hhmm-minutes (hhmm)
+  "Minutes after midnight of the \"HH:MM\" HHMM."
+  (+ (* 60 (string-to-number (substring hhmm 0 2))) (string-to-number (substring hhmm 3 5))))
+
+(defun +endgame-area-timed (area from &optional to)
+  "Timed entries in AREA's sources on the days FROM..TO: (DATE START MINUTES).
+An entry counts when its plain active timestamp or its SCHEDULED has a
+time range on one of those days (a lesson, SCHEDULED: <2026-11-05 Thu
+16:00-17:00>); killed ones don't, see `+endgame--timed-range'.
+AREA is an area alist or its tag."
+  (let* ((days (+endgame--days from (or to from)))
+         (re (concat "<" (regexp-opt days t)))
+         out)
+    (pcase-dolist (`(,file . ,id) (+endgame-area-sources area))
+      (with-current-buffer (org-get-agenda-file-buffer file)
+        (org-with-wide-buffer
+         (when (or (not id)
+                   (when-let ((pos (org-find-entry-with-id id)))
+                     (goto-char pos)
+                     (org-narrow-to-subtree)
+                     t))
+           (goto-char (point-min))
+           (let (seen)
+             (while (re-search-forward re nil t)
+               (save-excursion
+                 (when (ignore-errors (org-back-to-heading t) t)
+                   (unless (memq (point) seen)
+                     (push (point) seen)
+                     (pcase (+endgame--timed-range days)
+                       (`(,date ,start ,_ ,minutes)
+                        (unless (equal (org-get-todo-state) "KILL")
+                          (push (list date start minutes) out)))))))))))))
+    (nreverse out)))
+
+(defun +endgame--timed-range (days)
+  "(DATE START END MINUTES) of the entry at point when it has a time range on DAYS.
+Its plain active timestamp, else its SCHEDULED (a lesson's
+SCHEDULED: <… 16:00-17:00>). DEADLINE doesn't count."
+  (seq-find (lambda (r) (and r (nth 3 r) (> (nth 3 r) 0) (member (car r) days)))
+            (list (+endgame-entry-time-range)
+                  (when-let ((sch (org-entry-get nil "SCHEDULED")))
+                    (+endgame--stamp-range sch)))))
+
+(defun +endgame--union-minutes (spans)
+  "Minutes covered by SPANS, a list of (DATE START MINUTES); overlaps count once."
+  (let ((total 0))
+    (dolist (day (seq-group-by #'car spans))
+      (let ((cur-start nil) (cur-end nil))
+        (dolist (s (sort (mapcar (lambda (s)
+                                   (let ((b (+endgame--hhmm-minutes (nth 1 s))))
+                                     (cons b (+ b (nth 2 s)))))
+                                 (cdr day))
+                         (lambda (x y) (< (car x) (car y)))))
+          (if (and cur-end (<= (car s) cur-end))
+              (setq cur-end (max cur-end (cdr s)))
+            (when cur-end (setq total (+ total (- cur-end cur-start))))
+            (setq cur-start (car s) cur-end (cdr s))))
+        (when cur-end (setq total (+ total (- cur-end cur-start))))))
+    total))
+
 (defun +endgame-area-planned (area from &optional to sessions)
-  "Minutes of AREA's sessions on the days FROM..TO. AREA is an alist or a tag.
-SESSIONS, when given, is a `+endgame-sessions' list to count from."
-  (let ((tag (if (stringp area) area (alist-get 'tag area))))
-    (apply #'+ (mapcar (lambda (s) (or (alist-get 'minutes s) 0))
-                       (seq-filter (lambda (s) (equal (alist-get 'area s) tag))
-                                   (or sessions (+endgame-sessions from to)))))))
+  "Minutes planned for AREA on the days FROM..TO. AREA is an alist or a tag.
+Its sessions, and every timed entry in its SOURCES (`+endgame-area-timed':
+the lessons of tutoring), counted once where they overlap. SESSIONS,
+when given, is a `+endgame-sessions' list to count from."
+  (let* ((to (or to from))
+         (area (if (stringp area) (or (+endgame--area area) `((tag . ,area))) area))
+         (tag (alist-get 'tag area))
+         (mine (seq-filter (lambda (s) (and (equal (alist-get 'area s) tag)
+                                            (alist-get 'start s) (alist-get 'minutes s)))
+                           (or sessions (+endgame-sessions from to)))))
+    (+endgame--union-minutes
+     (append (mapcar (lambda (s) (list (alist-get 'date s) (alist-get 'start s) (alist-get 'minutes s)))
+                     mine)
+             (+endgame-area-timed area from to)))))
 
 (defun +endgame-areas-report (from &optional to)
   "Planned vs clocked per area for the days FROM..TO: a list of alists.

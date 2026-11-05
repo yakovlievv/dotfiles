@@ -414,4 +414,51 @@
       (kill-buffer base)
       (delete-file file))))
 
+(defun +endgame-today-test--col (line regexp &optional end)
+  "Column where REGEXP first matches in LINE, or where the match ends with END."
+  (when (string-match regexp line)
+    (string-width (substring line 0 (if end (match-end 0) (match-beginning 0))))))
+
+(ert-deftest +endgame-today-areas-line-up-under-their-header ()
+  (cl-letf (((symbol-function '+endgame-areas-report) #'ignore))
+    (with-temp-buffer
+      (+endgame-today--insert-areas
+       '(((tag . "tutoring") (name . "Tutoring") (planned . 21) (clocked . 123))
+         ((tag . "food") (name . "Food & Diet") (planned . 30) (clocked . nil))
+         ((tag . "piano") (name . "Piano") (planned . 0) (clocked . 0)
+          (baselineDay . 25) (baselineWeek . 180))
+         ((tag . "learning") (name . "Learning") (planned . 600) (clocked . 0)
+          (baselineWeek . 240)))
+       '(("tutoring" . 170) ("piano" . 0) ("learning" . 0)))
+      (let* ((lines (split-string (buffer-string) "\n" t))
+             (head (car lines))
+             (row (lambda (name) (seq-find (lambda (l) (string-match-p name l)) lines)))
+             (tutoring (funcall row "Tutoring"))
+             (food (funcall row "Food"))
+             (piano (funcall row "Piano"))
+             (learning (funcall row "Learning")))
+        (should (= (length lines) 5))
+        ;; each number ends where its label ends
+        (let ((plan (+endgame-today-test--col head "plan" t))
+              (today (+endgame-today-test--col head "today" t))
+              (week (+endgame-today-test--col head "week" t)))
+          (dolist (r (list tutoring food piano learning))
+            (should (= plan (+endgame-today-test--col r "[0-9]+:[0-9][0-9]" t))))
+          (should (= today (+endgame-today-test--col tutoring "2:03" t)))
+          (should (= today (+endgame-today-test--col food "–" t)))
+          (should (= week (+endgame-today-test--col tutoring "2:50" t)))
+          (should (= week (1+ (+endgame-today-test--col food "–\\s-*\\'")))))
+        ;; the goals sit in the goal columns
+        (let ((goals (let ((s 0) out)
+                       (while (string-match "/ goal" head s)
+                         (push (string-width (substring head 0 (match-beginning 0))) out)
+                         (setq s (match-end 0)))
+                       (nreverse out))))
+          (should (= (length goals) 2))
+          (should (= (car goals) (+endgame-today-test--col piano "/ 0:25")))
+          (should (= (cadr goals) (+endgame-today-test--col piano "/ 3:00")))
+          (should (= (cadr goals) (+endgame-today-test--col learning "/ 4:00"))))
+        ;; 10:00 planned still fits its column
+        (should (string-match-p "10:00" learning))))))
+
 ;;; endgame-today-test.el ends here
