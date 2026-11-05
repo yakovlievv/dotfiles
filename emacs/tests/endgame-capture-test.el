@@ -370,4 +370,65 @@
     (should-error (+endgame-day-ensure +endgame-test-future nil '(0 5 5 nil)))
     (should-error (+endgame-day-ensure +endgame-test-future '("2031-01-08 9:00" "2031-01-08 7:00") nil))))
 
+(ert-deftest +endgame-move-to-day-moves-the-date-and-the-heading ()
+  (+endgame-test--with-vault
+    (+endgame-day-ensure +endgame-test-future)
+    (should (eq (+endgame-session-add "learning" (concat +endgame-test-future " 10:00-12:00")) 'day))
+    (let* ((week (lambda () (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
+           (m (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
+                (goto-char (point-min))
+                (re-search-forward "^\\*\\*\\* TODO learning session")
+                (point-marker))))
+      (should (+endgame-day-item-p m))
+      ;; what the old path left: a SCHEDULED next to the timestamp
+      (org-with-point-at m (org-schedule nil "2031-01-09"))
+      ;; the next day has no note: into upcoming, time kept, SCHEDULED gone
+      (let ((json (json-parse-string
+                   (+endgame-move-to-day-json (buffer-file-name (marker-buffer m))
+                                              (with-current-buffer (marker-buffer m) (line-number-at-pos m))
+                                              nil "2031-01-09")
+                   :object-type 'alist)))
+        (should (equal (alist-get 'where json) "upcoming"))
+        (should (alist-get 'id json)))
+      (should-not (string-match-p "learning session" (funcall week)))
+      (should (string-match-p "^\\*\\* DO list \\[[0-9]+/[0-9]+\\]" (funcall week)))
+      (let ((up (+endgame-test--read +endgame-upcoming-file)))
+        (should (string-match-p (concat "^\\* TODO learning session \\[0/3\\] :learning:\n:PROPERTIES:\n"
+                                        "\\(?:.*\n\\)*?:END:\n<2031-01-09 Thu 10:00-12:00>\n")
+                                up))
+        (should-not (string-match-p "SCHEDULED" up)))
+      ;; making that day moves it in
+      (+endgame-day-ensure "2031-01-09")
+      (should (string-match-p "learning session" (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker "2031-01-09"))))))
+      (should-not (string-match-p "learning session" (+endgame-test--read +endgame-upcoming-file)))
+      ;; and back into an existing day, with a new time
+      (let ((back (with-current-buffer (marker-buffer (+endgame--day-marker "2031-01-09"))
+                    (goto-char (point-min))
+                    (re-search-forward "^\\*\\*\\* TODO learning session")
+                    (point-marker))))
+        (+endgame--saving (+endgame-move-to-day back +endgame-test-future "14:00" "15:30")))
+      (should (string-match-p "<2031-01-08 Wed 14:00-15:30>" (funcall week))))))
+
+(ert-deftest +endgame-move-to-day-appointment-and-weekly-reset ()
+  (+endgame-test--with-vault
+    ;; an appointment: only its timestamp moves
+    (with-current-buffer (find-file-noselect +endgame-life-file)
+      (goto-char (point-max))
+      (insert "** APPT barber\n<2031-01-08 Wed 14:00-14:45>\n** TODO call bank\nSCHEDULED: <2031-01-08 Wed>\n")
+      (save-buffer))
+    (let ((json (json-parse-string (+endgame-move-to-day-json +endgame-life-file 5 nil "2031-01-10") :object-type 'alist)))
+      (should (equal (alist-get 'where json) "same")))
+    (should (string-match-p "^\\*\\* APPT barber\n:PROPERTIES:\n:ID: .*\n:END:\n<2031-01-10 Fri 14:00-14:45>"
+                            (+endgame-test--read +endgame-life-file)))
+    ;; a plain task isn't a day item: refused, SCHEDULED is its path
+    (should-error (+endgame-move-to-day-json +endgame-life-file 11 nil "2031-01-10"))
+    ;; the weekly reset is dated by its SCHEDULED, which moves
+    (should (eq (+endgame-routine-add "Weekly reset routine" +endgame-test-future "15:30-16:30") 'upcoming))
+    (with-current-buffer (+endgame--buffer +endgame-upcoming-file)
+      (goto-char (point-min))
+      (re-search-forward "^\\* TODO Weekly reset")
+      (+endgame--saving (+endgame-move-to-day (point-marker) "2031-01-11")))
+    (should (string-match-p "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <2031-01-11 Sat 15:30-16:30>\n"
+                            (+endgame-test--read +endgame-upcoming-file)))))
+
 ;;; endgame-capture-test.el ends here

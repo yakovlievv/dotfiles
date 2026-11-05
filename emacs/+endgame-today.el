@@ -1388,9 +1388,21 @@ On a line that isn't an item, run what the line leads to."
   (+endgame-today--at-item (call-interactively #'org-todo)))
 
 (defun +endgame-today/schedule ()
-  "Not today: give the item on this line a new date."
+  "Not today: give the item on this line a new date.
+A session, routine copy or appointment moves to that day, timestamp and
+heading (`+endgame-move-to-day'); a time typed replaces its time. Any
+other item gets a SCHEDULED."
   (interactive)
-  (+endgame-today--at-item (call-interactively #'org-schedule)))
+  (+endgame-today--at-item
+    (if (+endgame-day-item-p)
+        (let* ((org-time-was-given nil)
+               (org-end-time-was-given nil)
+               (time (org-read-date nil t nil "Move to day: ")))
+          (+endgame--saving
+            (+endgame-move-to-day (point) (+endgame--date time)
+                                  (and org-time-was-given (format-time-string "%H:%M" time))
+                                  org-end-time-was-given)))
+      (call-interactively #'org-schedule))))
 
 (defun +endgame-today/unschedule ()
   "Not anytime soon: remove the item's SCHEDULED date, back to the backlog."

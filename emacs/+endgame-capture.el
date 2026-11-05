@@ -799,6 +799,155 @@ AREA is an area alist or its tag. Nil when the area has no sources."
       (apply #'+ (mapcar #'cadr (+endgame--area-tables
                                  sources (list :tstart ts :tend te :maxlevel 1)))))))
 
+;;; Moving a day item to another day
+
+;; A session, a routine copy or an appointment is dated by its own plain
+;; timestamp (the weekly reset by its SCHEDULED), and a session or routine
+;; copy also by the day heading it sits under. Giving one a SCHEDULED for
+;; another day leaves it where it was: today's list and the calendar still
+;; show it today. `+endgame-move-to-day' moves the date itself, and the
+;; heading with it.
+
+(defun +endgame-day-item-p (&optional pom)
+  "Non-nil when the entry at POM is dated by its own timestamp, not SCHEDULED.
+A routine or session copy (its own :ROUTINE:), an appointment (APPT), or
+any entry with a plain active timestamp in a daily note or the upcoming note."
+  (org-with-point-at (or pom (point))
+    (org-back-to-heading t)
+    (or (org-entry-get nil "ROUTINE")
+        (equal (org-get-todo-state) "APPT")
+        (and (+endgame-entry-stamp)
+             (buffer-file-name)
+             (or (file-in-directory-p (buffer-file-name) org-journal-dir)
+                 (file-equal-p (buffer-file-name) +endgame-upcoming-file))))))
+
+(defun +endgame--moved-stamp (stamp date &optional time end)
+  "STAMP moved to DATE (\"YYYY-MM-DD\"), keeping its time and range.
+TIME (\"HH:MM\") and END replace them when given."
+  (pcase-let* ((`(,_ ,start ,old-end ,_) (+endgame--stamp-range stamp))
+               (start (or time start))
+               (end (if time end old-end)))
+    (+endgame--format-stamp
+     (if start
+         (pcase-let ((`(,h ,m) (mapcar #'string-to-number (split-string start ":")))
+                     (`(,y ,mo ,d) (mapcar #'string-to-number (split-string date "-"))))
+           (encode-time 0 m h d mo y))
+       (+endgame--date-time date))
+     (and start t) end)))
+
+(defun +endgame--redate-entry (date &optional time end)
+  "Put the entry at point on DATE: its plain timestamp, else its SCHEDULED.
+A plain timestamp is the entry's date, so a SCHEDULED next to it goes."
+  (org-back-to-heading t)
+  (let ((stamp (+endgame-entry-stamp))
+        (bound (save-excursion (outline-next-heading) (point))))
+    (if stamp
+        (save-excursion
+          ;; no reschedule note: this is the stray one the old path left
+          (when (org-entry-get nil "SCHEDULED")
+            (org-remove-timestamp-with-keyword org-scheduled-string))
+          ;; the new stamp first: computing it clobbers the match data
+          (let ((new (+endgame--moved-stamp stamp date time end)))
+            (re-search-forward (regexp-quote stamp) (save-excursion (outline-next-heading) (point)))
+            (replace-match new t t)))
+      (let ((sched (or (org-entry-get nil "SCHEDULED")
+                       (error "%s has no date to move" (+endgame--title)))))
+        (save-excursion
+          (let ((new (+endgame--moved-stamp sched date time end)))
+            (re-search-forward (concat "SCHEDULED: " (regexp-quote sched)) bound)
+            (replace-match (concat "SCHEDULED: " new) t t)))))))
+
+(defun +endgame--find-id (buffer id)
+  "Marker at the heading with :ID: ID in BUFFER, or nil."
+  (with-current-buffer buffer
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (when (re-search-forward (format "^[ \t]*:ID:[ \t]+%s[ \t]*$" (regexp-quote id)) nil t)
+       (org-back-to-heading t)
+       (point-marker)))))
+
+(defun +endgame-move-to-day (pom date &optional time end)
+  "Move the day item at POM to DATE (\"YYYY-MM-DD\"); return a marker at it.
+Its timestamp goes to DATE, keeping the time unless TIME (\"HH:MM\",
+END for a range) is given. A copy in a daily note or the upcoming note
+goes with it: into DATE's DO list, or into upcoming when DATE has no
+daily note yet (making that day moves it in). An appointment stays where
+it is. Asks nothing; the caller saves."
+  (let* ((m (copy-marker pom))
+         (id (org-with-point-at m (org-id-get-create)))
+         (file (buffer-file-name (marker-buffer m)))
+         (in-journal (and file (file-in-directory-p file org-journal-dir)))
+         (in-upcoming (and file (file-equal-p file +endgame-upcoming-file))))
+    (org-with-point-at m
+      (org-with-wide-buffer
+       (+endgame--redate-entry date time end)))
+    (if (not (or in-journal in-upcoming))
+        m
+      (let* ((target (+endgame--day-marker date))
+             (here (with-current-buffer (marker-buffer m)
+                     (org-with-wide-buffer
+                      (goto-char m)
+                      (save-excursion
+                        (while (and (org-current-level) (> (org-current-level) 1))
+                          (org-up-heading-safe))
+                        (point)))))
+             (same (and in-journal target
+                        (eq (marker-buffer target) (marker-buffer m))
+                        (= here target))))
+        (if (or same (and in-upcoming (not target)))
+            m
+          (let (text)
+            (with-current-buffer (marker-buffer m)
+              (org-with-wide-buffer
+               (goto-char m)
+               (let ((beg (point))
+                     (stop (save-excursion (org-end-of-subtree t t) (point))))
+                 (setq text (buffer-substring-no-properties beg stop))
+                 (delete-region beg stop)
+                 ;; the DO list it came from recounts
+                 (when (and in-journal (org-up-heading-safe))
+                   (org-update-statistics-cookies nil)))))
+            (set-marker m nil)
+            (if target
+                (+endgame--append-to-do-list target (list text))
+              (+endgame--append-to-upcoming text))
+            (or (+endgame--find-id (if target (marker-buffer target)
+                                     (+endgame--buffer +endgame-upcoming-file))
+                                   id)
+                (error "Lost %s while moving it" id))))))))
+
+(defun +endgame-move-to-day-json (file line id date &optional time end)
+  "`+endgame-move-to-day' for the server: asks nothing, saves, returns JSON.
+The item is the heading with :ID: ID in FILE, or (ID nil) the heading on
+LINE (1-based). Refuses an entry that isn't a day item. Returns
+{\"file\", \"line\", \"id\", \"where\": \"day\"|\"upcoming\"|\"same\", \"files\"}."
+  (let ((inhibit-interaction t)
+        (+endgame--saved nil)
+        result)
+    (+endgame--saving
+      (let* ((buf (+endgame--buffer file))
+             (m (or (and id (+endgame--find-id buf id))
+                    (with-current-buffer buf
+                      (org-with-wide-buffer
+                       (goto-char (point-min))
+                       (forward-line (1- line))
+                       (unless (org-at-heading-p) (error "No heading on line %d of %s" line file))
+                       (point-marker))))))
+        (unless (+endgame-day-item-p m)
+          (error "%s isn't a session, routine copy or appointment" (org-with-point-at m (+endgame--title))))
+        (let* ((to (+endgame-move-to-day m date time end))
+               (to-file (buffer-file-name (marker-buffer to))))
+          (setq result
+                `((file . ,to-file)
+                  (line . ,(with-current-buffer (marker-buffer to)
+                             (org-with-wide-buffer (line-number-at-pos to))))
+                  (id . ,(org-entry-get to "ID"))
+                  (where . ,(cond ((file-equal-p to-file +endgame-upcoming-file) "upcoming")
+                                  ((file-in-directory-p to-file org-journal-dir) "day")
+                                  (t "same"))))))))
+    (+endgame--json
+     (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
+
 ;;; Sessions: SPC j s
 
 (defun +endgame-session-area (&optional pom)
