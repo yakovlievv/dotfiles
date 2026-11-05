@@ -352,4 +352,66 @@
     (should (equal (+endgame-today--entry-heading (+endgame-today--abs "2026-11-01") night)
                    "** 00:18 "))))
 
+(ert-deftest +endgame-today-test-timeblock-no-ghosts ()
+  "A killed and reopened file leaves no ghost entries in org-timeblock."
+  (let ((dir (car (file-expand-wildcards
+                   "~/.config/emacs/.local/straight/build-31.1/org-timeblock"))))
+    (skip-unless (and dir (add-to-list 'load-path dir) (require 'org-timeblock nil t))))
+  (let* ((file (make-temp-file "timeblock-ghost" nil ".org"
+                               "* TODO Weekly reset\n<2026-11-01 Sun 14:30>\n"))
+         (org-timeblock-files (list file))
+         (org-timeblock-cache nil) (org-timeblock-buffers nil) (org-timeblock-markers nil)
+         (day (decode-time (encode-time (parse-time-string "2026-11-01 12:00:00")))))
+    (should (= 1 (length (org-timeblock-get-entries day day))))
+    ;; something kills the buffer (clock-in, agenda dismiss), then the file changes
+    (kill-buffer (get-file-buffer file))
+    (with-temp-file file (insert "* TODO Weekly reset\n<2026-11-01 Sun 14:30-15:30>\n"))
+    (let ((entries (org-timeblock-get-entries day day)))
+      (should (= 1 (length entries)))
+      (should (buffer-live-p (marker-buffer (get-text-property 0 'marker (car entries))))))
+    (kill-buffer (get-file-buffer file))
+    (delete-file file)))
+
+(ert-deftest +endgame-today-test-visit-uses-note-window ()
+  "Visiting a heading from the panel lands in the note window, not the dashboard."
+  (let* ((file (make-temp-file "visit-note" nil ".org"
+                               "* Sat\n** TODO In the day\n* Sun\n** TODO Elsewhere\n"))
+         (base (find-file-noselect file))
+         (note (with-current-buffer (make-indirect-buffer base "*visit-note-day*" t)
+                 (goto-char (point-min)) (org-narrow-to-subtree)
+                 (+endgame-today-note-mode 1)
+                 (current-buffer)))
+         (dash (get-buffer-create "*visit-dash*"))
+         (here (with-current-buffer base
+                 (goto-char (point-min)) (search-forward "In the day") (point-marker)))
+         (there (with-current-buffer base
+                  (goto-char (point-min)) (search-forward "Elsewhere") (point-marker))))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (let* ((left (selected-window))
+                 (right (split-window left nil 'right))
+                 (bottom (split-window right nil 'below)))
+            (set-window-buffer left (get-buffer-create "*visit-timeline*"))
+            (set-window-buffer right dash)
+            (set-window-buffer bottom note)
+            ;; in the note's day: jump there in the note itself
+            (select-window left)
+            (+endgame-today--visit-marker here)
+            (should (eq (selected-window) bottom))
+            (should (eq (window-buffer bottom) note))
+            (should (= (point) here))
+            ;; another day: the file takes the note window, the dashboard stays
+            (select-window left)
+            (+endgame-today--visit-marker there)
+            (should (eq (selected-window) bottom))
+            (should (eq (window-buffer bottom) base))
+            (should (eq (window-buffer right) dash))
+            (should (= (point) there))))
+      (kill-buffer note) (kill-buffer dash)
+      (kill-buffer "*visit-timeline*")
+      (with-current-buffer base (set-buffer-modified-p nil))
+      (kill-buffer base)
+      (delete-file file))))
+
 ;;; endgame-today-test.el ends here

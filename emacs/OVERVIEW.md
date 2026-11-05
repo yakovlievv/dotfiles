@@ -158,7 +158,8 @@ cascades into encrypting children).
 `TODO NEXT PROJ LOOP STRT(s!) WAIT(w@/!) HOLD(h@/!) IDEA | DONE(d!) KILL(k@)`, plus
 the checkbox and OKAY/YES/NO sequences. `WAIT`/`HOLD`/`KILL` prompt for a note; notes
 go into `:LOGBOOK:`. `org-log-note-clock-out` on — clocking out asks where you
-stopped. TODO dependencies and checkbox dependencies enforced.
+stopped. TODO dependencies and checkbox dependencies enforced, except for habits,
+routine copies (close with skipped steps left open) and lessons.
 ⚠ This list is a *superset* of Doom's; dropping a keyword makes files using it
 invisible to the ripgrep agenda scan below.
 
@@ -232,10 +233,8 @@ sleep/feeling properties remain visible to `org-roam-db-autosync` and clocktable
   within 14 days, appends the subtree: `** Pre-lesson` (with a deadlined
   `TODO prepare for lesson N` and a `*** Print [0/0]`), `** Lesson`, `** Post-lesson`.
   Refuses on `:inactive:` files.
-- `my/last-lesson-end-time` — parses the newest lesson's end (or start) timestamp.
-- `my/auto-create-next-lesson-maybe` — rolls files forward once a lesson has ended.
-  Runs on a timer 5 min after startup, then hourly (it opens and may *save* files, so
-  it's deliberately off the hot path).
+- Upcoming lessons are created by the `lesson-roll` systemd timer on the server
+  (Fri 06:00, `~/dotfiles/bin/lesson-roll.el`), not from Emacs.
 
 **Vocab.** `my/vocab-add-word` — prompts for word + translation, appends a row to the
 first `* Vocab` table in the file with today's date stamped in column 4, from anywhere
@@ -266,9 +265,6 @@ notes as a cover-art grid.
 
 ## Known rough edges
 
-- `my/auto-create-next-lesson-maybe` guards on `lesson-dashboard--find-lesson-files`,
-  which **is not defined anywhere** in this config — so the hourly timer currently
-  does nothing.
 - The org-mode localleader `l n`, described as "Create new lesson", is actually bound
   to `my/vocab-add-word` (same as `l w`); `my/create-next-lesson` has no binding.
 - `org-pomodoro-lengh` is a typo for `org-pomodoro-length`, so the 45-minute setting

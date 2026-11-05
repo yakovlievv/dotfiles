@@ -113,7 +113,8 @@
             "roam/routines.org"
             (concat "#+title: routines\n\n"
                     "* Morning routine\nwake up.\n- [ ] water\n- [ ] stretch\n"
-                    "* Session routine\n- [ ] Start\n  - [ ] Clock in\n- [ ] During\n- [ ] End\n"))))
+                    "* Session routine\n- [ ] Start\n  - [ ] Clock in\n- [ ] During\n- [ ] End\n"
+                    "* Weekly reset routine\n*Trigger*: on saturday or sunday\n- [ ] do the laundry\n"))))
      (make-directory org-journal-dir t)
      (+endgame-test--file
       "roam/curriculum.org"
@@ -281,6 +282,26 @@
       (should (string-match-p (concat ":ROUTINE:  Session routine\n:END:\n<" +endgame-test-future " Wed>\n")
                               week)))))
 
+(ert-deftest +endgame-weekly-reset-copy-is-scheduled ()
+  (+endgame-test--with-vault
+    ;; staged: SCHEDULED under the heading, the UID still in the drawer
+    (should (eq (+endgame-routine-add "Weekly reset routine" +endgame-test-future "15:30-16:30") 'upcoming))
+    (should (string-match-p (concat "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <" +endgame-test-future
+                                    " Wed 15:30-16:30>\n:PROPERTIES:\n:ROUTINE:  Weekly reset routine\n:CALDAV_UID: [-0-9a-f]+\n:END:\n- \\[ \\] do the laundry")
+                            (+endgame-test--read +endgame-upcoming-file)))
+    ;; making the day moves it in by its SCHEDULED date
+    (+endgame-day-ensure +endgame-test-future)
+    (should-not (string-match-p "Weekly reset" (+endgame-test--read +endgame-upcoming-file)))
+    (let ((week (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
+      (should (string-match-p (concat "^\\*\\*\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <" +endgame-test-future " Wed 15:30-16:30>\n:PROPERTIES:")
+                              week)))
+    ;; untimed, into an existing day: SCHEDULED, no UID
+    (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
+      (let ((text (let ((+endgame--routine-day (+endgame--date-time +endgame-test-future))
+                        (+endgame--routine-time nil))
+                    (+routines--copy "Morning routine" 3))))
+        (should (string-match-p (concat ":END:\n<" +endgame-test-future " Wed>\n") text))))))
+
 (ert-deftest +endgame-interactive-day-gets-staged-items ()
   (+endgame-test--with-vault
     (+endgame-session-add "learning" (concat +endgame-test-future " 10:00-12:00"))
@@ -322,5 +343,30 @@
         (should (string-match-p "| curriculum.org +| \\*File time\\* +| \\*1:30\\* |" text))
         (should-not (string-match-p "Piano" text))
         (should (string-match-p "\n#\\+END:" text))))))
+
+
+(ert-deftest +endgame-day-ensure-writes-the-phones-answers ()
+  ;; the phone asked the sleep and morning questions itself
+  (+endgame-test--with-vault
+    (let ((json (+endgame-day-ensure +endgame-test-future
+                                     '("2031-01-07 23:30" "2031-01-08 7:10")
+                                     '(3 7 "8" "  slept ok  "))))
+      (should (equal (alist-get 'created (json-parse-string json :object-type 'alist)) t))
+      (let ((day (+endgame--day-marker +endgame-test-future)))
+        (should (equal (org-entry-get day "SLEEP_TIME") "[2031-01-07 Tue 23:30]--[2031-01-08 Wed 07:10]"))
+        (should (equal (org-entry-get day "MORNING_HEADACHE") "3"))
+        (should (equal (org-entry-get day "MORNING_FRESHNESS") "7"))
+        (should (equal (org-entry-get day "MORNING_MOOD") "8"))
+        (should (equal (org-entry-get day "MORNING_NOTES") "slept ok"))
+        (should-not (buffer-modified-p (marker-buffer day)))))
+    ;; an existing day: only the morning, sleep left as it was, no notes
+    (+endgame-day-ensure +endgame-test-future nil '(5 5 5 ""))
+    (let ((day (+endgame--day-marker +endgame-test-future)))
+      (should (equal (org-entry-get day "MORNING_MOOD") "5"))
+      (should (equal (org-entry-get day "MORNING_NOTES") "slept ok"))
+      (should (string-prefix-p "[2031-01-07" (org-entry-get day "SLEEP_TIME"))))
+    ;; bad answers are refused
+    (should-error (+endgame-day-ensure +endgame-test-future nil '(0 5 5 nil)))
+    (should-error (+endgame-day-ensure +endgame-test-future '("2031-01-08 9:00" "2031-01-08 7:00") nil))))
 
 ;;; endgame-capture-test.el ends here

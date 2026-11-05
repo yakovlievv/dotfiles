@@ -32,7 +32,9 @@
 (defun +habits--copy (level day)
   "Copy of the habit at point as a TODO at LEVEL scheduled on DAY (a time).
 A habit whose title links to a node (=[[id:…][Morning routine]]=) gets
-that node's contents, after its own body: see `+habits--linked-text'."
+that node's contents, after its own body: see `+habits--linked-text'.
+The copy's title has its links as plain text, so the daily note
+doesn't link the routines in the graph."
   (let* ((title (org-get-heading t t t t))
          (tags (org-get-tags nil t))
          (props (seq-remove (lambda (p) (member (car p) '("ID" "STYLE" "LAST_REPEAT" "CATEGORY")))
@@ -48,7 +50,7 @@ that node's contents, after its own body: see `+habits--linked-text'."
                                     (+habits--shift-levels own (- level (org-current-level))))
                                   (+habits--linked-text title level))))
            (text (mapconcat (lambda (s) (concat s "\n")) (seq-remove #'string-empty-p parts) "")))
-      (concat (make-string level ?*) " TODO " title
+      (concat (make-string level ?*) " TODO " (org-link-display-format title)
               (if (+habits--steps-p text) " [/]" "")   ; it has steps
               (if tags (concat " :" (string-join tags ":") ":") "") "\n"
               "SCHEDULED: " (format-time-string (org-time-stamp-format nil nil) day) "\n"
@@ -299,6 +301,12 @@ reset."
   "Non-nil when TEXT has steps: sub-headings or checkboxes."
   (string-match-p "^\\(?:\\*+ \\|[ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\[[ X-]\\]\\)" text))
 
+(defun +habits--first-step (end)
+  "Start of the first step (a checkbox or a sub-heading) after point, or END."
+  (if (re-search-forward "^\\(?:\\*+ \\|[ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\[[ X-]\\]\\)" end t)
+      (line-beginning-position)
+    end))
+
 (defun +habits--untitle (title)
   "TITLE without its statistics cookie."
   (string-trim (replace-regexp-in-string "\\[[0-9]*\\(?:%\\|/[0-9]*\\)\\]" "" title t t)))
@@ -308,6 +316,8 @@ reset."
 A heading or a file-level node (then TITLE is its #+title), TITLE
 without its cookie. Its text and sub-headings come along, fresh (see
 `+habits--fresh'); its own property drawer and planning line don't.
+A node in the routines note brings only its steps, from the first
+one on (see `+habits--first-step'), like `+routines--copy'.
 Nil, with a message, when the node isn't found."
   (let ((m (org-id-find id 'marker)))
     (if (not m)
@@ -330,6 +340,11 @@ Nil, with a message, when the node isn't found."
                                (while (and (not (eobp)) (looking-at "^\\(#\\+.*\\|[ \t]*\\)$"))
                                  (forward-line 1))
                                (point))))
+                    ;; a routine brings only its steps: its intro stays in the note
+                    (start (if (and (bound-and-true-p +routines-file) buffer-file-name
+                                    (file-equal-p buffer-file-name +routines-file))
+                               (save-excursion (goto-char start) (+habits--first-step end))
+                             start))
                     (title (if heading
                                (org-get-heading t t t t)
                              (or (cadr (assoc "TITLE" (org-collect-keywords '("TITLE"))))
@@ -622,9 +637,7 @@ or a sub-heading) stays in the note; what follows it comes along."
               ;; the first step: a checkbox or a sub-heading
               (first (save-excursion
                        (org-end-of-meta-data t)
-                       (if (re-search-forward "^\\(?:\\*+ \\|[ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\[[ X-]\\]\\)" end t)
-                           (line-beginning-position)
-                         end)))
+                       (+habits--first-step end)))
               (steps (string-trim-right
                       (+habits--fresh (buffer-substring-no-properties first end)))))
          (concat (make-string level ?*) " TODO " title
@@ -680,22 +693,42 @@ changing nothing, when the DO list already has TITLE."
              "%s is already in today's DO list")
            title))
 
+(defun +routines--copy-p (&optional pom)
+  "Non-nil when the entry at POM is a routine copy itself (its own
+:ROUTINE:, not one inherited by a step)."
+  (org-entry-get pom "ROUTINE"))
+
+(defun +routines--never-blocked-a (fn change-plist)
+  "Around org's TODO dependencies: a routine copy can go DONE with steps
+still open, so a skipped step can stay unticked."
+  (or (+routines--copy-p (plist-get change-plist :position))
+      (funcall fn change-plist)))
+
+(advice-add 'org-block-todo-from-children-or-siblings-or-parent
+            :around #'+routines--never-blocked-a)
+(advice-add 'org-block-todo-from-checkboxes
+            :around #'+routines--never-blocked-a)
+
 (defun +routines--done-when-all-done-h (_n-done n-not-done)
   "On `org-after-todo-statistics-hook': a routine copy, or a step with
-sub-steps, is DONE once all its sub-tasks are, and TODO again when one
-reopens. Not logged as a state change, so the step's own note survives."
+sub-steps, is DONE once all its sub-tasks are. A step goes TODO again
+when one reopens; the routine itself stays DONE, since it may have been
+closed with steps open. Not logged as a state change, so the step's own
+note survives."
   (when (org-entry-get nil "ROUTINE" t)
     (let ((state (org-get-todo-state))
           (org-todo-log-states nil))
       (cond ((and (= n-not-done 0) (equal state "TODO")) (org-todo "DONE"))
-            ((and (> n-not-done 0) (equal state "DONE")) (org-todo "TODO"))))))
+            ((and (> n-not-done 0) (equal state "DONE") (not (+routines--copy-p)))
+             (org-todo "TODO"))))))
 
 (add-hook 'org-after-todo-statistics-hook #'+routines--done-when-all-done-h)
 
 (defun +routines--done-when-all-checked-h ()
   "On `org-checkbox-statistics-hook': a routine copy whose steps are
-checkboxes is DONE once its cookie is full, and TODO again when a box
-is unticked. Not logged as a state change."
+checkboxes is DONE once its cookie is full. A step heading with boxes
+goes TODO again when one is unticked; the routine itself stays DONE.
+Not logged as a state change."
   (save-excursion
     (when (and (ignore-errors (org-back-to-heading t))
                (org-entry-get nil "ROUTINE" t))
@@ -706,7 +739,8 @@ is unticked. Not logged as a state change."
           (let ((done (string-to-number (match-string 1 heading)))
                 (all (string-to-number (match-string 2 heading))))
             (cond ((and (> all 0) (= done all) (equal state "TODO")) (org-todo "DONE"))
-                  ((and (< done all) (equal state "DONE")) (org-todo "TODO")))))))))
+                  ((and (< done all) (equal state "DONE") (not (+routines--copy-p)))
+                   (org-todo "TODO")))))))))
 
 (add-hook 'org-checkbox-statistics-hook #'+routines--done-when-all-checked-h)
 
@@ -850,12 +884,15 @@ is unticked. Not logged as a state change."
       (+habits-test--goto-day)
       (should (= 4 (+habits-insert-into-day)))
       (let ((text (buffer-string)))
-        ;; the link stays in the copy's title, the source is the habit
-        (should (string-match-p "^\\*\\*\\* TODO \\[\\[id:r-morning\\]\\[morning routine\\]\\] \\[0/1\\]$" text))
+        ;; the copy's title is the link's text, the source is the habit
+        (should (string-match-p "^\\*\\*\\* TODO morning routine \\[0/1\\]$" text))
+        (should-not (string-match-p "id:r-morning" text))
         (should (string-match-p ":HABIT_ID: src-linked" text))
-        ;; the node's contents, fresh: its steps TODO again, shifted from 2 to 4
+        ;; the routine's steps, fresh: TODO again, shifted from 2 to 4;
+        ;; its intro stays in the note
+        (should-not (string-match-p "Boot sequence" text))
         (should (string-match-p
-                 (concat "habit\n:END:\nBoot sequence.\n"
+                 (concat "habit\n:END:\n"
                          "\\*\\*\\*\\* TODO Steps \\[0/1\\]\n:PROPERTIES:\n:CUSTOM:   kept\n:END:\n"
                          "\\*\\*\\*\\*\\* TODO stretch\n")
                  text))
@@ -870,8 +907,9 @@ is unticked. Not logged as a state change."
       (+habits-test--goto-day)
       (+habits-insert-into-day)
       (let ((text (buffer-string)))
-        ;; after the file's drawer and #+title, top-level headings one below the copy
-        (should (string-match-p "habit\n:END:\nEvery heading is a routine.\n\\*\\*\\*\\* TODO Morning routine \\[0/1\\]\n" text))
+        ;; from the first heading on (the note's intro stays), one below the copy
+        (should (string-match-p "habit\n:END:\n\\*\\*\\*\\* TODO Morning routine \\[0/1\\]\n" text))
+        (should-not (string-match-p "Every heading is a routine" text))
         (should (string-match-p "^\\*\\*\\*\\*\\* TODO Steps \\[0/1\\]$" text))
         (should-not (string-match-p ":ID: +r-\\|#\\+title: routines" text))))))
 
@@ -886,7 +924,8 @@ is unticked. Not logged as a state change."
         ;; the node that isn't found is left out
         (should (string-match-p
                  (concat ":HABIT_ID: src-linked\n:STYLE:    habit\n:END:\n"
-                         "\\*\\*\\*\\* TODO Morning routine \\[0/1\\]\nBoot sequence.\n"
+                         ;; each routine's intro stays in the note
+                         "\\*\\*\\*\\* TODO Morning routine \\[0/1\\]\n"
                          "\\*\\*\\*\\*\\* TODO Steps \\[0/1\\]\n:PROPERTIES:\n:CUSTOM:   kept\n:END:\n"
                          "\\*\\*\\*\\*\\*\\* TODO stretch\n"
                          ;; a linked node's own drawer stays behind
@@ -904,7 +943,7 @@ is unticked. Not logged as a state change."
       (let ((org-enforce-todo-dependencies t)
             (org-blocker-hook (list #'org-block-todo-from-children-or-siblings-or-parent)))
         (goto-char (point-min))
-        (re-search-forward "^\\*+ TODO \\[\\[id:r-morning")
+        (re-search-forward "^\\*+ TODO morning routine")
         (org-todo "DONE")
         (should (equal (org-get-todo-state) "DONE"))
         ;; the source was logged as usual
@@ -928,12 +967,12 @@ is unticked. Not logged as a state change."
       (+habits-test--goto-day)
       (+habits-insert-into-day)
       ;; the boxes come in unticked, counted by the copy's cookie
-      (should (string-match-p "TODO \\[\\[id:r-evening\\]\\[evening routine\\]\\] \\[0/2\\]$" (buffer-string)))
+      (should (string-match-p "TODO evening routine \\[0/2\\]$" (buffer-string)))
       (should (string-match-p "^- \\[ \\] tea\n- \\[ \\] read\n" (buffer-string)))
       (let ((org-enforce-todo-checkbox-dependencies t)
             (org-blocker-hook (list #'org-block-todo-from-checkboxes)))
         (goto-char (point-min))
-        (re-search-forward "^\\*+ TODO \\[\\[id:r-evening")
+        (re-search-forward "^\\*+ TODO evening routine")
         (org-todo "DONE")
         (should (equal (org-get-todo-state) "DONE"))))))
 
@@ -943,7 +982,7 @@ is unticked. Not logged as a state change."
     (+habits-test--with-ids
       (+habits-test--goto-day)
       (should (= 4 (+habits-insert-into-day)))
-      (should (string-match-p "TODO \\[\\[id:gone\\]\\[morning routine\\]\\]\nSCHEDULED"
+      (should (string-match-p "TODO morning routine\nSCHEDULED"
                               (buffer-string))))))
 
 (ert-deftest +habits-heatmap-shows-a-linked-title-as-its-text ()
@@ -1163,11 +1202,41 @@ is unticked. Not logged as a state change."
       ;; "Wash face" ticked with its only box, then the routine with all three
       (should (string-match-p "^- \\[X\\] Wash face" (buffer-string)))
       (should (string-match-p "\\*\\*\\* DONE Morning routine \\[3/3\\]" (buffer-string)))
-      ;; unticking a step reopens the routine
+      ;; unticking a step leaves the routine DONE (it may have been closed
+      ;; with steps open)
       (goto-char (point-min))
       (re-search-forward "\\[X\\] Get out of the bed")
       (org-toggle-checkbox)
-      (should (string-match-p "\\*\\*\\* TODO Morning routine \\[2/3\\]" (buffer-string))))))
+      (should (string-match-p "\\*\\*\\* DONE Morning routine \\[2/3\\]" (buffer-string))))))
+
+(ert-deftest +routines-close-by-hand-with-boxes-open ()
+  (+routines-test--with-day
+    (+routines-insert-into-day "Morning routine")
+    (let ((org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d!)" "KILL(k@)")))
+          (org-use-property-inheritance '("ROUTINE"))
+          (org-log-done nil))
+      (org-mode)
+      ;; what org-mode installs when the options are on before the buffer opens
+      (let ((org-enforce-todo-dependencies t)
+            (org-enforce-todo-checkbox-dependencies t)
+            (org-blocker-hook (list #'org-block-todo-from-children-or-siblings-or-parent
+                                    #'org-block-todo-from-checkboxes)))
+        (goto-char (point-min))
+        (re-search-forward "^\\*+ TODO Morning routine")
+        (org-todo "DONE")
+        (should (equal (org-get-todo-state) "DONE"))
+        (should (string-match-p "^  - \\[ \\] cold water" (buffer-string)))
+        ;; ticking a skipped step later keeps it DONE
+        (goto-char (point-min))
+        (re-search-forward "\\[ \\] Get out of the bed")
+        (org-toggle-checkbox)
+        (should (string-match-p "\\*\\*\\* DONE Morning routine \\[1/3\\]" (buffer-string)))
+        ;; a plain task with an open box is still blocked
+        (goto-char (point-max))
+        (insert "\n*** TODO plain task\n- [ ] a box\n")
+        (re-search-backward "^\\*+ TODO plain task")
+        (org-todo "DONE")
+        (should (equal (org-get-todo-state) "TODO"))))))
 
 (ert-deftest +routines-stay-in-their-day-on-carryover ()
   (+routines-test--with-day

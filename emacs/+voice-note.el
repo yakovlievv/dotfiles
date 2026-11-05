@@ -347,12 +347,10 @@ Captured when recording *starts*, so wandering off mid-thought is safe.")
 
 ;;; Keybindings
 
-;; NOTE: `SPC n v' is Doom's `org-search-view', so it cannot double as a
-;; prefix -- hence capital V.  Free keys under `SPC n' are scarce: Doom
-;; claims most lowercase ones, `n b' is the book gallery and `n j' the
-;; journal prefix.
+;; Voice notes live on `SPC v' (moved from `SPC n V' on 2026-11-03, when
+;; org got its own top-level leader letters).
 (map! :leader
-      (:prefix ("n V" . "voice note")
+      (:prefix ("v" . "voice note")
        :desc "Record / stop"        "v" #'voice-note-toggle
        :desc "Play / stop"          "p" #'voice-note-play
        :desc "Cancel recording"     "c" #'voice-note-cancel

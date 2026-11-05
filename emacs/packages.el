@@ -16,7 +16,9 @@
 (package! valign)
 (package! dirvish)
 (package! guess-language)
-(package! org-gcal)
+(package! keyfreq)   ; command-usage stats for the keybinding cleanup (2026-11-03)
+(package! org-pomodoro)   ; Doom's org module dropped the +pomodoro flag, so the flag in init.el installs nothing
+(package! org-gcal :disable t)   ; calendar module pulls it in; replaced by the CalDAV server
 ;; the today panel's timeline (+endgame-today.el, SPC o t)
 (package! org-timeblock :pin "e61e5734b49f933ed178029f804a0499f3308e1e")
 ;; To install a package:

@@ -5,10 +5,11 @@
 ;; how things get into the vault and how a day comes to exist:
 ;;
 ;; - the APPT keyword: appointments are their own sequence, APPT | DONE
-;; - the capture menu under SPC X: i inbox, t today, a appointment, e errand
-;; - SPC n j r: a routine copy gets a plain active timestamp for its day,
-;;   with an optional time
-;; - SPC n j s: a session, the session routine with an area and a time range,
+;; - the capture menu under SPC SPC: i inbox, t today, a appointment, e errand
+;; - SPC j r: a routine copy gets a plain active timestamp for its day,
+;;   with an optional time; the weekly reset gets SCHEDULED instead
+;;   (`+endgame-scheduled-routines')
+;; - SPC j s: a session, the session routine with an area and a time range,
 ;;   into its day's DO list, or into the upcoming note for a future day
 ;; - `+endgame-day-ensure': creates any day without asking anything, then
 ;;   moves that day's staged items from upcoming into its DO list. Making a
@@ -274,7 +275,7 @@ Nil when the entry has no plain active timestamp."
     (when (and (fboundp 'my/org-palette-faces-h) (require 'catppuccin-theme nil t))
       (my/org-palette-faces-h))))
 
-;;; Capture: SPC X
+;;; Capture: SPC SPC
 
 (defun +endgame--read-title (prompt)
   "Read a non-empty title after PROMPT, escaped for a capture template."
@@ -341,14 +342,20 @@ keeps knowing it when it moves (upcoming → day, a refile, a new title)."
   "Non-nil when STAMP has a time of day: then it's a calendar event."
   (string-match-p " [0-9]\\{1,2\\}:[0-9]\\{2\\}" stamp))
 
-(defun +endgame--stamp-copy (text stamp)
+(defun +endgame--stamp-copy (text stamp &optional scheduled)
   "TEXT (a copy from `+routines--copy') with STAMP on the line after its drawer.
+SCHEDULED: STAMP goes on the line under the heading as SCHEDULED instead.
 A timed copy is a calendar event, so it also gets a :CALDAV_UID:."
-  (if (string-match "^:END:\n" text)
-      (concat (substring text 0 (match-beginning 0))
-              (if (+endgame--timed-p stamp) (concat ":CALDAV_UID: " (+endgame--uid) "\n") "")
-              ":END:\n" stamp "\n" (substring text (match-end 0)))
-    (replace-regexp-in-string "\\`\\(.*\n\\)" (concat "\\1" stamp "\n") text t)))
+  (let ((text (if (and (+endgame--timed-p stamp) (string-match "^:END:\n" text))
+                  (concat (substring text 0 (match-beginning 0))
+                          ":CALDAV_UID: " (+endgame--uid) "\n"
+                          (substring text (match-beginning 0)))
+                text)))
+    (cond (scheduled
+           (replace-regexp-in-string "\\`\\(.*\n\\)" (concat "\\1SCHEDULED: " stamp "\n") text t))
+          ((string-match "^:END:\n" text)
+           (concat (substring text 0 (match-end 0)) stamp "\n" (substring text (match-end 0))))
+          (t (replace-regexp-in-string "\\`\\(.*\n\\)" (concat "\\1" stamp "\n") text t)))))
 
 (defun +endgame--append-to-do-list (day texts)
   "Append TEXTS (org subtrees, any level) to the DO list of DAY.
@@ -397,11 +404,18 @@ Each text is shifted to sit under the DO list; the cookies are updated."
        (goto-char start)
        (org-update-statistics-cookies nil)))))
 
+(defun +endgame--entry-date (pom)
+  "\"YYYY-MM-DD\" of the entry at POM: its first plain active timestamp's day,
+else its SCHEDULED day (a weekly reset copy), else nil."
+  (or (car (+endgame-entry-time-range pom))
+      (when-let ((s (org-entry-get pom "SCHEDULED")))
+        (car (+endgame--stamp-range s)))))
+
 (defun +endgame-stage-into-day (day)
   "Move the upcoming note's items for DAY into DAY's DO list.
 DAY is a marker at a journal day heading. An item is a top-level heading
-of the upcoming note whose first plain active timestamp falls on that
-day; it keeps its whole subtree, properties and :CALDAV_UID: included,
+of the upcoming note whose first plain active timestamp (or, without
+one, its SCHEDULED) falls on that day; it keeps its whole subtree, properties and :CALDAV_UID: included,
 and is deleted from the upcoming note. Returns how many moved."
   (let ((date (with-current-buffer (marker-buffer day)
                 (org-with-wide-buffer
@@ -415,7 +429,7 @@ and is deleted from the upcoming note. Returns how many moved."
            (goto-char (point-min))
            (while (re-search-forward "^\\* " nil t)
              (let ((beg (line-beginning-position)))
-               (when (equal (car (+endgame-entry-time-range beg)) date)
+               (when (equal (+endgame--entry-date beg) date)
                  (push (cons beg (save-excursion (goto-char beg) (org-end-of-subtree t t) (point)))
                        regions))))
            ;; bottom first, so the earlier regions stay where they are
@@ -528,7 +542,33 @@ today's. A day heading that exists without an ID is set up in place."
         day
       (+endgame--create-day (+endgame--date-time date) ask))))
 
-(defun +endgame-day-ensure (&optional date)
+(defun +endgame--put-sleep (day sleep)
+  "Set :SLEEP_TIME: on DAY (a marker) from SLEEP, a list (BED WAKE).
+BED and WAKE are read like the bed and wake prompts of
+`+org-journal/set-sleep' read them (\"2026-11-04 23:30\", \"7:10\"), and
+stored the same way: an inactive range [bed]--[wake]."
+  (let ((fmt (org-time-stamp-format t t))
+        (bed (org-read-date t t (nth 0 sleep)))
+        (wake (org-read-date t t (nth 1 sleep))))
+    (unless (time-less-p bed wake)
+      (error "Bed time %s isn't before wake time %s" (nth 0 sleep) (nth 1 sleep)))
+    (org-entry-put day "SLEEP_TIME" (format "%s--%s" (format-time-string fmt bed) (format-time-string fmt wake)))))
+
+(defun +endgame--put-morning (day morning)
+  "Set the morning log on DAY (a marker) from MORNING, a list (HEADACHE FRESHNESS MOOD NOTES).
+The same properties as `+org-journal/set-morning-log': scores 1-10,
+:MORNING_NOTES: only when NOTES isn't empty."
+  (cl-loop for score in (seq-take morning 3)
+           for prop in '("MORNING_HEADACHE" "MORNING_FRESHNESS" "MORNING_MOOD")
+           do (let ((n (if (stringp score) (string-to-number score) score)))
+                (unless (and (integerp n) (<= 1 n 10))
+                  (error "%s must be 1-10, not %S" prop score))
+                (org-entry-put day prop (number-to-string n))))
+  (let ((notes (string-trim (or (nth 3 morning) ""))))
+    (unless (string-empty-p notes)
+      (org-entry-put day "MORNING_NOTES" notes))))
+
+(defun +endgame-day-ensure (&optional date sleep morning)
   "Make DATE's day exist, then move its staged items into it. JSON.
 DATE is \"YYYY-MM-DD\", nil for org's today. Creates the day heading in
 its weekly file when missing (ID, :daily:, clocktable, DO list, habits
@@ -536,7 +576,13 @@ due, carryover for today), asking nothing, then moves DATE's items from
 the upcoming note into the DO list. Safe to call again. Saves what it
 changes. Returns {\"date\",\"file\",\"created\",\"moved\",\"files\"}:
 file is the week file (absolute), files every file it saved, relative
-to the vault."
+to the vault.
+
+SLEEP and MORNING are the answers to the two questions making a day by
+hand asks (\"Log last night's sleep?\", \"Log morning?\"), for a client
+that asked them itself: SLEEP is (BED WAKE), see `+endgame--put-sleep',
+MORNING is (HEADACHE FRESHNESS MOOD NOTES), see `+endgame--put-morning'.
+Nil leaves that log alone. They're written to an existing day too."
   (let ((inhibit-interaction t)
         (date (or date (+endgame--today)))
         (+endgame--saved nil)
@@ -547,6 +593,8 @@ to the vault."
         (when fresh
           (let ((+endgame--no-staging t))
             (setq day (+endgame--create-day (+endgame--date-time date)))))
+        (when sleep (+endgame--put-sleep day sleep))
+        (when morning (+endgame--put-morning day morning))
         (let ((moved (+endgame-stage-into-day day)))
           ;; these two even when an earlier, failed call left them unsaved
           (dolist (buf (list (marker-buffer day) (find-buffer-visiting +endgame-upcoming-file)))
@@ -560,7 +608,7 @@ to the vault."
     (+endgame--json
      (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
 
-;;; Routines: SPC n j r
+;;; Routines: SPC j r
 
 (defvar +endgame--routine-day nil
   "The day (a time) of the routine being inserted, while `+routines-insert-into-day' runs.")
@@ -579,16 +627,31 @@ to the vault."
   (let ((+endgame--routine-day (+habits--day-time)))
     (apply fn args)))
 
+(defvar +endgame-scheduled-routines '("Weekly reset routine")
+  "Routines whose copy is SCHEDULED instead of getting a plain timestamp.
+An unfinished copy then keeps showing as overdue on the agenda (it still
+stays in its day: carryover skips :ROUTINE:). The weekly reset's trigger is
+\"saturday or sunday\", so it shouldn't vanish on sunday. Same list as
+SCHEDULED_ROUTINES in vault-mcp (src/core/capture.ts).")
+
+(defun +endgame--scheduled-routine-p (text)
+  "Non-nil when TEXT, a routine copy, is of a routine in `+endgame-scheduled-routines'."
+  (and (string-match "^:ROUTINE:[ \t]+\\(.+?\\)[ \t]*$" text)
+       (member-ignore-case (match-string 1 text) +endgame-scheduled-routines)))
+
 (defun +endgame--routines-copy-a (text)
-  "After `+routines--copy': a routine going into a day gets that day's timestamp."
+  "After `+routines--copy': a routine going into a day gets that day's timestamp.
+SCHEDULED for the routines in `+endgame-scheduled-routines'."
   (if +endgame--routine-day
-      (+endgame--stamp-copy text (+endgame--routine-stamp))
+      (+endgame--stamp-copy text (+endgame--routine-stamp) (+endgame--scheduled-routine-p text))
     text))
 
 (defun +endgame--routines-insert-a (fn title &optional time)
   "Around `+routines/insert': ask for an optional time, and set up a new day.
 A plain timestamp, not SCHEDULED: it shows on its day only, so an
-unfinished copy stays in its day. A time puts it on the timeline too.
+unfinished copy stays in its day. The routines in
+`+endgame-scheduled-routines' (the weekly reset) are SCHEDULED, so an
+unfinished one stays overdue. A time puts it on the timeline too.
 A day that doesn't exist yet is made the normal way, sleep and morning
 prompts included, so it gets its habits and staged items."
   (interactive
@@ -736,7 +799,7 @@ AREA is an area alist or its tag. Nil when the area has no sources."
       (apply #'+ (mapcar #'cadr (+endgame--area-tables
                                  sources (list :tstart ts :tend te :maxlevel 1)))))))
 
-;;; Sessions: SPC n j s
+;;; Sessions: SPC j s
 
 (defun +endgame-session-area (&optional pom)
   "The area tag of the session at POM, or nil when it isn't a session.
@@ -750,7 +813,7 @@ heading itself: :AREA:, or a local tag that is an area's AREA_TAG."
 
 (defun +endgame--session-text (tag stamp)
   "A fresh session for area TAG at STAMP, as a level 1 heading.
-The session routine copied the way `SPC n j r' copies it, titled
+The session routine copied the way `SPC j r' copies it, titled
 \"TAG session\", with the area as tag, :AREA: and a :CALDAV_UID:, STAMP
 after the drawer."
   (let* ((copy (+routines--copy +endgame-session-routine 1))
@@ -770,7 +833,7 @@ after the drawer."
   "Add a session for area TAG at STAMP (an active timestamp, or what org's
 date prompt reads, like \"mon 14:00-17:00\"). Returns where it went:
 `day' (that day's DO list) or `upcoming' (a day with no note yet).
-ASK (SPC n j s) makes a missing day that isn't in the future first, sleep
+ASK (SPC j s) makes a missing day that isn't in the future first, sleep
 and morning questions included. Without ASK (the server, the calendar) a
 day is never made: the session waits in upcoming until Vlad makes the day."
   (unless (+endgame--area tag) (user-error "No area with AREA_TAG %s" tag))
@@ -971,7 +1034,7 @@ without SOURCES are left out."
 ;;; Keys
 
 (when (fboundp 'map!)
-  (map! :leader :prefix "n j"
+  (map! :leader :prefix "j"
         :desc "Session"        "s" #'+endgame/session
         :desc "Search Forever" "S" #'org-journal-search-forever))
 

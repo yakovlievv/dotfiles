@@ -12,7 +12,7 @@
 ;;   (routine, habit and session copies in the daily note's DO list) and items
 ;;   staged for that day in the upcoming note. Timed first by time, untimed
 ;;   below, one done counter. The JSON is what vault-api serves the phone.
-;; - `+endgame/today-agenda' (SPC o a d): the cheap version, a block agenda.
+;; - `+endgame/today-agenda' (SPC a d): the cheap version, a block agenda.
 ;; - `+endgame/today-panel' (SPC o t): a workspace with three windows: the
 ;;   org-timeblock timeline on the left, a dashboard on the right (the list
 ;;   with checkboxes, habits with this week's heatmap, today's clocked time,
@@ -1407,22 +1407,43 @@ On a line that isn't an item, run what the line leads to."
   (interactive)
   (+endgame-today--at-item (org-clock-in)))
 
+(defun +endgame-today--visit-marker (m)
+  "Show heading M from the panel, in its daily note window.
+When the note there holds M (its file, its day), jump to it in place.
+Otherwise the heading's file takes that window, never the dashboard's:
+`switch-to-buffer-other-window' from the timeline picked the dashboard,
+the next window over. Away from the panel, just pop to it."
+  (let* ((win (+endgame-today--note-window))
+         (note (and win (window-buffer win)))
+         (in-note (and note (eq (buffer-base-buffer note) (marker-buffer m))
+                       (with-current-buffer note (<= (point-min) m (point-max))))))
+    (cond
+     (in-note (select-window win) (goto-char m))
+     (t (if win
+            (progn (select-window win)
+                   (switch-to-buffer (marker-buffer m) nil t))
+          (pop-to-buffer (marker-buffer m)))
+        (when (fboundp 'my/org-full-setup-maybe) (my/org-full-setup-maybe))
+        (widen)
+        (goto-char m)))
+    (org-fold-show-context 'agenda)
+    (org-fold-show-entry)
+    (recenter)))
+
 (defun +endgame-today/visit ()
   "Show the heading on this line: in the daily note window when it's today's."
   (interactive)
-  (let* ((m (+endgame-today--marker (+endgame-today--at-point)))
-         (note (get-buffer (+endgame-today--note-name (or +endgame-today--shown (org-today)))))
-         (win (and note (get-buffer-window note)))
-         (in-note (and win (eq (buffer-base-buffer note) (marker-buffer m))
-                       (with-current-buffer note (<= (point-min) m (point-max))))))
-    (if in-note
-        (progn (select-window win) (goto-char m))
-      (pop-to-buffer (marker-buffer m))
-      (when (fboundp 'my/org-full-setup-maybe) (my/org-full-setup-maybe))
-      (widen)
-      (goto-char m))
-    (org-fold-show-context 'agenda)
-    (org-fold-show-entry)))
+  (+endgame-today--visit-marker (+endgame-today--marker (+endgame-today--at-point))))
+
+(declare-function org-timeblock-selected-block-marker "org-timeblock")
+
+(defun +endgame-today/timeline-visit ()
+  "Show the timeline's selected block in the panel's daily note window."
+  (interactive)
+  (let ((m (org-timeblock-selected-block-marker)))
+    (unless (and m (buffer-live-p (marker-buffer m)))
+      (user-error "No block selected"))
+    (+endgame-today--visit-marker m)))
 
 (defun +endgame-today/visit-area ()
   "Open the area registry at the area on this line."
@@ -1901,7 +1922,27 @@ scaled here instead, by the timeline buffer's own `text-scale-mode' zoom."
     (add-hook 'text-scale-mode-hook #'+endgame-today--timeline-rezoom-h nil t))
   (text-scale-set +endgame-today-text-scale))
 
+(defvar org-timeblock-cache)
+(defvar org-timeblock-buffers)
+(defvar org-timeblock-markers)
+
+(defun +endgame-today--timeblock-drop-dead-a (&rest _)
+  "Before `org-timeblock-update-cache': no entries from killed buffers.
+org-timeblock keeps each entry until its buffer changes, by marker, and
+remembers each file's modification tick. Clocking in, closing the agenda
+and the vault revert all kill org buffers, so the entries of a killed one
+stay forever (RET on them does nothing) and the reopened buffer, often on
+the same tick, is never read again. Any dead entry: read everything anew."
+  (when (seq-some (lambda (e) (not (buffer-live-p
+                                    (marker-buffer (get-text-property 0 'marker e)))))
+                  org-timeblock-cache)
+    (setq org-timeblock-cache nil
+          org-timeblock-buffers nil))
+  (setq org-timeblock-markers
+        (seq-filter (lambda (c) (buffer-live-p (car c))) org-timeblock-markers)))
+
 (with-eval-after-load 'org-timeblock
+  (advice-add 'org-timeblock-update-cache :before #'+endgame-today--timeblock-drop-dead-a)
   (advice-add 'org-timeblock-files :around #'+endgame-today--timeblock-files-a)
   (advice-add 'org-timeblock-redraw-timeblocks :around #'+endgame-today--timeline-draw-a)
   (advice-add 'svg-rectangle :filter-args #'+endgame-today--svg-rect-a)
@@ -1968,20 +2009,82 @@ Returns non-nil when it was there already."
                (tab-bar-rename-tab name))
              there)))))
 
-(defun +endgame/today-panel ()
+(defvar +endgame-today--return-to nil
+  "Workspace (or tab) name the panel was toggled open from.")
+
+(defun +endgame-today--persp-p ()
+  (and (fboundp '+workspace-switch) (bound-and-true-p persp-mode)))
+
+(defun +endgame-today--current-space ()
+  "Name of the current workspace (Doom) or tab."
+  (cond ((+endgame-today--persp-p) (+workspace-current-name))
+        ((fboundp 'tab-bar--current-tab)
+         (alist-get 'name (tab-bar--current-tab)))))
+
+(defun +endgame-today--in-panel-p ()
+  "Non-nil when the panel's workspace (or tab) is the current one."
+  (equal (+endgame-today--current-space) +endgame-today-workspace))
+
+(defun +endgame-today--layout-intact-p ()
+  "Non-nil when this frame still shows dashboard, note and timeline."
+  (let ((dash (get-buffer +endgame-today-dashboard-buffer)))
+    (and dash (get-buffer-window dash)
+         (+endgame-today--note-window)
+         (seq-find (lambda (w)
+                     (with-current-buffer (window-buffer w)
+                       (derived-mode-p 'org-timeblock-mode 'org-timeblock-list-mode
+                                       'org-agenda-mode)))
+                   (window-list nil 'nomini)))))
+
+(defun +endgame-today--leave ()
+  "Go back to the workspace (or tab) the panel was opened from."
+  (let ((back +endgame-today--return-to))
+    (cond ((+endgame-today--persp-p)
+           (if (and back (+workspace-exists-p back))
+               (+workspace-switch back)
+             (+workspace/other)))
+          ((fboundp 'tab-bar-select-tab-by-name)
+           (if (and back (seq-find (lambda (tab) (equal (alist-get 'name tab) back))
+                                   (funcall tab-bar-tabs-function)))
+               (tab-bar-select-tab-by-name back)
+             (tab-bar-switch-to-recent-tab))))
+    (when (fboundp '+workspace/display) (ignore-errors (+workspace/display)))))
+
+(defun +endgame/today-panel-toggle ()
+  "Show the today panel, or hide it when it's already the current workspace.
+Hiding goes back to where you were; the panel's windows stay as they were
+and come back the same, only refreshed. If one of the three windows was
+replaced in the meantime, the layout is rebuilt."
+  (interactive)
+  (if (+endgame-today--in-panel-p)
+      (+endgame-today--leave)
+    (setq +endgame-today--return-to (+endgame-today--current-space))
+    (+endgame/today-panel 'keep)))
+
+(defun +endgame/today-panel-rebuild ()
+  "Rebuild the today panel from scratch, its note back on today."
+  (interactive)
+  (unless (+endgame-today--in-panel-p)
+    (setq +endgame-today--return-to (+endgame-today--current-space)))
+  (+endgame/today-panel 'rebuild))
+
+(defun +endgame/today-panel (&optional how)
   "The today panel: timeline left, dashboard right, the daily note under it.
-Opens in its own workspace; run it again there to rebuild the layout and
-bring the note back to today."
+Opens in its own workspace. HOW nil (the plain command): when the layout is
+there, refresh it and bring the note back to today. HOW `keep': refresh
+only, leaving the note on whatever day it shows. HOW `rebuild': always lay
+the three windows out afresh."
   (interactive)
   (when (fboundp '+endgame--ensure-day)  ; today's note, made the normal way (prompts)
     (+endgame--ensure-day (+endgame--today) t))
   (let ((abs (org-today))
         (there (+endgame-today--workspace))
         (dash (+endgame-today-dashboard)))
-    (if (and there (get-buffer-window dash))
+    (if (and there (not (eq how 'rebuild)) (+endgame-today--layout-intact-p))
         (progn (select-window (get-buffer-window dash))
-               (when-let* ((note (+endgame-today--note-window)))
-                 (+endgame-today--note-show abs note))
+               (unless (eq how 'keep)
+                 (when-let* ((note (+endgame-today--note-window)))
+                   (+endgame-today--note-show abs note)))
                (+endgame-today--refresh-panel))
       (delete-other-windows)
       (let* ((left (selected-window))
@@ -2018,9 +2121,9 @@ bring the note back to today."
 
 (when (fboundp 'map!)
   (map! :leader
-        :desc "Today panel" "o t" #'+endgame/today-panel
-        :desc "Today list"  "o a d" #'+endgame/today-agenda
-        :desc "Today list"  "n a d" #'+endgame/today-agenda)
+        :desc "Today panel (toggle)"  "o t" #'+endgame/today-panel-toggle
+        :desc "Today panel (rebuild)" "o T" #'+endgame/today-panel-rebuild
+        :desc "Today list"  "a d" #'+endgame/today-agenda)
   (map! :map +endgame-today-mode-map
         :n "RET" #'+endgame-today/toggle
         :n "x"   #'+endgame-today/toggle
@@ -2053,7 +2156,7 @@ bring the note back to today."
           :n "L"   #'org-timeblock-day-later
           :n "gd"  #'org-timeblock-jump-to-day
           :n "RET" #'org-timeblock-goto
-          :n "TAB" #'org-timeblock-goto-other-window
+          :n "TAB" #'+endgame-today/timeline-visit
           :n "t"   #'org-timeblock-todo
           :n "s"   #'org-timeblock-schedule
           :n "d"   #'org-timeblock-set-duration

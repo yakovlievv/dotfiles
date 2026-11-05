@@ -29,6 +29,7 @@
      "/Users/yako/org/archive/arch_20260821012926-personal_curriculum.org"
      "/Users/yako/org/archive/arch_20260821174241-vault_maintanence_task_list.org"
      "/Users/yako/org/archive/arch_20260922172842-dotfiles&homelab-sys-maintanence.org"
+     "/Users/yako/org/archive/arch_20261017185137-org_iphone.org"
      "/Users/yako/org/archive/arch_20261025131500-my_habits.org"
      "/Users/yako/org/archive/arch_doom-config.org"
      "/Users/yako/org/archive/arch_habits.org"
@@ -97,7 +98,6 @@
      "/Users/yako/org/roam/20261002203456-general_plans_and_goals.org"
      "/Users/yako/org/roam/20261003112021-remote_procedure_call_rpc.org"
      "/Users/yako/org/roam/20261016212352-health.org"
-     "/Users/yako/org/roam/20261016220442-project_management.org"
      "/Users/yako/org/roam/20261016220648-vault_mcp.org"
      "/Users/yako/org/roam/20261016235900-homelab_telegram_bot_assistant.org"
      "/Users/yako/org/roam/20261017185137-org_iphone.org"
@@ -106,6 +106,9 @@
      "/Users/yako/org/roam/20261021155843-room_hygrometer_home_assistant.org"
      "/Users/yako/org/roam/20261021165904-home_assistant.org"
      "/Users/yako/org/roam/20261025005104-sleep_optimization_system.org"
+     "/Users/yako/org/roam/20261030154610-the_endgame_org_vault_as_the_brain_thin_clients_for_everything_else.org"
+     "/Users/yako/org/roam/20261031024752-life.org"
+     "/Users/yako/org/roam/20261031030150-areas.org"
      "/Users/yako/org/roam/daily/2025-12-25.org"
      "/Users/yako/org/roam/daily/2025-12-26.org"
      "/Users/yako/org/roam/daily/2026-01-13.org"
@@ -116,7 +119,11 @@
      "/Users/yako/org/roam/daily/2026-01-30.org"
      "/Users/yako/org/roam/daily/2026-01-31.org"
      "/Users/yako/org/roam/daily/2026-02-02.org"
-     "/Users/yako/org/roam/daily/week44-2026-10-26.org")))
+     "/Users/yako/org/roam/daily/week32-2026-08-03.org"
+     "/Users/yako/org/roam/daily/week34-2026-08-17.org"
+     "/Users/yako/org/roam/daily/week43-2026-10-19.org"
+     "/Users/yako/org/roam/daily/week44-2026-10-26.org"
+     "/Users/yako/org/roam/daily/week45-2026-11-02.org")))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
