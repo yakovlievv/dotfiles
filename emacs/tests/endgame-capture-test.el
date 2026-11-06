@@ -431,6 +431,35 @@
     (should (string-match-p "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <2031-01-11 Sat 15:30-16:30>\n"
                             (+endgame-test--read +endgame-upcoming-file)))))
 
+(ert-deftest +endgame-move-to-day-dates-a-habit-copy-with-no-date ()
+  ;; a habit's copy in the DO list: :ROUTINE: but no timestamp, no SCHEDULED
+  (+endgame-test--with-vault
+    (+endgame-day-ensure +endgame-test-future)
+    (let* ((day (+endgame--day-marker +endgame-test-future))
+           (week (lambda () (+endgame-test--read (buffer-file-name (marker-buffer day)))))
+           (find (lambda (buf)
+                   (with-current-buffer buf
+                     (goto-char (point-min))
+                     (re-search-forward "^\\*+ TODO piano session")
+                     (point-marker)))))
+      (+endgame--append-to-do-list
+       day (list (concat "* TODO piano session [0/1] :piano:\n:PROPERTIES:\n"
+                         ":HABIT_ID: ac15a432\n:STYLE:    habit\n:ROUTINE: Session routine\n:END:\n"
+                         "- [ ] Start\n")))
+      (let ((m (funcall find (marker-buffer day))))
+        (should (+endgame-day-item-p m))
+        (should-not (+endgame-entry-stamp m))
+        ;; same day, a time typed (s, 3:00+0:15): stays, gets a stamp after the drawer
+        (+endgame--saving (+endgame-move-to-day m +endgame-test-future "03:00" "03:15")))
+      (should (string-match-p (concat "^\\*\\*\\* TODO piano session \\[0/1\\] :piano:\n:PROPERTIES:\n"
+                                      "\\(?:.*\n\\)*?:END:\n<2031-01-08 Wed 03:00-03:15>\n- \\[ \\] Start")
+                              (funcall week)))
+      ;; and on to a day with no note: into upcoming, time kept
+      (+endgame--saving (+endgame-move-to-day (funcall find (marker-buffer day)) "2031-01-09"))
+      (should-not (string-match-p "piano session" (funcall week)))
+      (should (string-match-p ":END:\n<2031-01-09 Thu 03:00-03:15>\n"
+                              (+endgame-test--read +endgame-upcoming-file))))))
+
 (ert-deftest +endgame-area-planned-counts-timed-entries-in-sources ()
   ;; lessons in a tutoring lesson plan count as planned, like sessions;
   ;; time covered twice (a session over a lesson) counts once

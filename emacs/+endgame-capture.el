@@ -806,7 +806,8 @@ AREA is an area alist or its tag. Nil when the area has no sources."
 ;; copy also by the day heading it sits under. Giving one a SCHEDULED for
 ;; another day leaves it where it was: today's list and the calendar still
 ;; show it today. `+endgame-move-to-day' moves the date itself, and the
-;; heading with it.
+;; heading with it. A habit's copy has no date of its own (the habit keeps
+;; the SCHEDULED); moving it gives it a plain timestamp.
 
 (defun +endgame-day-item-p (&optional pom)
   "Non-nil when the entry at POM is dated by its own timestamp, not SCHEDULED.
@@ -837,25 +838,35 @@ TIME (\"HH:MM\") and END replace them when given."
 
 (defun +endgame--redate-entry (date &optional time end)
   "Put the entry at point on DATE: its plain timestamp, else its SCHEDULED.
-A plain timestamp is the entry's date, so a SCHEDULED next to it goes."
+A plain timestamp is the entry's date, so a SCHEDULED next to it goes.
+An entry with neither (a habit's copy in a daily note) gets a plain
+timestamp after its drawers, where a session keeps it."
   (org-back-to-heading t)
   (let ((stamp (+endgame-entry-stamp))
+        (sched (org-entry-get nil "SCHEDULED"))
         (bound (save-excursion (outline-next-heading) (point))))
-    (if stamp
+    (cond
+     (stamp
+      (save-excursion
+        ;; no reschedule note: this is the stray one the old path left
+        (when sched
+          (org-remove-timestamp-with-keyword org-scheduled-string))
+        ;; the new stamp first: computing it clobbers the match data
+        (let ((new (+endgame--moved-stamp stamp date time end)))
+          (re-search-forward (regexp-quote stamp) (save-excursion (outline-next-heading) (point)))
+          (replace-match new t t))))
+     (sched
+      (save-excursion
+        (let ((new (+endgame--moved-stamp sched date time end)))
+          (re-search-forward (concat "SCHEDULED: " (regexp-quote sched)) bound)
+          (replace-match (concat "SCHEDULED: " new) t t))))
+     (t
+      (let ((new (+endgame--moved-stamp
+                  (+endgame--format-stamp (+endgame--date-time date)) date time end)))
         (save-excursion
-          ;; no reschedule note: this is the stray one the old path left
-          (when (org-entry-get nil "SCHEDULED")
-            (org-remove-timestamp-with-keyword org-scheduled-string))
-          ;; the new stamp first: computing it clobbers the match data
-          (let ((new (+endgame--moved-stamp stamp date time end)))
-            (re-search-forward (regexp-quote stamp) (save-excursion (outline-next-heading) (point)))
-            (replace-match new t t)))
-      (let ((sched (or (org-entry-get nil "SCHEDULED")
-                       (error "%s has no date to move" (+endgame--title)))))
-        (save-excursion
-          (let ((new (+endgame--moved-stamp sched date time end)))
-            (re-search-forward (concat "SCHEDULED: " (regexp-quote sched)) bound)
-            (replace-match (concat "SCHEDULED: " new) t t)))))))
+          (org-end-of-meta-data t)
+          (unless (bolp) (insert "\n"))
+          (insert new "\n")))))))
 
 (defun +endgame--find-id (buffer id)
   "Marker at the heading with :ID: ID in BUFFER, or nil."
@@ -873,7 +884,9 @@ END for a range) is given. A copy in a daily note or the upcoming note
 goes with it: into DATE's DO list, or into upcoming when DATE has no
 daily note yet (making that day moves it in). An appointment stays where
 it is. Asks nothing; the caller saves."
-  (let* ((m (copy-marker pom))
+  (let* ((m (org-with-point-at pom   ; the subtree is cut from here: its heading
+              (org-back-to-heading t)
+              (point-marker)))
          (id (org-with-point-at m (org-id-get-create)))
          (file (buffer-file-name (marker-buffer m)))
          (in-journal (and file (file-in-directory-p file org-journal-dir)))
