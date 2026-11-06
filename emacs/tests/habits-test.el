@@ -6,16 +6,61 @@
 (require 'org-id)
 (setq org-id-locations-file (make-temp-file "habits-test-ids"))
 
+(defun +repeat-skip-dates (&optional pom)
+  "The dates in the :SKIP: property of the entry at POM, as \"YYYY-MM-DD\"."
+  (let ((v (org-entry-get pom "SKIP")) (start 0) out)
+    (while (and v (string-match "[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}" v start))
+      (push (match-string 0 v) out)
+      (setq start (match-end 0)))
+    (nreverse out)))
+
+(defun +repeat-skipped-p (day &optional pom)
+  "Non-nil when DAY (a time or \"YYYY-MM-DD\") is in the :SKIP: of the entry at POM."
+  (member (if (stringp day) day (format-time-string "%Y-%m-%d" day))
+          (+repeat-skip-dates pom)))
+
+(defun +repeat-skip-add (day &optional pom)
+  "Add DAY (\"YYYY-MM-DD\") to the :SKIP: of the entry at POM, once, sorted.
+Dates before the entry's SCHEDULED date go: they can't occur any more."
+  (let* ((s (org-entry-get pom "SCHEDULED"))
+         (from (and s (string-match "[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}" s) (match-string 0 s)))
+         (dates (seq-remove (lambda (d) (and from (string< d from)))
+                            (sort (delete-dups (cons day (+repeat-skip-dates pom))) #'string<))))
+    (if dates
+        (org-entry-put pom "SKIP" (string-join dates " "))
+      (org-entry-delete pom "SKIP"))))
+
+(with-no-warnings (defvar date))
+
+(defun +repeat-skip-agenda ()
+  "For `org-agenda-skip-function-global': hide an entry on a date its :SKIP: lists."
+  (when (and (boundp 'date) (consp date) (= (length date) 3))
+    (when (+repeat-skipped-p (format "%04d-%02d-%02d" (nth 2 date) (nth 0 date) (nth 1 date)))
+      (save-excursion (or (outline-next-heading) (point-max))))))
+
+(with-eval-after-load 'org-agenda
+  (setq org-agenda-skip-function-global #'+repeat-skip-agenda))
+
 (defvar +habits-file (expand-file-name "~/org/roam/20261025131500-my_habits.org")
   "The habits note: the source of every habit, kept out of the agenda.")
 
 (defvar +habits--syncing nil
   "Non-nil while a habit copy is updating its source, so the hook can't recurse.")
 
+(defun +habits--buffer ()
+  "A buffer visiting `+habits-file', re-read first when the file changed
+under it and it has no unsaved changes: the server (the phone, the
+calendar) writes the habits note too, and in the daemon, under
+`inhibit-interaction', the reread prompt would be an error."
+  (let ((buf (find-buffer-visiting +habits-file)))
+    (when (and buf (not (buffer-modified-p buf)) (not (verify-visited-file-modtime buf)))
+      (with-current-buffer buf (revert-buffer t t t)))
+    (or buf (find-file-noselect +habits-file))))
+
 (defun +habits--source (hid)
   "Marker at the habit with ID HID in `+habits-file', or nil."
   (when (and hid (file-exists-p +habits-file))
-    (with-current-buffer (find-file-noselect +habits-file)
+    (with-current-buffer (+habits--buffer)
       (org-with-wide-buffer
        (let ((pos (org-find-entry-with-id hid)))
          (and pos (copy-marker pos)))))))
@@ -37,7 +82,7 @@ The copy's title has its links as plain text, so the daily note
 doesn't link the routines in the graph."
   (let* ((title (org-get-heading t t t t))
          (tags (org-get-tags nil t))
-         (props (seq-remove (lambda (p) (member (car p) '("ID" "STYLE" "LAST_REPEAT" "CATEGORY")))
+         (props (seq-remove (lambda (p) (member (car p) '("ID" "STYLE" "LAST_REPEAT" "CATEGORY" "SKIP" "CALDAV_UID" "CALDAV_HREF")))
                             (org-entry-properties nil 'standard)))
          ;; end measured from the habit's own heading: with no body,
          ;; `org-end-of-meta-data' lands on the next sibling
@@ -53,7 +98,7 @@ doesn't link the routines in the graph."
       (concat (make-string level ?*) " TODO " (org-link-display-format title)
               (if (+habits--steps-p text) " [/]" "")   ; it has steps
               (if tags (concat " :" (string-join tags ":") ":") "") "\n"
-              "SCHEDULED: " (format-time-string (org-time-stamp-format nil nil) day) "\n"
+              "SCHEDULED: " (+habits--copy-stamp day) "\n"
               ":PROPERTIES:\n"
               ":ID:       " (org-id-new) "\n"
               ":HABIT_ID: " (org-id-get-create) "\n"
@@ -62,17 +107,33 @@ doesn't link the routines in the graph."
               ":END:\n"
               text))))
 
+(defun +habits--copy-stamp (day)
+  "The copy's SCHEDULED stamp on DAY (a time), with the time of day of
+the habit at point when its own SCHEDULED has one (=<… 08:00 .+1d>=)."
+  (let ((s (org-entry-get nil "SCHEDULED"))
+        (date (format-time-string "%Y-%m-%d %a" day)))
+    (if (and s (string-match " \\([0-9]\\{1,2\\}:[0-9]\\{2\\}\\(?:-[0-9]\\{1,2\\}:[0-9]\\{2\\}\\)?\\)" s))
+        (format "<%s %s>" date (match-string 1 s))
+      (format "<%s>" date))))
+
+(defvar +habits-planned-ids-functions nil
+  "Functions called with a day (a time) that return the HABIT_IDs already
+planned for it elsewhere (the upcoming note), so making the day doesn't
+copy those habits a second time.")
+
 (defun +habits--due (day)
-  "Markers at the habits due on DAY: SCHEDULED on or before it, not done."
+  "Markers at the habits due on DAY: SCHEDULED on or before it, not done,
+and DAY not in their :SKIP:."
   (when (file-exists-p +habits-file)
-    (with-current-buffer (find-file-noselect +habits-file)
+    (with-current-buffer (+habits--buffer)
       (org-with-wide-buffer
        (let ((today (time-to-days day)) due)
          (org-map-entries
           (lambda ()
             (let ((s (org-get-scheduled-time (point))))
               (when (and s (<= (time-to-days s) today)
-                         (not (member (org-get-todo-state) org-done-keywords)))
+                         (not (member (org-get-todo-state) org-done-keywords))
+                         (not (+repeat-skipped-p day)))
                 (push (point-marker) due))))
           "STYLE=\"habit\"")
          (nreverse due))))))
@@ -108,7 +169,9 @@ Returns the number of habits added."
                          (let (ids)
                            (while (re-search-forward "^[ \t]*:HABIT_ID:[ \t]+\\(\\S-+\\)" end t)
                              (push (match-string 1) ids))
-                           ids)))
+                           ;; and the ones planned for this day in upcoming
+                           (dolist (f +habits-planned-ids-functions ids)
+                             (setq ids (append (funcall f day) ids))))))
               copies)
           (dolist (m (+habits--due day))
             (with-current-buffer (marker-buffer m)
@@ -847,6 +910,95 @@ Not logged as a state change."
       (should-not (string-match-p "LOGBOOK" text))
       (should-not (string-match-p "LAST_REPEAT" text))
       (should-not (string-match-p "\\.\\+1d" text)))))
+
+(defun +habits-test--source-put (id prop value)
+  "Set PROP to VALUE on the source habit with ID."
+  (with-current-buffer (find-file-noselect +habits-file)
+    (org-with-wide-buffer
+     (goto-char (org-find-entry-with-id id))
+     (org-entry-put nil prop value))))
+
+(ert-deftest +habits-skipped-day-gets-no-copy ()
+  (+habits-test--with-vault
+    (+habits-test--source-put "src-piano" "SKIP" (concat "2020-01-01 " (+habits-test--date)))
+    (+habits-test--goto-day)
+    (should (= 2 (+habits-insert-into-day)))
+    (should-not (string-match-p "TODO piano" (buffer-string)))
+    ;; the next day isn't skipped: the habit is still due there
+    (should (+habits--due (time-add (current-time) (days-to-time 1))))
+    (should (seq-some (lambda (m) (equal (org-entry-get m "ID") "src-piano"))
+                      (+habits--due (time-add (current-time) (days-to-time 1)))))))
+
+(ert-deftest +habits-skip-not-copied-and-time-kept ()
+  (+habits-test--with-vault
+    (+habits-test--source-put "src-stretch" "SKIP" "2020-01-01")
+    (with-current-buffer (find-file-noselect +habits-file)
+      (goto-char (org-find-entry-with-id "src-stretch"))
+      (re-search-forward "SCHEDULED: <[^>]*>")
+      (replace-match (concat "SCHEDULED: <" (+habits-test--today-stamp -1) " 07:15 .+1d>") t t))
+    (+habits-test--goto-day)
+    (+habits-insert-into-day)
+    (let ((text (buffer-string)))
+      (should-not (string-match-p ":SKIP:" text))
+      (should (string-match-p (concat "TODO stretch\nSCHEDULED: <" (+habits-test--today-stamp) " 07:15>") text))
+      ;; a habit without a time stays a whole-day copy
+      (should (string-match-p (concat "TODO read\nSCHEDULED: <" (+habits-test--today-stamp) ">") text)))))
+
+(ert-deftest +habits-reread-when-the-file-changed-under-them ()
+  ;; the server wrote the habits note (a :SKIP: from the calendar) while it was open
+  (+habits-test--with-vault
+    (with-current-buffer (find-file-noselect +habits-file) (buffer-string))
+    (sleep-for 1.1)                     ; a new mtime
+    (with-temp-file +habits-file
+      (insert-file-contents +habits-file)
+      (goto-char (point-min))
+      (re-search-forward ":ID:       src-read\n")
+      (insert ":SKIP:     " (+habits-test--date) "\n"))
+    (let ((inhibit-interaction t))
+      (+habits-test--goto-day)
+      (should (= 2 (+habits-insert-into-day)))
+      (should-not (string-match-p "TODO read" (buffer-string))))))
+
+(ert-deftest +habits-planned-elsewhere-not-copied ()
+  (+habits-test--with-vault
+    (let ((+habits-planned-ids-functions
+           (list (lambda (day)
+                   (should (equal (format-time-string "%Y-%m-%d" day) (+habits-test--date)))
+                   '("src-read")))))
+      (+habits-test--goto-day)
+      (should (= 2 (+habits-insert-into-day)))
+      (should-not (string-match-p "TODO read" (buffer-string))))))
+
+(ert-deftest +repeat-skip-add-keeps-dates-sorted-and-alive ()
+  (+habits-test--with-vault
+    (with-current-buffer (find-file-noselect +habits-file)
+      (let ((m (org-find-entry-with-id "src-piano")))   ; SCHEDULED yesterday
+        (+repeat-skip-add (+habits-test--date 3) m)
+        (+repeat-skip-add (+habits-test--date 1) m)
+        (+repeat-skip-add (+habits-test--date 3) m)
+        (should (equal (+repeat-skip-dates m) (list (+habits-test--date 1) (+habits-test--date 3))))
+        ;; a date before SCHEDULED can't occur: it isn't kept
+        (+repeat-skip-add "2020-01-01" m)
+        (should (equal (+repeat-skip-dates m) (list (+habits-test--date 1) (+habits-test--date 3))))
+        (let ((w (org-find-entry-with-id "src-read")))
+          (+repeat-skip-add "2020-01-01" w)
+          (should-not (org-entry-get w "SKIP")))))))
+
+(ert-deftest +repeat-skip-hides-one-agenda-day ()
+  (+habits-test--with-vault
+    (let* ((f (+habits-test--file
+               "tasks.org"
+               (concat "* TODO water plants\n"
+                       "SCHEDULED: <" (+habits-test--today-stamp) " +1d>\n"
+                       ":PROPERTIES:\n:SKIP:     " (+habits-test--date 1) "\n:END:\n")))
+           (day (lambda (n) (calendar-gregorian-from-absolute (+ (org-today) n))))
+           (titles (lambda (n)
+                     (mapcar (lambda (e) (get-text-property 0 'txt e))
+                             (org-agenda-get-day-entries f (funcall day n) :scheduled)))))
+      (should (eq org-agenda-skip-function-global #'+repeat-skip-agenda))
+      (should (funcall titles 0))
+      (should-not (funcall titles 1))
+      (should (funcall titles 2)))))
 
 (defun +habits-test--add-linked (title-link)
   "Add a due habit titled TITLE-LINK to the habits file, and a routines note."

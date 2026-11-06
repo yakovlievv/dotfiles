@@ -34,7 +34,7 @@
           (re-search-forward "^#\\+end_src")
           (let ((code (buffer-substring beg (match-beginning 0))))
             (when (and (not (string-match-p "<<" code)) ; the tangled test files
-                       (or (member name '("habits" "habits-linked" "routines"))
+                       (or (member name '("repeat-skip" "habits" "habits-linked" "routines"))
                       (string-match-p "(defun \\+org-journal-init-day" code)
                           (string-match-p "org-use-property-inheritance" code)))
               (push code blocks)))))
@@ -486,5 +486,66 @@
     (should (equal (+endgame-area-planned "learning" +endgame-test-future "2031-01-09") 330))
     ;; an area without sources: only its sessions
     (should (equal (+endgame-area-planned "piano" +endgame-test-future) 0))))
+
+
+(defun +endgame-test--count (re text)
+  (let ((n 0) (start 0))
+    (while (string-match re text start)
+      (setq n (1+ n) start (match-end 0)))
+    n))
+
+(ert-deftest +endgame-plan-habit-into-upcoming-then-day ()
+  ;; a calendar move of one future occurrence: skip it, plan a timed copy
+  (+endgame-test--with-vault
+    (let ((out (json-parse-string
+                (+endgame-plan-habit-json "src-piano" +endgame-test-future "07:15" nil +endgame-test-future))))
+      (should (equal (gethash "where" out) "upcoming"))
+      (should (gethash "id" out)))
+    (should (string-match-p (concat ":SKIP: +" +endgame-test-future)
+                            (+endgame-test--read +habits-file)))
+    (let ((up (+endgame-test--read +endgame-upcoming-file)))
+      (should (string-match-p (concat "^\\* TODO piano\nSCHEDULED: <" +endgame-test-future " Wed 07:15>\n") up))
+      (should (string-match-p ":HABIT_ID: src-piano" up))
+      (should (string-match-p ":CALDAV_UID: [-0-9a-f]+" up))
+      (should-not (string-match-p ":SKIP:" up)))
+    ;; making the day: the planned copy moves in, the habit isn't copied again
+    (let* ((out (json-parse-string (+endgame-day-ensure +endgame-test-future)))
+           (week (+endgame-test--read (gethash "file" out))))
+      (should (= (gethash "moved" out) 1))
+      (should (= 1 (+endgame-test--count "TODO piano" week)))
+      (should (string-match-p (concat "SCHEDULED: <" +endgame-test-future " Wed 07:15>") week)))
+    (should-not (string-match-p "piano" (+endgame-test--read +endgame-upcoming-file)))))
+
+(ert-deftest +endgame-plan-habit-to-another-day ()
+  ;; moved from wednesday to thursday: wednesday has none, thursday one
+  (+endgame-test--with-vault
+    (+endgame-plan-habit-json "src-piano" "2031-01-09" "18:00" "18:30" +endgame-test-future)
+    (let ((wed (+endgame-test--read (gethash "file" (json-parse-string (+endgame-day-ensure +endgame-test-future))))))
+      (should-not (string-match-p "TODO piano" wed)))
+    (let ((thu (+endgame-test--read (gethash "file" (json-parse-string (+endgame-day-ensure "2031-01-09"))))))
+      (should (= 1 (+endgame-test--count "TODO piano" thu)))
+      (should (string-match-p "SCHEDULED: <2031-01-09 Thu 18:00-18:30>" thu)))))
+
+(ert-deftest +endgame-plan-habit-on-a-day-that-has-its-copy ()
+  (+endgame-test--with-vault
+    (+endgame-day-ensure +endgame-test-future)
+    (let ((out (json-parse-string (+endgame-plan-habit-json "src-piano" +endgame-test-future "09:00"))))
+      (should (equal (gethash "where" out) "day"))
+      (let ((week (+endgame-test--read (gethash "file" out))))
+        (should (= 1 (+endgame-test--count "TODO piano" week)))
+        (should (string-match-p (concat "SCHEDULED: <" +endgame-test-future " Wed 09:00>") week))))
+    ;; no FROM: nothing skipped
+    (should-not (string-match-p ":SKIP:" (+endgame-test--read +habits-file)))))
+
+(ert-deftest +endgame-skip-json-adds-a-date ()
+  (+endgame-test--with-vault
+    (let ((out (json-parse-string (+endgame-skip-json +habits-file nil "src-piano" "2031-01-09"))))
+      (should (equal (gethash "skip" out) ["2031-01-09"])))
+    (let ((out (json-parse-string (+endgame-skip-json +habits-file 3 nil "2031-01-08"))))
+      (should (equal (gethash "skip" out) ["2031-01-08" "2031-01-09"])))
+    (should (string-match-p ":SKIP: +2031-01-08 2031-01-09" (+endgame-test--read +habits-file)))
+    ;; that day gets no copy
+    (let ((wed (+endgame-test--read (gethash "file" (json-parse-string (+endgame-day-ensure +endgame-test-future))))))
+      (should-not (string-match-p "TODO piano" wed)))))
 
 ;;; endgame-capture-test.el ends here

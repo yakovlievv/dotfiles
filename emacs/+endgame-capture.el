@@ -961,6 +961,118 @@ LINE (1-based). Refuses an entry that isn't a day item. Returns
     (+endgame--json
      (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
 
+;;; Habits planned ahead, skipped occurrences
+
+(defun +endgame--planned-habit-ids (day)
+  "HABIT_IDs of the habit copies waiting in the upcoming note for DAY (a time).
+On `+habits-planned-ids-functions': making DAY doesn't copy those habits,
+the planned copy moves in instead."
+  (when (file-exists-p +endgame-upcoming-file)
+    (let ((date (+endgame--date day)) ids)
+      (with-current-buffer (+endgame--buffer +endgame-upcoming-file)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (while (re-search-forward "^\\* " nil t)
+           (let ((hid (org-entry-get (point) "HABIT_ID")))
+             (when (and hid (equal (+endgame--entry-date (line-beginning-position)) date))
+               (push hid ids))))))
+      ids)))
+
+(add-hook '+habits-planned-ids-functions #'+endgame--planned-habit-ids)
+
+(defun +endgame--day-habit-copy (day hid)
+  "Marker at the copy of habit HID in the journal DAY (a marker), or nil."
+  (with-current-buffer (marker-buffer day)
+    (org-with-wide-buffer
+     (goto-char day)
+     (let ((end (save-excursion (org-end-of-subtree t t))))
+       (when (re-search-forward (format "^[ \t]*:HABIT_ID:[ \t]+%s[ \t]*$" (regexp-quote hid)) end t)
+         (org-back-to-heading t)
+         (point-marker))))))
+
+(defun +endgame-plan-habit (hid date &optional time end from)
+  "Plan habit HID on DATE (\"YYYY-MM-DD\"); return a marker at its copy.
+TIME (\"HH:MM\", END for a range) or else the habit's own time of day.
+FROM (\"YYYY-MM-DD\") is the occurrence this one replaces: it goes into
+the habit's :SKIP:, so the calendar and the day leave it out. The copy
+is the one making the day would add (`+habits--copy'), a timed one with
+a :CALDAV_UID:: into DATE's DO list, or into upcoming when DATE has no
+daily note yet. A day that already has a copy of the habit gets that
+one moved to TIME instead. Asks nothing; the caller saves."
+  (let ((src (or (+habits--source hid) (error "No habit with ID %s" hid))))
+    (when from
+      (org-with-point-at src (org-with-wide-buffer (+repeat-skip-add from))))
+    (let* ((day (+endgame--day-marker date))
+           (have (and day (+endgame--day-habit-copy day hid))))
+      (cond
+       ((and have time) (+endgame-move-to-day have date time end))
+       (have have)
+       (t
+        (let* ((text (org-with-point-at src
+                       (org-with-wide-buffer (+habits--copy 1 (+endgame--date-time date)))))
+               (text (if (not time)
+                         text
+                       (replace-regexp-in-string
+                        "^SCHEDULED: <[^>]*>"
+                        (format "SCHEDULED: <%s %s%s>"
+                                (format-time-string "%Y-%m-%d %a" (+endgame--date-time date))
+                                time (if end (concat "-" end) ""))
+                        text t t)))
+               (id (and (string-match "^:ID: +\\(\\S-+\\)" text) (match-string 1 text)))
+               (text (if (and (string-match "^SCHEDULED: <\\([^>]*\\)>" text)
+                              (+endgame--timed-p (match-string 1 text))
+                              (string-match "^:END:\n" text))
+                         (concat (substring text 0 (match-beginning 0))
+                                 ":CALDAV_UID: " (+endgame--uid) "\n"
+                                 (substring text (match-beginning 0)))
+                       text)))
+          (if day
+              (+endgame--append-to-do-list day (list text))
+            (+endgame--append-to-upcoming text))
+          (or (+endgame--find-id (if day (marker-buffer day) (+endgame--buffer +endgame-upcoming-file)) id)
+              (error "Lost the copy of %s" hid))))))))
+
+(defun +endgame-plan-habit-json (hid date &optional time end from)
+  "`+endgame-plan-habit' for the server: asks nothing, saves, returns JSON
+{\"file\", \"line\", \"id\", \"where\": \"day\"|\"upcoming\", \"files\"}."
+  (let ((inhibit-interaction t)
+        (+endgame--saved nil)
+        result)
+    (+endgame--saving
+      (let* ((to (+endgame-plan-habit hid date time end from))
+             (to-file (buffer-file-name (marker-buffer to))))
+        (setq result
+              `((file . ,to-file)
+                (line . ,(with-current-buffer (marker-buffer to)
+                           (org-with-wide-buffer (line-number-at-pos to))))
+                (id . ,(org-entry-get to "ID"))
+                (where . ,(if (file-equal-p to-file +endgame-upcoming-file) "upcoming" "day"))))))
+    (+endgame--json
+     (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
+
+(defun +endgame-skip-json (file line id date)
+  "Skip DATE (\"YYYY-MM-DD\") of a repeating heading: add it to its :SKIP:.
+The heading has :ID: ID in FILE, or (ID nil) is on LINE (1-based).
+Saves; returns JSON {\"skip\": [dates], \"files\"}."
+  (let ((inhibit-interaction t)
+        (+endgame--saved nil)
+        dates)
+    (+endgame--saving
+      (let* ((buf (+endgame--buffer file))
+             (m (or (and id (+endgame--find-id buf id))
+                    (with-current-buffer buf
+                      (org-with-wide-buffer
+                       (goto-char (point-min))
+                       (forward-line (1- line))
+                       (unless (org-at-heading-p) (error "No heading on line %d of %s" line file))
+                       (point-marker))))))
+        (org-with-point-at m
+          (org-with-wide-buffer
+           (+repeat-skip-add date)
+           (setq dates (+repeat-skip-dates))))))
+    (+endgame--json `((skip . ,(vconcat dates))
+                      (files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved))))))))
+
 ;;; Sessions: SPC j s
 
 (defun +endgame-session-area (&optional pom)
