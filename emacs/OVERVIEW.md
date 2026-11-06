@@ -143,6 +143,8 @@ Vault at `~/org/`; archive to `archive/arch_%s`. `org-habit` loaded; mermaid ena
 via `ob-mermaid`. LaTeX preview off at startup, emphasis markers hidden, native src
 fontification, inherited tasks shown in agenda, habit graph at column 50 (30 days
 back / 10 forward). Custom agenda sorting; scheduled repeats skipped after deadline.
+A heading's `:SKIP:` dates (one occurrence of a repeater left out) are hidden through
+`org-agenda-skip-function-global` (`+repeat-skip-agenda`); a skipped habit day gets no copy.
 
 - `my/org-clock-in-when-doing` on `org-after-todo-state-change-hook` — switching to
   `STRT` auto-clocks in.
