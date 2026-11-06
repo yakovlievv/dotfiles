@@ -36,6 +36,10 @@
 (require 'org-element)
 (require 'org-id)
 
+;; set by `org-read-date' when bound; org declares them only inside org.el,
+;; so without these a let here is lexical and never sees what it set
+(defvar org-time-was-given)
+(defvar org-end-time-was-given)
 (defvar text-scale-mode-step)
 (defvar text-scale-mode-amount)
 (defvar +endgame-today-note-mode)

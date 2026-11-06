@@ -237,6 +237,32 @@
                         #'+endgame-today/toggle)))
         (kill-buffer)))))
 
+(ert-deftest +endgame-today-schedule-keeps-the-time-typed ()
+  ;; s on a session, "16:30+0:45" typed: the move gets the time and the end.
+  ;; The stub sets org's flags the way `org-read-date' does, from outside
+  ;; any let in this file.
+  (+endgame-today-test--with-vault
+    (let (moved)
+      (cl-letf (((symbol-function 'org-read-date)
+                 (lambda (&rest _)
+                   (setq org-time-was-given t
+                         org-end-time-was-given "17:15")
+                   (encode-time 0 30 16 31 10 2026)))
+                ((symbol-function '+endgame-day-item-p) (lambda (&rest _) t))
+                ((symbol-function '+endgame--saving) (lambda (&rest r) (car r)))
+                ((symbol-function '+endgame--date) (lambda (tm) (format-time-string "%Y-%m-%d" tm)))
+                ((symbol-function '+endgame-move-to-day)
+                 (lambda (_pom date &optional time end) (setq moved (list date time end)))))
+        (with-current-buffer (+endgame-today-dashboard)
+          (unwind-protect
+              (progn
+                (+endgame-today-refresh)
+                (goto-char (point-min))
+                (search-forward "learning session")
+                (+endgame-today/schedule))
+            (kill-buffer))))
+      (should (equal moved '("2026-10-31" "16:30" "17:15"))))))
+
 (ert-deftest +endgame-today-ticks-and-unticks-the-real-heading ()
   (+endgame-today-test--with-vault
     (let ((+endgame-today-save-after-change t))
