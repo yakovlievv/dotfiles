@@ -90,7 +90,7 @@ Frame geometry 127×36 at (72, 79) applied to both `initial-frame-alist` and
 **Org local leader**: `l v` link preview, `l m` insert material link, `l e` insert
 external link, `l w` add vocab word, `l n` "create new lesson".
 Org normal: `+`/`-` inc/dec number at point, `g-`/`g+` in visual.
-Leader `n b` book gallery, `n j z`/`n j x` sleep / morning log.
+Leader `n b` book gallery. Sleep and morning log: `SPC j z` / `SPC j Z` clock in / out of sleep (vault-api), `SPC j x` morning log (see Sleep below).
 
 ## Org link tooling
 
