@@ -259,4 +259,146 @@
         (+endgame--create-day (+endgame--date-time "2031-01-13") t))
       (should (equal asked '("Log morning? "))))))
 
+;;; Task 3: clock in and out, the next night
+
+(defun +sleep-test--json (string)
+  (json-parse-string string :object-type 'alist :array-type 'list :null-object nil :false-object :false))
+
+(defun +sleep-test--copy-text (night)
+  (+sleep-test--entry (+sleep-copy night)))
+
+(ert-deftest sleep-clock-in-after-midnight ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (let ((out (+sleep-test--json (+sleep-clock-in-json (+sleep-test--time "2031-01-08" "00:30")))))
+      (should (equal (alist-get 'state out) "in"))
+      (should (equal (alist-get 'night out) "2031-01-07"))
+      (should (equal (alist-get 'id out) (org-entry-get (+sleep-copy "2031-01-07") "ID")))
+      (should (null (alist-get 'closed out)))
+      (should (alist-get 'files out)))
+    (should (string-match-p "^CLOCK: \\[2031-01-08 Wed 00:30\\]$" (+sleep-test--copy-text "2031-01-07")))
+    ;; the calendar day's night isn't touched
+    (should-not (+endgame--day-marker "2031-01-08"))
+    (should-not (+sleep-copy "2031-01-08"))
+    (should-not (buffer-modified-p (marker-buffer (+sleep-copy "2031-01-07"))))))
+
+(ert-deftest sleep-clock-in-closes-other-clock ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (+endgame-test--file "roam/life.org"
+                         (concat "#+title: life\n\n* Appointments\n* Errands\n** TODO write the essay\n"
+                                 ":LOGBOOK:\nCLOCK: [2031-01-07 Tue 22:00]\nCLOCK: [2031-01-06 Mon 10:00]--[2031-01-06 Mon 11:00] =>  1:00\n:END:\n"))
+    (let ((out (+sleep-test--json (+sleep-clock-in-json (+sleep-test--time "2031-01-07" "23:00")))))
+      (should (equal (alist-get 'state out) "in"))
+      (should (equal (alist-get 'closed out)
+                     '(((file . "roam/life.org") (heading . "write the essay")))))
+      (should (member "roam/life.org" (alist-get 'files out))))
+    (let ((life (+endgame-test--read (expand-file-name "roam/life.org" +endgame-test-dir))))
+      (should (string-match-p "^CLOCK: \\[2031-01-07 Tue 22:00\\]--\\[2031-01-07 Tue 23:00\\] =>  1:00$" life))
+      (should (string-match-p "^CLOCK: \\[2031-01-06 Mon 10:00\\]--\\[2031-01-06 Mon 11:00\\] =>  1:00$" life)))
+    (should (string-match-p "^CLOCK: \\[2031-01-07 Tue 23:00\\]$" (+sleep-test--copy-text "2031-01-07")))))
+
+(ert-deftest sleep-clock-in-twice ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (+sleep-clock-in-json (+sleep-test--time "2031-01-08" "00:30"))
+    (let* ((file (buffer-file-name (marker-buffer (+sleep-copy "2031-01-07"))))
+           (before (+endgame-test--read file))
+           (out (+sleep-test--json (+sleep-clock-in-json (+sleep-test--time "2031-01-08" "00:40")))))
+      (should (equal (alist-get 'state out) "already"))
+      (should (equal (alist-get 'night out) "2031-01-07"))
+      (should (null (alist-get 'files out)))
+      (should (equal (+endgame-test--read file) before)))))
+
+(ert-deftest sleep-clock-in-makes-day ()
+  (+sleep-test--with-vault
+    (should-not (+endgame--day-marker "2031-01-07"))
+    (let ((out (+sleep-test--json (+sleep-clock-in-json (+sleep-test--time "2031-01-07" "22:00")))))
+      (should (equal (alist-get 'state out) "in"))
+      (should (equal (alist-get 'night out) "2031-01-07")))
+    (let ((day (+endgame--day-marker "2031-01-07")))
+      (should (org-entry-get day "ID"))
+      (should (= 1 (+sleep-test--sleep-children "2031-01-07"))))
+    (should (string-match-p "^CLOCK: \\[2031-01-07 Tue 22:00\\]$" (+sleep-test--copy-text "2031-01-07")))))
+
+(ert-deftest sleep-clock-in-on-a-skipped-night ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (org-with-point-at (+sleep--source) (+repeat-skip-add "2031-01-08") (save-buffer))
+    (+sleep-clock-in-json (+sleep-test--time "2031-01-07" "23:00"))
+    (should (string-match-p "^CLOCK: \\[2031-01-07 Tue 23:00\\]$" (+sleep-test--copy-text "2031-01-07")))))
+
+(ert-deftest sleep-clock-out ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (+sleep-clock-in-json (+sleep-test--time "2031-01-08" "00:30"))
+    (let ((out (+sleep-test--json (+sleep-clock-out-json (+sleep-test--time "2031-01-08" "08:45")))))
+      (should (equal (alist-get 'state out) "out"))
+      (should (equal (alist-get 'night out) "2031-01-07"))
+      (should (equal (alist-get 'id out) (org-entry-get (+sleep-copy "2031-01-07") "ID")))
+      (should (equal (alist-get 'minutes out) 495))
+      (should (alist-get 'files out)))
+    (should (string-match-p "^CLOCK: \\[2031-01-08 Wed 00:30\\]--\\[2031-01-08 Wed 08:45\\] =>  8:15$"
+                            (+sleep-test--copy-text "2031-01-07")))
+    (should (+sleep-night-logged-p "2031-01-07"))
+    (let ((out (+sleep-test--json (+sleep-clock-out-json (+sleep-test--time "2031-01-08" "09:00")))))
+      (should (equal (alist-get 'state out) "none"))
+      (should (null (alist-get 'night out)))
+      (should (null (alist-get 'minutes out)))
+      (should (null (alist-get 'files out))))))
+
+(ert-deftest sleep-next-before-wake ()
+  (+sleep-test--with-vault
+    (let ((out (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "06:00")))))
+      (should (equal (alist-get 'night out) "2031-01-07"))
+      (should (equal (alist-get 'bed out) "2031-01-08 01:00"))
+      (should (equal (alist-get 'wake out) "2031-01-08 09:00"))
+      (should (eq (alist-get 'clockedIn out) :false)))
+    ;; at 00:30 the night of the 7th hasn't started: still the 7th
+    (should (equal (alist-get 'night (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "00:30"))))
+                   "2031-01-07"))))
+
+(ert-deftest sleep-next-after-wake ()
+  (+sleep-test--with-vault
+    (let ((out (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "10:00")))))
+      (should (equal (alist-get 'night out) "2031-01-08"))
+      (should (equal (alist-get 'bed out) "2031-01-09 01:00"))
+      (should (equal (alist-get 'wake out) "2031-01-09 09:00")))))
+
+(ert-deftest sleep-next-skipped ()
+  (+sleep-test--with-vault
+    (org-with-point-at (+sleep--source) (+repeat-skip-add "2031-01-09") (save-buffer))
+    (let ((out (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "10:00")))))
+      (should (equal (alist-get 'night out) "2031-01-08"))
+      (should (assq 'bed out))
+      (should (null (alist-get 'bed out)))
+      (should (null (alist-get 'wake out))))))
+
+(ert-deftest sleep-next-moved ()
+  (+sleep-test--with-vault
+    (org-with-point-at (+sleep--source) (+repeat-skip-add "2031-01-09") (save-buffer))
+    ;; a copy moved to the morning of the 9th, hand-made like the calendar would
+    (with-current-buffer (find-file-noselect +endgame-upcoming-file)
+      (goto-char (point-max))
+      (insert "* Sleep\n:PROPERTIES:\n:ID:       moved\n:SLEEP_ID: src-sleep\n:NIGHT:    2031-01-08\n"
+              ":AREA:     sleep\n:CALDAV_UID: u\n:END:\n<2031-01-09 Thu 07:00-10:00>\n")
+      (save-buffer))
+    (let ((out (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "10:00")))))
+      (should (equal (alist-get 'night out) "2031-01-08"))
+      (should (equal (alist-get 'bed out) "2031-01-09 07:00"))
+      (should (equal (alist-get 'wake out) "2031-01-09 10:00")))
+    ;; a copy across midnight
+    (+sleep-plan "2031-01-10" "23:30" "08:00")
+    (let ((out (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-10" "12:00")))))
+      (should (equal (alist-get 'bed out) "2031-01-10 23:30"))
+      (should (equal (alist-get 'wake out) "2031-01-11 08:00")))))
+
+(ert-deftest sleep-next-clocked-in ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (+sleep-clock-in-json (+sleep-test--time "2031-01-08" "00:30"))
+    (should (eq t (alist-get 'clockedIn (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "01:00"))))))
+    (+sleep-clock-out-json (+sleep-test--time "2031-01-08" "08:45"))
+    (should (eq :false (alist-get 'clockedIn (+sleep-test--json (+sleep-next-json (+sleep-test--time "2031-01-08" "09:00"))))))))
+
 ;;; sleep-test.el ends here

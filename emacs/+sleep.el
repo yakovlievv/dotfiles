@@ -410,5 +410,177 @@ night's Sleep heading (`+org-journal/set-morning-log')."
       (when (y-or-n-p "Log morning? ")
         (+org-journal/set-morning-log night)))))
 
+;;; The server: clock in and out, the next night
+
+(defconst +sleep--open-clock-re
+  "^\\([ \t]*\\)CLOCK: \\(\\[[^]\n]*\\]\\)[ \t]*$"
+  "An open CLOCK line: group 1 its indentation, 2 its start stamp.")
+
+(defconst +sleep--open-clock-rg "^\\s*CLOCK: \\[[^]]*\\]\\s*$"
+  "`+sleep--open-clock-re' for ripgrep.")
+
+(defun +sleep--now (now)
+  "NOW (an Emacs time, nil for the current time) cut to the minute."
+  (let ((s (floor (float-time (or now (current-time))))))
+    (seconds-to-time (- s (mod s 60)))))
+
+(defun +sleep--files-with-open-clocks (paths)
+  "Files under PATHS with an open CLOCK line, archives left out.
+Files only changed in a buffer so far count too: ripgrep reads the disk."
+  (seq-remove
+   (lambda (f) (string-match-p "/archive/" f))
+   (delete-dups
+    (append (+endgame--rg-files +sleep--open-clock-rg paths)
+            (cl-loop for buf in (buffer-list)
+                     for f = (buffer-file-name buf)
+                     when (and f (buffer-modified-p buf)
+                               (string-suffix-p ".org" f)
+                               (cl-some (lambda (p) (file-in-directory-p f p)) paths))
+                     collect f)))))
+
+(defun +sleep--open-clocks (paths)
+  "The open CLOCK lines in PATHS: a list of (MARKER START HEADING-MARKER).
+MARKER is at the line's start, START the clock-in time."
+  (let (out)
+    (dolist (file (+sleep--files-with-open-clocks paths))
+      (with-current-buffer (+endgame--buffer file)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (while (re-search-forward +sleep--open-clock-re nil t)
+           (let ((start (org-time-string-to-time (match-string 2)))
+                 (line (copy-marker (line-beginning-position))))
+             (push (list line start
+                         (save-excursion
+                           (and (ignore-errors (org-back-to-heading t) t) (point-marker))))
+                   out))))))
+    (nreverse out)))
+
+(defun +sleep--close-clock (line start end)
+  "Close the open CLOCK line at marker LINE (started at START) at END.
+Returns the minutes."
+  (with-current-buffer (marker-buffer line)
+    (org-with-wide-buffer
+     (goto-char line)
+     (unless (looking-at +sleep--open-clock-re)
+       (error "No open clock at %s:%d" (buffer-file-name) (line-number-at-pos)))
+     (let ((indent (match-string 1)))
+       (replace-match (concat indent (+sleep--clock-line start end)) t t))
+     (+sleep--clock-minutes start end))))
+
+(defun +sleep--open-sleep-clocks ()
+  "The open clocks on Sleep copies: (NIGHT MARKER START COPY-MARKER), latest night first."
+  (sort (cl-loop for (line start heading) in (+sleep--open-clocks
+                                              (list (expand-file-name org-journal-dir)
+                                                    +endgame-upcoming-file))
+                 when (and heading (+sleep--copy-at heading))
+                 collect (list (org-entry-get heading "NIGHT") line start heading))
+        (lambda (a b) (string> (or (car a) "") (or (car b) "")))))
+
+(defun +sleep--within (copy pos)
+  "Non-nil when POS (a marker) is in the entry text of COPY (a marker)."
+  (and (eq (marker-buffer copy) (marker-buffer pos))
+       (<= copy pos)
+       (< pos (+sleep--entry-end copy))))
+
+(defun +sleep-clock-in-json (&optional now)
+  "Clock in tonight's sleep, for the server. JSON
+{\"state\": \"in\"|\"already\", \"night\", \"id\", \"closed\": [{\"file\",
+\"heading\"}], \"files\"}. The night is NOW's (default the current time),
+05:00 rule. Its day is made when missing (asking nothing), and its copy
+too, even on a skipped night: clocking in means sleeping. Every open
+clock in the vault is closed at NOW first. `already' (and nothing
+written) when the copy's clock is open already."
+  (let* ((inhibit-interaction t)
+         (+endgame--saved nil)
+         (now (+sleep--now now))
+         (night (+sleep-night-of-time now))
+         state copy closed)
+    (+endgame--saving
+      (+endgame--ensure-day night)
+      (setq copy (or (+sleep-copy night) (+sleep-plan night)))
+      (let ((open (+sleep--open-clocks (list (expand-file-name +endgame-vault-dir)))))
+        (if (seq-find (lambda (c) (+sleep--within copy (car c))) open)
+            (setq state "already")
+          (pcase-dolist (`(,line ,start ,heading) open)
+            (+sleep--close-clock line start now)
+            (push `((file . ,(+endgame--relative (buffer-file-name (marker-buffer line))))
+                    (heading . ,(if heading (org-with-point-at heading (+endgame--title)) "")))
+                  closed))
+          (+sleep--insert-clock copy (+sleep--clock-line now))
+          (setq state "in")))
+      (when (fboundp '+sleep--drop-stale-clock) (+sleep--drop-stale-clock)))
+    (+endgame--json `((state . ,state)
+                      (night . ,night)
+                      (id . ,(org-entry-get copy "ID"))
+                      (closed . ,(vconcat (nreverse closed)))
+                      (files . ,(+sleep--files))))))
+
+(defun +sleep-clock-out-json (&optional now)
+  "Clock out of sleep, for the server. JSON {\"state\": \"out\"|\"none\",
+\"night\", \"id\", \"minutes\", \"files\"}: the open clock on the most
+recent Sleep copy that has one is closed at NOW (default the current
+time). `none' (night, id and minutes null, nothing written) when no
+Sleep copy has an open clock."
+  (let* ((inhibit-interaction t)
+         (+endgame--saved nil)
+         (now (+sleep--now now))
+         result)
+    (+endgame--saving
+      (pcase (car (+sleep--open-sleep-clocks))
+        (`(,night ,line ,start ,copy)
+         (let ((minutes (+sleep--close-clock line start now)))
+           (setq result `((state . "out") (night . ,night) (id . ,(org-entry-get copy "ID"))
+                          (minutes . ,minutes)))))
+        (_ (setq result '((state . "none") (night) (id) (minutes)))))
+      (when (fboundp '+sleep--drop-stale-clock) (+sleep--drop-stale-clock)))
+    (+endgame--json (append result `((files . ,(+sleep--files)))))))
+
+(defun +sleep--span (date start end &optional minutes)
+  "(BED . WAKE) times of a night from START on DATE to END (\"HH:MM\").
+MINUTES, when known, is the length; else END is on DATE, or the day
+after when it isn't after START."
+  (let ((bed (+sleep--time date start)))
+    (cons bed
+          (if minutes
+              (time-add bed (* 60 minutes))
+            (+sleep--time (if (> (+sleep--minutes end) (+sleep--minutes start))
+                              date
+                            (+sleep--add-days date 1))
+                          end)))))
+
+(defun +sleep--planned (night)
+  "(BED . WAKE) of NIGHT as planned, or nil: no sleep planned.
+Its copy's stamp, else the default's occurrence unless it is skipped."
+  (let ((copy (+sleep-copy night))
+        (default (+sleep--source-range)))
+    (if copy
+        (pcase (+endgame-entry-time-range copy)
+          (`(,date ,start ,end ,minutes)
+           (when start
+             (+sleep--span date start (or end (nth 1 default))
+                           (or minutes (and (not end)
+                                            (nth 3 (+endgame-entry-time-range (+sleep--source)))))))))
+      (unless (+sleep-skipped-p night)
+        (+sleep--span (+sleep-occurrence-date night) (car default) (nth 1 default))))))
+
+(defun +sleep-next-json (&optional now)
+  "The night Home Assistant should follow at NOW (default the current time). JSON
+{\"night\", \"bed\", \"wake\", \"clockedIn\"}: bed and wake are local
+\"YYYY-MM-DD HH:MM\", or null when that night has no sleep planned (no
+alarm). Last night (the night before NOW's) while its wake is still
+ahead, else NOW's night. clockedIn: some Sleep copy has an open clock."
+  (let* ((inhibit-interaction t)
+         (now (+sleep--now now))
+         (tonight (+sleep-night-of-time now))
+         (last (+sleep--add-days tonight -1))
+         (last-plan (+sleep--planned last))
+         (night (if (and last-plan (time-less-p now (cdr last-plan))) last tonight))
+         (plan (if (equal night last) last-plan (+sleep--planned tonight)))
+         (fmt (lambda (time) (and time (format-time-string "%Y-%m-%d %H:%M" time)))))
+    (+endgame--json `((night . ,night)
+                      (bed . ,(funcall fmt (car plan)))
+                      (wake . ,(funcall fmt (cdr plan)))
+                      (clockedIn . ,(if (+sleep--open-sleep-clocks) t :json-false))))))
+
 (provide '+sleep)
 ;;; +sleep.el ends here
