@@ -596,4 +596,45 @@
       (should (equal (alist-get 'bed out) "2031-01-10 01:00"))
       (should (equal (alist-get 'wake out) "2031-01-10 09:00")))))
 
+(ert-deftest sleep-resync-keeps-a-clock-whose-marker-moved ()
+  (+sleep-test--with-vault
+    (let* ((file (+endgame-test--file "roam/life.org" "#+title: life\n\nfoo\n* Errands\n** TODO write\nbar\n"))
+           (buf (find-file-noselect file)))
+      (unwind-protect
+          (progn
+            (with-current-buffer buf
+              (goto-char (point-min))
+              (re-search-forward "^\\*\\* TODO write")
+              (org-clock-in)
+              (save-buffer))
+            ;; Syncthing brings edits above and below the clock
+            (let ((text (replace-regexp-in-string
+                         "^bar$" "barX" (replace-regexp-in-string "^foo$" "fooX" (with-current-buffer buf (buffer-string))))))
+              (with-temp-file file (insert text))
+              (set-file-times file (time-add nil 10))
+              (+sleep--resync)
+              (should (org-clocking-p))
+              (with-current-buffer buf
+                (save-excursion
+                  (goto-char org-clock-marker)
+                  (beginning-of-line)
+                  (should (looking-at-p "CLOCK: \\[[^]]*\\]$"))))))
+        (when (org-clocking-p) (+sleep--forget-clock))))))
+
+(ert-deftest sleep-replan-cancelled-copy-leaves-clock-lines ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (let ((m (+sleep-plan "2031-01-07" "23:30" "09:00")))
+      (+sleep-log-night "2031-01-07" "2031-01-07 23:30" "2031-01-08 09:00")
+      (with-current-buffer (marker-buffer m)
+        (org-with-wide-buffer
+         (goto-char m)
+         (re-search-forward "^<\\(2031-01-07 Tue 23:30\\)>--<\\(2031-01-08 Wed 09:00\\)>$")
+         (replace-match "[\\1]--[\\2]")))
+      (should (+sleep-cancelled-p m))
+      (+sleep-plan "2031-01-07")
+      (let ((text (+sleep-test--copy-text "2031-01-07")))
+        (should (string-match-p "^CLOCK: \\[2031-01-07 Tue 23:30\\]--\\[2031-01-08 Wed 09:00\\] =>  9:30$" text))
+        (should (string-match-p "^<2031-01-08 Wed 01:00-09:00>$" text))))))
+
 ;;; sleep-test.el ends here

@@ -250,10 +250,17 @@ don't count."
 An inactive one (the night was cancelled) is replaced too: planned again."
   (org-with-point-at copy
     (org-with-wide-buffer
-     (let ((old (or (+endgame-entry-stamp) (+sleep--inactive-stamp (point)))))
+     (let ((old (or (+endgame-entry-stamp) (+sleep--inactive-stamp (point))))
+           (end (save-excursion (outline-next-heading) (point)))
+           done)
        (org-back-to-heading t)
-       (if (and old (re-search-forward (regexp-quote old) (save-excursion (outline-next-heading) (point)) t))
+       ;; the stamp's own line: a logged night's CLOCK line can read the same
+       (while (and old (not done) (re-search-forward (regexp-quote old) end t))
+         (unless (save-excursion (beginning-of-line) (looking-at-p "[ \t]*CLOCK:"))
            (replace-match stamp t t)
+           (setq done t)))
+       (unless done
+         (org-back-to-heading t)
          (org-end-of-meta-data t)
          (insert stamp "\n"))))))
 
@@ -698,22 +705,40 @@ The markers go nowhere, the start time is nil, the mode line is cleared."
         org-clock-current-task nil
         org-mode-line-string ""
         global-mode-string (delq 'org-mode-line-string global-mode-string))
+  (setq org-clock-heading "")
   (when (fboundp 'org-clock-restore-frame-title-format)
     (org-clock-restore-frame-title-format))
+  ;; what `org-clock-out-hook' would refresh, minus its writers (the
+  ;; empty-drawer cleanup): the today panel
+  (dolist (f '(+endgame-today--forget-slow +endgame-today--changed-h))
+    (when (fboundp f) (funcall f)))
   (force-mode-line-update t))
 
 (defun +sleep--clock-stale-p ()
-  "Non-nil when Emacs clocks something whose CLOCK line isn't open any more:
-the line at `org-clock-marker' is closed, gone, or started at another time."
+  "Non-nil when Emacs clocks something whose CLOCK line isn't open any more.
+A revert can move `org-clock-marker' off its line when the file changed
+around it, so the line is looked for: an open CLOCK in the clocked buffer
+started at `org-clock-start-time'. Found: the markers are put back on it
+\(like `my/org-clock-heal-marker'), not stale. None: stale."
   (when (org-clocking-p)
     (with-current-buffer (marker-buffer org-clock-marker)
       (org-with-wide-buffer
-       (goto-char org-clock-marker)
-       (beginning-of-line)
-       (not (and (looking-at +sleep--open-clock-re)
-                 (or (not org-clock-start-time)
-                     (= (floor (float-time (org-time-string-to-time (match-string 2))) 60)
-                        (floor (float-time org-clock-start-time) 60)))))))))
+       (let ((minute (lambda (time) (floor (float-time time) 60)))
+             found)
+         (when org-clock-start-time
+           (goto-char (point-min))
+           (while (and (not found) (re-search-forward +sleep--open-clock-re nil t))
+             (when (= (funcall minute (org-time-string-to-time (match-string 2)))
+                      (funcall minute org-clock-start-time))
+               (setq found (point)))))
+         (if (not found)
+             t
+           (move-marker org-clock-marker found)
+           (save-excursion
+             (goto-char found)
+             (when (ignore-errors (org-back-to-heading t) t)
+               (move-marker org-clock-hd-marker (point))))
+           nil))))))
 
 (defun +sleep--drop-stale-clock ()
   "Forget Emacs's running clock when its CLOCK line was closed under it."
@@ -744,13 +769,17 @@ Buffers with unsaved changes are left alone."
   "POST to vault-api's PATH; the parsed JSON reply (an alist)."
   (require 'url)
   (require 'auth-source)
-  (let* ((token (auth-source-pick-first-password :host "vault-api"))
+  (let* ((token (or (auth-source-pick-first-password :host "vault-api")
+                    (user-error "No vault-api token: add \"machine vault-api password …\" to auth-source")))
          (url-request-method "POST")
          (url-request-extra-headers
           `(("Content-Type" . "application/json")
-            ,@(and token `(("Authorization" . ,(concat "Bearer " token))))))
+            ("Authorization" . ,(concat "Bearer " token))))
          (url-request-data "{}")
-         (buf (url-retrieve-synchronously (concat +sleep-api-url path) t t 30)))
+         (buf (condition-case err
+                  (url-retrieve-synchronously (concat +sleep-api-url path) t t 30)
+                (file-error (user-error "vault-api unreachable at %s: %s"
+                                        +sleep-api-url (error-message-string err))))))
     (unless buf (user-error "vault-api didn't answer at %s" +sleep-api-url))
     (unwind-protect
         (with-current-buffer buf
@@ -766,9 +795,30 @@ Buffers with unsaved changes are left alone."
       (kill-buffer buf))))
 
 (defun +sleep--save-vault-buffers ()
-  "Save the vault buffers with unsaved changes: the server is about to write files."
-  (save-some-buffers t (lambda () (and buffer-file-name
-                                       (file-in-directory-p buffer-file-name +endgame-vault-dir)))))
+  "Save what the server is about to write: unsaved journal, upcoming and
+sleep source buffers, and any vault buffer with an open CLOCK line.
+Other half-edited notes are left alone."
+  (let ((src (ignore-errors (buffer-file-name (marker-buffer (+sleep--source)))))
+        saved)
+    (dolist (buf (buffer-list))
+      (let ((f (buffer-file-name buf)))
+        (when (and f (buffer-modified-p buf)
+                   (file-in-directory-p f +endgame-vault-dir)
+                   (or (file-in-directory-p f (expand-file-name org-journal-dir))
+                       (file-equal-p f +endgame-upcoming-file)
+                       (and src (file-equal-p f src))
+                       (with-current-buffer buf
+                         (org-with-wide-buffer
+                          (goto-char (point-min))
+                          (re-search-forward +sleep--open-clock-re nil t)))))
+          (with-current-buffer buf (save-buffer))
+          (push (file-name-nondirectory f) saved))))
+    (when saved (message "Saved %s" (string-join saved ", ")))))
+
+(defun +sleep--resync-later ()
+  "Re-sync again once Syncthing had time to bring the server's writes over."
+  (dolist (secs '(5 20))
+    (run-with-timer secs nil #'+sleep--resync)))
 
 (defun +sleep/clock-in ()
   "Clock in sleep through vault-api (POST /sleep/in): tonight's Sleep heading.
@@ -778,13 +828,17 @@ the files and drops its own clock if it was one of them."
   (+sleep--save-vault-buffers)
   (let ((r (+sleep--api "/sleep/in")))
     (+sleep--resync)
+    (+sleep--resync-later)
     (message "%s"
              (pcase (alist-get 'state r)
                ("already" (format "Sleep: already clocked in (night %s)" (alist-get 'night r)))
                (_ (concat (format "Sleep: clocked in (night %s)" (alist-get 'night r))
                           (when-let ((closed (alist-get 'closed r)))
                             (concat ", closed "
-                                    (mapconcat (lambda (c) (alist-get 'heading c)) closed ", ")))))))))
+                                    (mapconcat (lambda (c)
+                                                 (let ((h (alist-get 'heading c)))
+                                                   (if (string-empty-p (or h "")) (alist-get 'file c) h)))
+                                               closed ", ")))))))))
 
 (defun +sleep/clock-out ()
   "Clock out of sleep through vault-api (POST /sleep/out)."
@@ -792,6 +846,7 @@ the files and drops its own clock if it was one of them."
   (+sleep--save-vault-buffers)
   (let ((r (+sleep--api "/sleep/out")))
     (+sleep--resync)
+    (+sleep--resync-later)
     (message "%s"
              (pcase (alist-get 'state r)
                ("none" "Sleep: no sleep clock is open")
