@@ -12,6 +12,9 @@ tracker). Not a coding setup.
 | `config.el` | Generated artifact. Never edit. |
 | `packages.el` | Extra packages. |
 | `+book-gallery.el` | Standalone book-tracker module, `load!`ed at the end of config. |
+| `+endgame-capture.el` | Capture, sessions, day creation, upcoming→day staging, the areas registry. |
+| `+sleep.el` | Sleep scheduling: each night's `Sleep` heading, clocked in/out through vault-api. Loaded after `+endgame-capture`. |
+| `tests/` | ERT suites, run in batch without Doom (see each file's header). |
 | `.hunspell_personal` | Personal word list, version-controlled. |
 | `.env` | `GOOGLE_BOOKS_API_KEY` for ISBN lookup. |
 | `snippets/org-mode/` | 6 yasnippets, all clocktable variants. |
@@ -211,11 +214,40 @@ Both levels are roam nodes.
 - `+org-journal-init-day` on `org-journal-after-entry-create-hook` — fires on every
   entry, but the day heading's ID acts as the "already initialised" marker, so only
   the first entry of a day stamps the ID, tags `:daily:`, inserts a day clocktable
-  pinned to the parsed date, and offers the sleep/feeling prompts.
-- `+org-journal/set-sleep` (`SPC n j z`) — stores `:SLEEP_TIME:` as an *inactive*
-  range `[bed]--[wake]`, so `C-c C-y` computes duration and the agenda stays clean.
-- `+org-journal/set-morning-log` (`SPC n j x`) — `:MORNING_HEADACHE:`, `:MORNING_FRESHNESS:`, `:MORNING_MOOD:` 1–10 + free-text `:MORNING_NOTES:`.
+  pinned to the parsed date, then `+sleep-day-prompts`: "Log last night?" only when
+  last night's Sleep heading has no closed clock, and "Log morning?".
+- `+org-journal/set-morning-log` (`SPC j x`) — `:MORNING_HEADACHE:`, `:MORNING_FRESHNESS:`,
+  `:MORNING_MOOD:` 1–10 on last night's Sleep heading, notes as plain text under it.
+- Days before 2026-11-08 keep `:SLEEP_TIME:` (`[bed]--[wake]`) and their morning
+  properties (`:MORNING_NOTES:` included) on the day heading; nothing writes them now.
 - Carryover: `TODO` and `STRT` items. Agenda integration on, encryption off.
+
+## Sleep (`+sleep.el`)
+
+Spec: roam note "sleep scheduling". The night of bed-day D (the org day, until
+05:00) is called D everywhere.
+- Default night: `** Sleep schedule` in the sleep optimization system note
+  (`+sleep-source-id`), a repeating range `<… 01:00-09:00 +1d>` with a `:SKIP:`
+  like a habit's (dates = the morning the times fall on). Dates older than a
+  week are pruned and the stamp's date moves on with them.
+- A night's copy: `** Sleep` child of day D, right after its DO list (no TODO),
+  or a top-level heading in upcoming until day D exists; `:ID:`, `:SLEEP_ID:`,
+  `:NIGHT:`, `:AREA: sleep`, `:CALDAV_UID:`, a plain active stamp. Making one puts
+  the default's occurrence into `:SKIP:`. Skipped with no copy, or a copy whose
+  stamp went inactive (event deleted on the phone): no sleep planned, no alarm.
+- Making a day (`+endgame-day-ensure`, the init hook): staging moves an upcoming
+  copy in by its `:NIGHT:`, then `+sleep-ensure-night` copies the default.
+- Server (emacsclient, JSON): `+sleep-plan-json`, `+sleep-clock-in-json` (closes
+  every open clock in the vault first; `already` while any Sleep clock is open),
+  `+sleep-clock-out-json`, `+sleep-next-json` (last night while its wake is ahead,
+  else tonight). The phone's POST /day answers go through `+sleep-log-night` and
+  `+sleep-put-morning`.
+- Emacs: `SPC j z` / `SPC j Z` POST `/sleep/in` / `/sleep/out` to `+sleep-api-url`
+  (token: auth-source host `vault-api`), then `+sleep--resync` re-reads changed
+  vault buffers and drops Emacs's own clock if the server closed it (also on any
+  revert of the clocked buffer). Sleep CLOCK lines are only ever written by the server.
+- Area: `:SOURCES: prop:SLEEP_ID` on Sleep in the areas note (`prop:KEY` = every
+  journal heading with KEY, by its ID).
 
 ## Encryption
 

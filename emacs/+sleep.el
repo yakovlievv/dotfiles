@@ -116,14 +116,27 @@ Syncthing too, so a buffer that went stale is re-read first."
 Every night's copy adds one, and the source has no SCHEDULED to prune by.")
 
 (defun +sleep--skip-add (src date)
-  "Add DATE to the :SKIP: of the source at SRC, dropping long-past dates."
+  "Add DATE to the :SKIP: of the source at SRC, dropping long-past dates.
+Dates older than `+sleep-skip-keep-days' before today go, and the
+source's stamp moves forward to that cut (time range and repeater
+kept), so the dropped nights can't show up again, the way a habit's
+SCHEDULED moves on."
   (org-with-point-at src
     (org-with-wide-buffer
      (+repeat-skip-add date)
      (let* ((cut (+sleep--add-days (+endgame--today) (- +sleep-skip-keep-days)))
             (dates (+repeat-skip-dates))
-            (keep (seq-remove (lambda (d) (string< d cut)) dates)))
+            (keep (seq-remove (lambda (d) (string< d cut)) dates))
+            (stamp (+endgame-entry-stamp)))
        (unless (equal keep dates)
+         (when (and stamp (string-match "\\`<\\([0-9-]\\{10\\}\\) [^ >]+" stamp)
+                    (string< (match-string 1 stamp) cut))
+           (let* ((rest (substring stamp (match-end 0)))
+                  (new (concat "<" cut " " (format-time-string "%a" (+endgame--date-time cut)) rest)))
+             (save-excursion
+               (org-back-to-heading t)
+               (when (search-forward stamp (save-excursion (outline-next-heading) (point)) t)
+                 (replace-match new t t)))))
          (if keep
              (org-entry-put nil "SKIP" (string-join keep " "))
            (org-entry-delete nil "SKIP")))))))
@@ -197,11 +210,11 @@ A copy is found by its :NIGHT: and :SLEEP_ID:."
                 (file-exists-p +endgame-upcoming-file))
         (+sleep--copy-in (+endgame--buffer +endgame-upcoming-file) night))))
 
-(defun +sleep--copy-text (night stamp)
-  "A fresh copy of NIGHT at STAMP, as a level 1 heading."
+(defun +sleep--copy-text (id night stamp)
+  "A fresh copy of NIGHT at STAMP with :ID: ID, as a level 1 heading."
   (concat "* " +sleep-title "\n"
           ":PROPERTIES:\n"
-          ":ID:       " (org-id-uuid) "\n"
+          ":ID:       " id "\n"
           ":SLEEP_ID: " +sleep-source-id "\n"
           ":NIGHT:    " night "\n"
           ":AREA:     " +sleep-area "\n"
@@ -209,11 +222,35 @@ A copy is found by its :NIGHT: and :SLEEP_ID:."
           ":END:\n"
           stamp "\n"))
 
+(defun +sleep--inactive-stamp (pom)
+  "The first inactive stamp (or range) in the body of the entry at POM, or nil.
+A copy whose event was deleted on the phone has its stamp made inactive:
+that night has no sleep planned. CLOCK, planning and property lines
+don't count."
+  (org-with-point-at pom
+    (org-with-wide-buffer
+     (org-back-to-heading t)
+     (let ((end (save-excursion (outline-next-heading) (point)))
+           (re (concat org-ts-regexp-inactive "\\(?:--" org-ts-regexp-inactive "\\)?"))
+           found)
+       (forward-line 1)
+       (while (and (not found) (re-search-forward re end t))
+         (unless (save-excursion
+                   (beginning-of-line)
+                   (looking-at-p (concat "[ \t]*\\(?:CLOCK:\\|" org-keyword-time-regexp "\\|:[^ \t\n]+:\\)")))
+           (setq found (match-string-no-properties 0))))
+       found))))
+
+(defun +sleep-cancelled-p (copy)
+  "Non-nil when COPY (a marker) has no active stamp: its night has no sleep planned."
+  (not (+endgame-entry-stamp copy)))
+
 (defun +sleep--retime (copy stamp)
-  "Replace the plain stamp of the COPY (a marker) by STAMP."
+  "Replace the plain stamp of the COPY (a marker) by STAMP.
+An inactive one (the night was cancelled) is replaced too: planned again."
   (org-with-point-at copy
     (org-with-wide-buffer
-     (let ((old (+endgame-entry-stamp)))
+     (let ((old (or (+endgame-entry-stamp) (+sleep--inactive-stamp (point)))))
        (org-back-to-heading t)
        (if (and old (re-search-forward (regexp-quote old) (save-excursion (outline-next-heading) (point)) t))
            (replace-match stamp t t)
@@ -224,7 +261,9 @@ A copy is found by its :NIGHT: and :SLEEP_ID:."
   "Plan NIGHT (\"YYYY-MM-DD\"); return a marker at its copy.
 START and END (\"HH:MM\") are bedtime and wake, the source's by default.
 The default's occurrence goes into the source's :SKIP:. An existing copy
-is retimed in place when START or END is given, else left as it is. A new copy
+is retimed in place when START or END is given, else left as it is; one
+whose stamp was made inactive (the night cancelled on the phone) gets an
+active stamp again, with these times. A new copy
 goes into day NIGHT's note as a child right after its DO list, or into
 upcoming when that day has no note yet (making the day moves it in). Asks nothing; the
 caller saves."
@@ -239,11 +278,12 @@ caller saves."
     (let ((copy (+sleep-copy night)))
       (cond
        (copy
-        (when retime (+sleep--retime copy stamp))
+        (when (or retime (+sleep-cancelled-p copy))
+          (+sleep--retime copy stamp))
         copy)
        (t
-        (let* ((text (+sleep--copy-text night stamp))
-               (id (and (string-match "^:ID: +\\(\\S-+\\)" text) (match-string 1 text)))
+        (let* ((id (org-id-uuid))
+               (text (+sleep--copy-text id night stamp))
                (day (+endgame--day-marker night)))
           (if day
               (+endgame--append-to-day day (list text))
@@ -340,22 +380,33 @@ Where `org-clock-in' would put it (`org-clock-find-position')."
   "Write a closed CLOCK line BED--WAKE on NIGHT's copy; return a marker at it.
 BED and WAKE are read as `org-read-date' reads them (\"2026-11-04
 23:30\"). The copy is made (`+sleep-plan') when NIGHT has none, a skipped
-night too: it was slept. Asks nothing; the caller saves."
+night too: it was slept. An open clock on the copy (clocked in, never
+out) becomes this line; the same line twice is written once, so the
+phone may send it again. Asks nothing; the caller saves."
   (+sleep--check-night night)
   (let ((b (org-read-date t t bed))
         (w (org-read-date t t wake)))
     (unless (time-less-p b w)
       (error "Bed time %s isn't before wake time %s" bed wake))
-    (let ((copy (or (+sleep-copy night) (+sleep-plan night))))
-      (+sleep--insert-clock copy (+sleep--clock-line b w))
+    (let* ((copy (or (+sleep-copy night) (+sleep-plan night)))
+           (line (+sleep--clock-line b w)))
+      (org-with-point-at copy
+        (org-with-wide-buffer
+         (let ((end (+sleep--entry-end copy)))
+           (cond
+            ((save-excursion (search-forward line end t)))
+            ((re-search-forward +sleep--open-clock-re end t)
+             (replace-match (concat (match-string 1) line) t t))
+            (t (+sleep--insert-clock copy line))))))
       copy)))
 
 (defun +sleep-put-morning (night morning)
   "Write the morning log on NIGHT's copy; return a marker at it.
 MORNING is (HEADACHE FRESHNESS MOOD NOTES): the scores (1-10) become
 :MORNING_HEADACHE:, :MORNING_FRESHNESS:, :MORNING_MOOD:, NOTES (when not
-empty) plain text at the end of the copy's body. The copy is made when
-missing. Asks nothing; the caller saves."
+empty) plain text at the end of the copy's body, once (the phone may
+send it again). The copy is made when missing. Asks nothing; the caller
+saves."
   (+sleep--check-night night)
   (let ((scores
          (cl-loop for score in (seq-take morning 3)
@@ -370,7 +421,12 @@ missing. Asks nothing; the caller saves."
     (let ((copy (or (+sleep-copy night) (+sleep-plan night))))
       (pcase-dolist (`(,prop . ,n) scores)
         (org-entry-put copy prop (number-to-string n)))
-      (unless (string-empty-p notes)
+      ;; a line starting with * would be a heading
+      (setq notes (replace-regexp-in-string "^\\*" " *" notes))
+      (unless (or (string-empty-p notes)
+                  (org-with-point-at copy
+                    (org-with-wide-buffer
+                     (search-forward (concat "\n" notes "\n") (+sleep--entry-end copy) t))))
         (with-current-buffer (marker-buffer copy)
           (org-with-wide-buffer
            (goto-char (+sleep--entry-end copy))
@@ -406,7 +462,9 @@ night's Sleep heading (`+org-journal/set-morning-log')."
     (let ((night (+sleep--add-days (+endgame--date day) -1)))
       (when (and (not (+sleep-night-logged-p night))
                  (y-or-n-p "Log last night? "))
-        (apply #'+sleep-log-night night (+sleep--read-night night)))
+        (let ((times (+sleep--read-night night)))
+          ;; it may be another week's file, and the source's :SKIP:
+          (+endgame--saving (apply #'+sleep-log-night night times))))
       (when (y-or-n-p "Log morning? ")
         (+org-journal/set-morning-log night)))))
 
@@ -435,6 +493,7 @@ Files only changed in a buffer so far count too: ripgrep reads the disk."
                      for f = (buffer-file-name buf)
                      when (and f (buffer-modified-p buf)
                                (string-suffix-p ".org" f)
+                               (not (string-match-p "/\\(?:templates\\|config\\)/" f))
                                (cl-some (lambda (p) (file-in-directory-p f p)) paths))
                      collect f)))))
 
@@ -449,10 +508,15 @@ MARKER is at the line's start, START the clock-in time."
          (while (re-search-forward +sleep--open-clock-re nil t)
            (let ((start (org-time-string-to-time (match-string 2)))
                  (line (copy-marker (line-beginning-position))))
-             (push (list line start
-                         (save-excursion
-                           (and (ignore-errors (org-back-to-heading t) t) (point-marker))))
-                   out))))))
+             ;; a real clock, not one shown in an example or src block
+             (when (save-excursion
+                     (goto-char line)
+                     (skip-chars-forward " \t")
+                     (eq (org-element-type (org-element-at-point)) 'clock))
+               (push (list line start
+                           (save-excursion
+                             (and (ignore-errors (org-back-to-heading t) t) (point-marker))))
+                     out)))))))
     (nreverse out)))
 
 (defun +sleep--close-clock (line start end)
@@ -482,33 +546,47 @@ Returns the minutes."
        (<= copy pos)
        (< pos (+sleep--entry-end copy))))
 
+(defun +sleep--save (buffers)
+  "Save BUFFERS that are modified, even ones that were before.
+A clock written but left unsaved never reaches vault-api's commit,
+Syncthing or the Mac; `+endgame--saving' skips buffers that already had
+unsaved changes (an earlier failed call)."
+  (dolist (b (delete-dups (delq nil buffers)))
+    (when (and (buffer-live-p b) (buffer-modified-p b))
+      (with-current-buffer b (save-buffer)))))
+
 (defun +sleep-clock-in-json (&optional now)
   "Clock in tonight's sleep, for the server. JSON
 {\"state\": \"in\"|\"already\", \"night\", \"id\", \"closed\": [{\"file\",
 \"heading\"}], \"files\"}. The night is NOW's (default the current time),
 05:00 rule. Its day is made when missing (asking nothing), and its copy
 too, even on a skipped night: clocking in means sleeping. Every open
-clock in the vault is closed at NOW first. `already' (and nothing
-written) when the copy's clock is open already."
+clock in the vault is closed at NOW first. `already' (nothing written,
+that night and copy returned) while any Sleep copy's clock is open, so a
+second press after 05:00 doesn't split the night."
   (let* ((inhibit-interaction t)
          (+endgame--saved nil)
          (now (+sleep--now now))
          (night (+sleep-night-of-time now))
+         (running (car (+sleep--open-sleep-clocks)))
          state copy closed)
-    (+endgame--saving
-      (+endgame--ensure-day night)
-      (setq copy (or (+sleep-copy night) (+sleep-plan night)))
-      (let ((open (+sleep--open-clocks (list (expand-file-name +endgame-vault-dir)))))
-        (if (seq-find (lambda (c) (+sleep--within copy (car c))) open)
-            (setq state "already")
+    (if running
+        (setq state "already" night (nth 0 running) copy (nth 3 running))
+      (+endgame--saving
+        (+endgame--ensure-day night)
+        (setq copy (or (+sleep-copy night) (+sleep-plan night)))
+        (let ((open (+sleep--open-clocks (list (expand-file-name +endgame-vault-dir))))
+              touched)
           (pcase-dolist (`(,line ,start ,heading) open)
             (+sleep--close-clock line start now)
+            (push (marker-buffer line) touched)
             (push `((file . ,(+endgame--relative (buffer-file-name (marker-buffer line))))
                     (heading . ,(if heading (org-with-point-at heading (+endgame--title)) "")))
                   closed))
           (+sleep--insert-clock copy (+sleep--clock-line now))
+          (+sleep--save (cons (marker-buffer copy) touched))
           (setq state "in")))
-      (when (fboundp '+sleep--drop-stale-clock) (+sleep--drop-stale-clock)))
+      (+sleep--drop-stale-clock))
     (+endgame--json `((state . ,state)
                       (night . ,night)
                       (id . ,(org-entry-get copy "ID"))
@@ -529,10 +607,11 @@ Sleep copy has an open clock."
       (pcase (car (+sleep--open-sleep-clocks))
         (`(,night ,line ,start ,copy)
          (let ((minutes (+sleep--close-clock line start now)))
+           (+sleep--save (list (marker-buffer line)))
            (setq result `((state . "out") (night . ,night) (id . ,(org-entry-get copy "ID"))
                           (minutes . ,minutes)))))
         (_ (setq result '((state . "none") (night) (id) (minutes)))))
-      (when (fboundp '+sleep--drop-stale-clock) (+sleep--drop-stale-clock)))
+      (+sleep--drop-stale-clock))
     (+endgame--json (append result `((files . ,(+sleep--files)))))))
 
 (defun +sleep--span (date start end &optional minutes)
@@ -550,16 +629,22 @@ after when it isn't after START."
 
 (defun +sleep--planned (night)
   "(BED . WAKE) of NIGHT as planned, or nil: no sleep planned.
-Its copy's stamp, else the default's occurrence unless it is skipped."
+Its copy's active stamp (none: the night was cancelled, nil), else the
+default's occurrence unless it is skipped."
   (let ((copy (+sleep-copy night))
         (default (+sleep--source-range)))
     (if copy
         (pcase (+endgame-entry-time-range copy)
+          ('nil nil)                    ; cancelled: its stamp went inactive
           (`(,date ,start ,end ,minutes)
-           (when start
-             (+sleep--span date start (or end (nth 1 default))
-                           (or minutes (and (not end)
-                                            (nth 3 (+endgame-entry-time-range (+sleep--source)))))))))
+           (let ((minutes (and minutes (> minutes 0) minutes)))
+             (if start
+                 (+sleep--span date start (or end (nth 1 default))
+                               (or minutes
+                                   (and (not end)
+                                        (nth 3 (+endgame-entry-time-range (+sleep--source))))))
+               ;; a date without a time: the default's times
+               (+sleep--span (+sleep-occurrence-date night) (car default) (nth 1 default))))))
       (unless (+sleep-skipped-p night)
         (+sleep--span (+sleep-occurrence-date night) (car default) (nth 1 default))))))
 
@@ -581,6 +666,138 @@ ahead, else NOW's night. clockedIn: some Sleep copy has an open clock."
                       (bed . ,(funcall fmt (car plan)))
                       (wake . ,(funcall fmt (cdr plan)))
                       (clockedIn . ,(if (+sleep--open-sleep-clocks) t :json-false))))))
+
+;;; Emacs: SPC j z / SPC j Z through vault-api
+
+;; Every sleep CLOCK line is written by the server (one writer, whoever
+;; asks: the phone, HA, Emacs). Emacs calls the routes, then re-reads the
+;; files they changed; when the server closed the clock Emacs had running
+;; (`/sleep/in' closes every open clock), Emacs forgets it instead of
+;; closing it a second time.
+
+(defvar +sleep-api-url "http://server:8788"
+  "vault-api's address. The token is the auth-source password for host vault-api.")
+
+(defvar org-clock-mode-line-timer)
+(defvar org-clock-idle-timer)
+(defvar org-mode-line-string)
+(declare-function org-clock-restore-frame-title-format "org-clock")
+
+(defun +sleep--forget-clock ()
+  "Drop Emacs's running clock from memory, writing nothing.
+The markers go nowhere, the start time is nil, the mode line is cleared."
+  (when (timerp org-clock-mode-line-timer)
+    (cancel-timer org-clock-mode-line-timer)
+    (setq org-clock-mode-line-timer nil))
+  (when (timerp org-clock-idle-timer)
+    (cancel-timer org-clock-idle-timer)
+    (setq org-clock-idle-timer nil))
+  (move-marker org-clock-marker nil)
+  (move-marker org-clock-hd-marker nil)
+  (setq org-clock-start-time nil
+        org-clock-current-task nil
+        org-mode-line-string ""
+        global-mode-string (delq 'org-mode-line-string global-mode-string))
+  (when (fboundp 'org-clock-restore-frame-title-format)
+    (org-clock-restore-frame-title-format))
+  (force-mode-line-update t))
+
+(defun +sleep--clock-stale-p ()
+  "Non-nil when Emacs clocks something whose CLOCK line isn't open any more:
+the line at `org-clock-marker' is closed, gone, or started at another time."
+  (when (org-clocking-p)
+    (with-current-buffer (marker-buffer org-clock-marker)
+      (org-with-wide-buffer
+       (goto-char org-clock-marker)
+       (beginning-of-line)
+       (not (and (looking-at +sleep--open-clock-re)
+                 (or (not org-clock-start-time)
+                     (= (floor (float-time (org-time-string-to-time (match-string 2))) 60)
+                        (floor (float-time org-clock-start-time) 60)))))))))
+
+(defun +sleep--drop-stale-clock ()
+  "Forget Emacs's running clock when its CLOCK line was closed under it."
+  (when (+sleep--clock-stale-p)
+    (+sleep--forget-clock)
+    (message "The clock was closed elsewhere (vault-api); Emacs dropped it")))
+
+(defun +sleep--after-revert-h ()
+  "On `after-revert-hook': a reverted file with Emacs's clock in it may have closed it."
+  (when (and (org-clocking-p) (eq (current-buffer) (marker-buffer org-clock-marker)))
+    (+sleep--drop-stale-clock)))
+
+(add-hook 'after-revert-hook #'+sleep--after-revert-h)
+
+(defun +sleep--resync ()
+  "Re-read the vault buffers whose files changed on disk, then drop a stale clock.
+Buffers with unsaved changes are left alone."
+  (dolist (buf (buffer-list))
+    (let ((f (buffer-file-name buf)))
+      (when (and f (file-exists-p f)
+                 (file-in-directory-p f +endgame-vault-dir)
+                 (not (buffer-modified-p buf))
+                 (not (verify-visited-file-modtime buf)))
+        (with-current-buffer buf (revert-buffer t t t)))))
+  (+sleep--drop-stale-clock))
+
+(defun +sleep--api (path)
+  "POST to vault-api's PATH; the parsed JSON reply (an alist)."
+  (require 'url)
+  (require 'auth-source)
+  (let* ((token (auth-source-pick-first-password :host "vault-api"))
+         (url-request-method "POST")
+         (url-request-extra-headers
+          `(("Content-Type" . "application/json")
+            ,@(and token `(("Authorization" . ,(concat "Bearer " token))))))
+         (url-request-data "{}")
+         (buf (url-retrieve-synchronously (concat +sleep-api-url path) t t 30)))
+    (unless buf (user-error "vault-api didn't answer at %s" +sleep-api-url))
+    (unwind-protect
+        (with-current-buffer buf
+          (goto-char (point-min))
+          (let ((status (and (looking-at "HTTP/[0-9.]+ \\([0-9]+\\)")
+                             (string-to-number (match-string 1)))))
+            (re-search-forward "\r?\n\r?\n" nil 'move)
+            (let ((body (decode-coding-string (buffer-substring-no-properties (point) (point-max)) 'utf-8)))
+              (unless (and status (< status 300))
+                (user-error "vault-api %s %s: %s" (or status "?") path (string-trim body)))
+              (json-parse-string body :object-type 'alist :array-type 'list
+                                 :null-object nil :false-object nil))))
+      (kill-buffer buf))))
+
+(defun +sleep--save-vault-buffers ()
+  "Save the vault buffers with unsaved changes: the server is about to write files."
+  (save-some-buffers t (lambda () (and buffer-file-name
+                                       (file-in-directory-p buffer-file-name +endgame-vault-dir)))))
+
+(defun +sleep/clock-in ()
+  "Clock in sleep through vault-api (POST /sleep/in): tonight's Sleep heading.
+Every other open clock is closed by the server first; Emacs then re-reads
+the files and drops its own clock if it was one of them."
+  (interactive)
+  (+sleep--save-vault-buffers)
+  (let ((r (+sleep--api "/sleep/in")))
+    (+sleep--resync)
+    (message "%s"
+             (pcase (alist-get 'state r)
+               ("already" (format "Sleep: already clocked in (night %s)" (alist-get 'night r)))
+               (_ (concat (format "Sleep: clocked in (night %s)" (alist-get 'night r))
+                          (when-let ((closed (alist-get 'closed r)))
+                            (concat ", closed "
+                                    (mapconcat (lambda (c) (alist-get 'heading c)) closed ", ")))))))))
+
+(defun +sleep/clock-out ()
+  "Clock out of sleep through vault-api (POST /sleep/out)."
+  (interactive)
+  (+sleep--save-vault-buffers)
+  (let ((r (+sleep--api "/sleep/out")))
+    (+sleep--resync)
+    (message "%s"
+             (pcase (alist-get 'state r)
+               ("none" "Sleep: no sleep clock is open")
+               (_ (format "Sleep: clocked out, %s (night %s)"
+                          (org-duration-from-minutes (or (alist-get 'minutes r) 0))
+                          (alist-get 'night r)))))))
 
 (provide '+sleep)
 ;;; +sleep.el ends here

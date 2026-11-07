@@ -447,7 +447,9 @@ headings of the upcoming note with an active timestamp on that day."
           (org-with-wide-buffer
            (goto-char (point-min))
            (while (re-search-forward "^\\* " nil t)
-             (when (+endgame-today--entry-on abs)
+             ;; not a night's Sleep copy: it's no item to tick off
+             (when (and (not (org-entry-get nil "SLEEP_ID"))
+                        (+endgame-today--entry-on abs))
                (push (copy-marker (line-beginning-position)) out)))))))
     (nreverse out)))
 

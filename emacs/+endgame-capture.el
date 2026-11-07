@@ -493,6 +493,18 @@ day setup then makes the new day's own, so a fresh day had two."
        (when bodies (+endgame--append-to-do-list day bodies))
        (length bodies)))))
 
+(defun +endgame--sleep-source-buffer ()
+  "The buffer of the sleep source note (+sleep.el), or nil."
+  (ignore-errors (marker-buffer (+sleep--source))))
+
+(defun +endgame--sleep-ensure-night (date)
+  "`+sleep-ensure-night' for a new day DATE; a broken sleep source is
+reported, not fatal: the day is made anyway."
+  (condition-case err
+      (+sleep-ensure-night date)
+    (error (message "Sleep: no Sleep heading for %s: %s" date (error-message-string err))
+           nil)))
+
 (defvar +endgame--no-staging nil
   "Non-nil: day setup leaves the staging move to its caller.")
 
@@ -502,7 +514,13 @@ day setup then makes the new day's own, so a fresh day had two."
                 (while (and (org-current-level) (> (org-current-level) 1))
                   (org-up-heading-safe))
                 (and (org-at-heading-p) (point-marker))))
-         (fresh (and day (not (org-entry-get day "ID")))))
+         (fresh (and day (not (org-entry-get day "ID"))))
+         (others (lambda ()
+                   (seq-filter
+                    (lambda (b) (and b (not (eq b (marker-buffer day)))))
+                    (list (find-buffer-visiting +endgame-upcoming-file)
+                          (+endgame--sleep-source-buffer)))))
+         (dirty (and fresh (seq-filter #'buffer-modified-p (funcall others)))))
     (prog1 (apply fn args)
       (when (and fresh (org-entry-get day "ID"))
         (+endgame--merge-do-lists day))
@@ -510,14 +528,8 @@ day setup then makes the new day's own, so a fresh day had two."
         ;; the upcoming note (and the sleep source's :SKIP:) are saved (the
         ;; day is the buffer being written in): until then vault-api would
         ;; see the items in both places
-        (let* ((others (lambda ()
-                         (seq-filter
-                          (lambda (b) (and b (not (eq b (marker-buffer day)))))
-                          (list (find-buffer-visiting +endgame-upcoming-file)
-                                (ignore-errors (marker-buffer (+sleep--source)))))))
-               (dirty (seq-filter #'buffer-modified-p (funcall others)))
-               (n (+endgame-stage-into-day day)))
-          (+sleep-ensure-night (+endgame--date (org-with-point-at day (+habits--day-time))))
+        (let ((n (+endgame-stage-into-day day)))
+          (+endgame--sleep-ensure-night (+endgame--date (org-with-point-at day (+habits--day-time))))
           (dolist (b (funcall others))
             (unless (memq b dirty)
               (with-current-buffer b (when (buffer-modified-p) (save-buffer)))))
@@ -613,9 +625,10 @@ copy (`+sleep-ensure-night') after the staging move."
           (when sleep (+sleep-log-night night (nth 0 sleep) (nth 1 sleep)))
           (when morning (+sleep-put-morning night morning)))
         (let ((moved (+endgame-stage-into-day day)))
-          (when fresh (+sleep-ensure-night date))
-          ;; these two even when an earlier, failed call left them unsaved
-          (dolist (buf (list (marker-buffer day) (find-buffer-visiting +endgame-upcoming-file)))
+          (when fresh (+endgame--sleep-ensure-night date))
+          ;; these even when an earlier, failed call left them unsaved
+          (dolist (buf (list (marker-buffer day) (find-buffer-visiting +endgame-upcoming-file)
+                             (+endgame--sleep-source-buffer)))
             (when (and buf (buffer-modified-p buf))
               (with-current-buffer buf (save-buffer))))
           (setq result `((date . ,date)
@@ -770,11 +783,29 @@ or nil), sources (the SOURCES words), id. Never hardcoded: read from
               (+endgame--rg-files (format "^#\\+(?i:filetags):.*:%s:" (regexp-quote tag))
                                   (list +endgame-vault-dir))))
 
+(defun +endgame--prop-sources (key)
+  "(FILE . ID) of every journal heading with property KEY and an :ID:."
+  (let ((re (format "^[ \t]*:%s:[ \t]" (regexp-quote key)))
+        out)
+    (dolist (file (+endgame--rg-files (format "^\\s*:%s:\\s" (regexp-quote key))
+                                      (list (expand-file-name org-journal-dir))))
+      (with-current-buffer (org-get-agenda-file-buffer file)
+        (org-with-wide-buffer
+         (goto-char (point-min))
+         (while (re-search-forward re nil t)
+           (save-excursion
+             (when (ignore-errors (org-back-to-heading t) t)
+               (when-let ((id (and (org-entry-get nil key) (org-entry-get nil "ID"))))
+                 (push (cons file id) out))))))))
+    (nreverse out)))
+
 (defun +endgame-area-sources (area)
   "Where AREA's clocked time comes from: a list of (FILE . ID).
 ID is nil for a whole file. AREA is an area alist or its tag. From the
 SOURCES words: tag:X is every file with filetag X, file:P the file at P
-from the vault, id:U the subtree of that heading."
+from the vault, id:U the subtree of that heading, prop:KEY every heading
+in the journal that has property KEY (each by its :ID:; the Sleep
+headings with prop:SLEEP_ID)."
   (let ((area (if (stringp area) (+endgame--area area) area)))
     (delete-dups
      (cl-loop
@@ -785,6 +816,8 @@ from the vault, id:U the subtree of that heading."
               ((string-prefix-p "file:" src)
                (let ((f (expand-file-name (substring src 5) +endgame-vault-dir)))
                  (and (file-exists-p f) (list (list f)))))
+              ((string-prefix-p "prop:" src)
+               (+endgame--prop-sources (substring src 5)))
               ((string-prefix-p "id:" src)
                (let* ((id (substring src 3))
                       (f (org-id-find-id-file id)))
@@ -830,15 +863,18 @@ AREA is an area alist or its tag. Nil when the area has no sources."
 (defun +endgame-day-item-p (&optional pom)
   "Non-nil when the entry at POM is dated by its own timestamp, not SCHEDULED.
 A routine or session copy (its own :ROUTINE:), an appointment (APPT), or
-any entry with a plain active timestamp in a daily note or the upcoming note."
+any entry with a plain active timestamp in a daily note or the upcoming note.
+Not a night's Sleep copy: `+sleep-plan' retimes those."
   (org-with-point-at (or pom (point))
     (org-back-to-heading t)
-    (or (org-entry-get nil "ROUTINE")
-        (equal (org-get-todo-state) "APPT")
-        (and (+endgame-entry-stamp)
-             (buffer-file-name)
-             (or (file-in-directory-p (buffer-file-name) org-journal-dir)
-                 (file-equal-p (buffer-file-name) +endgame-upcoming-file))))))
+    ;; a night's Sleep copy is dated by its :NIGHT:: `+sleep-plan' moves it
+    (and (not (org-entry-get nil "SLEEP_ID"))
+         (or (org-entry-get nil "ROUTINE")
+             (equal (org-get-todo-state) "APPT")
+             (and (+endgame-entry-stamp)
+                  (buffer-file-name)
+                  (or (file-in-directory-p (buffer-file-name) org-journal-dir)
+                      (file-equal-p (buffer-file-name) +endgame-upcoming-file)))))))
 
 (defun +endgame--moved-stamp (stamp date &optional time end)
   "STAMP moved to DATE (\"YYYY-MM-DD\"), keeping its time and range.
