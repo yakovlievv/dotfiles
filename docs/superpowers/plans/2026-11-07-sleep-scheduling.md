@@ -116,7 +116,7 @@
 - Produces (all take an optional NOW, an Emacs time, for tests):
   - `(+sleep-clock-in-json &optional now)` → `{"state": "in"|"already", "night", "id", "closed": [{"file","heading"}], "files"}`. Night = `(+sleep-night-of-time now)`; ensures the day (no prompts) and the copy (`+sleep-plan` even when skipped: clocking in means sleeping); closes every open CLOCK line in the vault at NOW first (rg `^\s*CLOCK: \[[^]]*\]\s*$` over `+endgame-vault-dir`, archives excluded); `already` when the copy itself has the open clock.
   - `(+sleep-clock-out-json &optional now)` → `{"state": "out"|"none", "night", "id", "minutes", "files"}`; closes the open clock on the most recent copy that has one.
-  - `(+sleep-next-json &optional now)` → `{"night", "bed", "wake"}` with local `"YYYY-MM-DD HH:MM"` or `bed`/`wake` null. Rule: for N in (night(now)-1, night(now)): plan(N) = the copy's stamp, else the source projected unless skipped. Return N = night(now)-1 if its wake > now; otherwise night(now) (nulls when skipped without copy).
+  - `(+sleep-next-json &optional now)` → `{"night", "bed", "wake", "clockedIn"}` with local `"YYYY-MM-DD HH:MM"` or `bed`/`wake` null; `clockedIn` true when some Sleep copy has an open clock. Rule: for N in (night(now)-1, night(now)): plan(N) = the copy's stamp, else the source projected unless skipped. Return N = night(now)-1 if its wake > now; otherwise night(now) (nulls when skipped without copy).
 
 - [ ] **Step 1: Write failing tests**:
   - `sleep-clock-in-after-midnight`: day 2031-01-07 exists, now 2031-01-08 00:30 → `state` `"in"`, `night` `"2031-01-07"`, open `CLOCK: [2031-01-08 Wed 00:30]` on that night's copy.
@@ -128,6 +128,7 @@
   - `sleep-next-after-wake`: now 2031-01-08 10:00 → `night` `"2031-01-08"`, `wake` `"2031-01-09 09:00"`.
   - `sleep-next-skipped`: SKIP 2031-01-09, no copy, now 2031-01-08 10:00 → `night` `"2031-01-08"`, `bed`/`wake` null.
   - `sleep-next-moved`: SKIP 2031-01-09 + copy for night 01-08 at `07:00-10:00` → `wake` `"2031-01-09 10:00"`.
+  - `sleep-next-clocked-in`: after clock-in → `clockedIn` true; after clock-out → false.
 - [ ] **Step 2: Run.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** all elisp tests. Expected: PASS.
@@ -193,7 +194,30 @@
 - [ ] **Step 4: Run** `npm run typecheck && npm test`. Expected: PASS.
 - [ ] **Step 5: Commit, merge, push**; restart `vault-caldav`; check that the Sleep calendar appears on the phone.
 
-### Task 7: Home Assistant + iPhone, end to end
+### Task 7: org-iphone — sleep actions, Shortcuts and a Sleep card
+
+**Files:**
+- Create: `Shared/SleepIntents.swift`, `App/SleepCard.swift`
+- Modify: `Shared/APIClient.swift` (sleep calls), the Agenda tab's today section (show the card), `README.md` (features list)
+- Test: `Tests/SleepTests.swift`
+
+**Interfaces:**
+- Consumes: `POST /sleep/in`, `POST /sleep/out`, `GET /sleep/next` (Task 5).
+- Produces:
+  - `APIClient.sleepIn() / sleepOut() async throws -> SleepClockResult` (`state`, `night`, `minutes?`) and `sleepNext() async throws -> SleepNext` (`night`, `bed: String?`, `wake: String?`, `clockedIn: Bool`)
+  - `ClockInSleepIntent: AppIntent`, title "Go to sleep", `openAppWhenRun = false`, dialog "Clocked in. Wake <wake>" / "Already clocked in"
+  - `ClockOutSleepIntent: AppIntent`, title "Wake up", parameter `askFirst: Bool` (default false): when true, `requestConfirmation` with "Are you awake?" before calling; result dialog "Slept H:MM" / "No sleep clock running"
+  - `SleepShortcuts: AppShortcutsProvider` exposing both ("Go to sleep in Agenda", "I'm awake in Agenda"), so they appear in Shortcuts, Siri and as Action button / lock-screen choices
+  - `SleepCard`: on today, tonight's planned bed–wake (or "No alarm tonight" when null) and one button, Clock in or Clock out depending on `clockedIn`
+- iPhone setup (Vlad, steps in the vault note): home-screen/lock-screen "Go to sleep" from the app's actions; automation "When charger is disconnected" → run immediately → "Wake up" with `askFirst` on.
+
+- [ ] **Step 1: Write failing tests**: decoding `SleepNext` with null `bed`/`wake`; the card's label is "No alarm tonight" for null wake and "01:00–09:00" otherwise; button title follows `clockedIn`; `SleepClockResult` dialog text for `in`, `already`, `out` (495 min → "Slept 8:15"), `none`.
+- [ ] **Step 2: Run** the app's test scheme (the README's test command). Expected: FAIL.
+- [ ] **Step 3: Implement**, reusing `CompleteTaskIntent`'s pattern for the shared API client and app group.
+- [ ] **Step 4: Run** tests. Expected: PASS. Build and install on the phone; "Go to sleep" and "Wake up" show up in the Shortcuts app.
+- [ ] **Step 5: Commit, merge to main, push** org-iphone.
+
+### Task 8: Home Assistant + iPhone, end to end
 
 **Files:**
 - Modify: `~/smarthome/homeassistant/configuration.yaml` (back it up first as `configuration.yaml.bak-20261107-sleep`), `automations.yaml` (back up likewise)
@@ -209,14 +233,14 @@
   - `Sleep in` (webhook `sleep_in`): bedside lamp off
   - notifications to `notify.proxima`: 21:00 "No alarm tomorrow" when `alarm_on` is off; 12:00 "Sleep clock still open" when the last `sleep_in` webhook has no `sleep_out` after it
   - `VAULT_HA_WEBHOOK_URL=http://127.0.0.1:8123/api/webhook` in `~/.config/vault-mcp/env`
-- iPhone (Vlad sets up, steps written into the vault note): Shortcut "Sleep" → POST `/sleep/in` (Get Contents of URL, tailnet URL, bearer header) on the home screen; automation "When charger is disconnected" → Choose from Menu "Are you awake?" → Yes → POST `/sleep/out`.
+- iPhone: the Task 7 actions, set up as Task 7 says.
 
 - [ ] **Step 1:** Back up both files, add the config, `docker compose restart homeassistant`, and check Settings → System → Logs shows no config errors.
 - [ ] **Step 2: Live check:** `sensor.sleep_next` shows tonight; `wake_time` matches; drag tonight's Sleep in the calendar → within 5 min `wake_time` follows; skip tomorrow → `alarm_on` off.
-- [ ] **Step 3: Live check:** `curl -X POST …/sleep/in` → lamp off and the copy has an open clock; `…/sleep/out` → closed. `SPC j z` / `SPC j Z` from the Mac do the same.
+- [ ] **Step 3: Live check:** "Go to sleep" from the phone → lamp off, the copy has an open clock, the Sleep card shows Clock out; unplug the charger → "Are you awake?" → yes → clock closed. `SPC j z` / `SPC j Z` from the Mac do the same.
 - [ ] **Step 4:** Update the vault notes "home assistant" and "current sleep setup" (helpers, automations, read-only sliders). Commit by the baseline.
 
-### Task 8: Docs and ticket
+### Task 9: Docs and ticket
 
 **Files:**
 - Modify: `emacs/OVERVIEW.md` (Org-journal section: drop set-sleep, add +sleep), `doom-config.org` prose for the module, vault notes "journaling system" (day making, morning log on Sleep, switch date 2026-11-07), Daily note in "the system", "sleep scheduling" (Status: built; iPhone setup steps; delete "What gets built"), "sleep optimization system" (Sleep log component → Sleep copies)
