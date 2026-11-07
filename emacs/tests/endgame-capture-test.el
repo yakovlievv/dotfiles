@@ -47,6 +47,7 @@
   (eval (car (read-from-string (concat "(progn " code "\n)"))) t))
 (require 'org-journal)
 (load (expand-file-name "../+endgame-capture.el" (file-name-directory (or load-file-name buffer-file-name))) nil t)
+(load (expand-file-name "../+sleep.el" (file-name-directory (or load-file-name buffer-file-name))) nil t)
 
 (defvar +endgame-test-dir nil)
 
@@ -66,8 +67,17 @@
 (defconst +endgame-test-future "2031-01-08"
   "A Wednesday far enough ahead to stay in the future.")
 
+(defconst +endgame-test-sleep-source
+  (concat "#+title: sleep optimization system\n\n"
+          "* Components\n"
+          "** Sleep schedule\n:PROPERTIES:\n:ID:       src-sleep\n:END:\n"
+          "<2031-01-01 Wed 01:00-09:00 +1d>\nThe default night.\n"
+          "** Tools\n")
+  "The sleep system note, with the default night (`+sleep-source-id').")
+
 (defmacro +endgame-test--with-vault (&rest body)
-  "Run BODY in a fresh vault: areas, upcoming, life, inbox, habits, routines, journal."
+  "Run BODY in a fresh vault: areas, upcoming, life, inbox, habits, routines,
+journal, the sleep system note. The day ends at 05:00, as in the config."
   (declare (indent 0))
   `(let* ((+endgame-test-dir (file-name-as-directory (make-temp-file "endgame-test" t)))
           (+endgame-vault-dir +endgame-test-dir)
@@ -88,6 +98,8 @@
           (org-journal-hide-entries-p nil)
           (org-agenda-files (list (expand-file-name "roam/inbox.org" +endgame-test-dir)))
           (org-capture-templates nil)
+          (org-extend-today-until 5)
+          (+sleep-source-id "src-sleep")
           (+endgame--areas-cache nil)
           (+endgame-areas-file
            (+endgame-test--file
@@ -116,6 +128,7 @@
                     "* Session routine\n- [ ] Start\n  - [ ] Clock in\n- [ ] During\n- [ ] End\n"
                     "* Weekly reset routine\n*Trigger*: on saturday or sunday\n- [ ] do the laundry\n"))))
      (make-directory org-journal-dir t)
+     (+endgame-test--file "roam/sleep_system.org" +endgame-test-sleep-source)
      (+endgame-test--file
       "roam/curriculum.org"
       (concat "#+title: curriculum\n\n* CS\n:LOGBOOK:\n"
@@ -347,25 +360,29 @@
 
 
 (ert-deftest +endgame-day-ensure-writes-the-phones-answers ()
-  ;; the phone asked the sleep and morning questions itself
+  ;; the phone asked the last-night and morning questions itself: both go
+  ;; on last night's Sleep heading (night 01-07, no day note: in upcoming)
   (+endgame-test--with-vault
     (let ((json (+endgame-day-ensure +endgame-test-future
-                                     '("2031-01-07 23:30" "2031-01-08 7:10")
-                                     '(3 7 "8" "  slept ok  "))))
+                                     '("2031-01-07 23:30" "2031-01-08 07:10")
+                                     '(3 7 "6" "  ok  "))))
       (should (equal (alist-get 'created (json-parse-string json :object-type 'alist)) t))
-      (let ((day (+endgame--day-marker +endgame-test-future)))
-        (should (equal (org-entry-get day "SLEEP_TIME") "[2031-01-07 Tue 23:30]--[2031-01-08 Wed 07:10]"))
-        (should (equal (org-entry-get day "MORNING_HEADACHE") "3"))
-        (should (equal (org-entry-get day "MORNING_FRESHNESS") "7"))
-        (should (equal (org-entry-get day "MORNING_MOOD") "8"))
-        (should (equal (org-entry-get day "MORNING_NOTES") "slept ok"))
+      (let ((night (+sleep-copy "2031-01-07"))
+            (day (+endgame--day-marker +endgame-test-future)))
+        (should (string-match-p "CLOCK: \\[2031-01-07 Tue 23:30\\]--\\[2031-01-08 Wed 07:10\\] =>  7:40"
+                                (+endgame-test--read (buffer-file-name (marker-buffer night)))))
+        (should (equal (org-entry-get night "MORNING_HEADACHE") "3"))
+        (should (equal (org-entry-get night "MORNING_FRESHNESS") "7"))
+        (should (equal (org-entry-get night "MORNING_MOOD") "6"))
+        (should-not (org-entry-get night "MORNING_NOTES"))
+        (should (string-match-p "\nok\n" (+endgame-test--read (buffer-file-name (marker-buffer night)))))
+        (should-not (org-entry-get day "SLEEP_TIME"))
+        (should-not (org-entry-get day "MORNING_MOOD"))
+        (should-not (buffer-modified-p (marker-buffer night)))
         (should-not (buffer-modified-p (marker-buffer day)))))
-    ;; an existing day: only the morning, sleep left as it was, no notes
+    ;; an existing day: only the morning
     (+endgame-day-ensure +endgame-test-future nil '(5 5 5 ""))
-    (let ((day (+endgame--day-marker +endgame-test-future)))
-      (should (equal (org-entry-get day "MORNING_MOOD") "5"))
-      (should (equal (org-entry-get day "MORNING_NOTES") "slept ok"))
-      (should (string-prefix-p "[2031-01-07" (org-entry-get day "SLEEP_TIME"))))
+    (should (equal (org-entry-get (+sleep-copy "2031-01-07") "MORNING_MOOD") "5"))
     ;; bad answers are refused
     (should-error (+endgame-day-ensure +endgame-test-future nil '(0 5 5 nil)))
     (should-error (+endgame-day-ensure +endgame-test-future '("2031-01-08 9:00" "2031-01-08 7:00") nil))))

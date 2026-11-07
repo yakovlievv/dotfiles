@@ -1,35 +1,25 @@
 ;;; sleep-test.el --- tests for +sleep.el -*- lexical-binding: t; -*-
 ;;
 ;; Runs without Doom, in a throwaway vault, on the harness of
-;; endgame-capture-test.el (the config blocks, `+endgame-capture.el', the
-;; vault macro); its own tests are unbound here so they run once, there.
+;; endgame-capture-test.el (the config blocks, `+endgame-capture.el',
+;; `+sleep.el', the vault macro with the sleep system note); its own tests
+;; are unbound here so they run once, there.
 ;;
 ;; emacs -Q --batch -L ~/.config/emacs/.local/straight/build-31.1/org \
 ;;   -L ~/.config/emacs/.local/straight/build-31.1/org-journal \
 ;;   -l ~/dotfiles/emacs/tests/sleep-test.el -f ert-run-tests-batch-and-exit
 
-(let ((dir (file-name-directory (or load-file-name buffer-file-name))))
-  (load (expand-file-name "endgame-capture-test.el" dir) nil t)
-  (dolist (test (ert-select-tests t t))
-    (ert-make-test-unbound (ert-test-name test)))
-  (load (expand-file-name "../+sleep.el" dir) nil t))
-
-(defconst +sleep-test-source
-  (concat "#+title: sleep optimization system\n\n"
-          "* Components\n"
-          "** Sleep schedule\n:PROPERTIES:\n:ID:       src-sleep\n:END:\n"
-          "<2031-01-01 Wed 01:00-09:00 +1d>\nThe default night.\n"
-          "** Tools\n")
-  "The sleep system note, with the default night.")
+;; that file loads +endgame-capture.el and +sleep.el
+(load (expand-file-name "endgame-capture-test.el"
+                        (file-name-directory (or load-file-name buffer-file-name)))
+      nil t)
+(dolist (test (ert-select-tests t t))
+  (ert-make-test-unbound (ert-test-name test)))
 
 (defmacro +sleep-test--with-vault (&rest body)
-  "Run BODY in `+endgame-test--with-vault' plus the sleep system note."
+  "Run BODY in `+endgame-test--with-vault' (it has the sleep system note)."
   (declare (indent 0))
-  `(+endgame-test--with-vault
-     (let ((org-extend-today-until 5)
-           (+sleep-source-id "src-sleep"))
-       (+endgame-test--file "roam/sleep_system.org" +sleep-test-source)
-       ,@body)))
+  `(+endgame-test--with-vault ,@body))
 
 (defun +sleep-test--day (date &optional body)
   "Write a set-up journal day for DATE (its week file) with BODY under it."
@@ -88,13 +78,13 @@
       (should (org-entry-get m "CALDAV_UID"))
       (should (org-entry-get m "ID"))
       (should (string-match-p "^<2031-01-08 Wed 01:00-09:00>$" text))
-      ;; a child of the day, after its last child, not in the DO list
+      ;; a child of the day, right after its DO list, not in it
       (org-with-point-at m
         (should (= (org-current-level) 2))
         (save-excursion
           (org-up-heading-safe)
           (should (string-match-p "2031-01-07" (org-get-heading t t t t)))))
-      (should (string-match-p "\\*\\* 10:00\nprose\n\\*\\* Sleep\n"
+      (should (string-match-p "\\*\\*\\* TODO something\n\\*\\* Sleep\n\\(?:.*\n\\)*?\\*\\* 10:00\nprose\n\\'"
                               (+endgame-test--read (buffer-file-name (marker-buffer m)))))
       (should (equal (+sleep-test--source-prop "SKIP") "2031-01-08"))
       (should (+sleep-skipped-p "2031-01-07")))))
@@ -138,5 +128,135 @@
       (should (string-match-p "^<2031-01-07 Tue 07:00-10:00>$"
                               (+endgame-test--read +endgame-upcoming-file)))
       (should-not (buffer-modified-p (find-buffer-visiting +endgame-upcoming-file))))))
+
+(ert-deftest sleep-plan-review-fixes ()
+  (+sleep-test--with-vault
+    ;; the source note changed on disk under an open buffer: re-read, not clobbered
+    (let ((file (expand-file-name "roam/sleep_system.org" +endgame-test-dir)))
+      (find-file-noselect file)
+      (with-temp-file file
+        (insert (replace-regexp-in-string ":ID:       src-sleep\n"
+                                          ":ID:       src-sleep\n:SKIP:     2031-01-20\n"
+                                          +endgame-test-sleep-source t t)))
+      (set-file-times file (time-add nil 10))
+      (+sleep-plan "2031-01-07")
+      (should (equal (+sleep-test--source-prop "SKIP") "2031-01-08 2031-01-20")))
+    ;; END alone retimes; times are padded and checked
+    (let ((m (+sleep-plan "2031-01-07" nil "9:30")))
+      (should (string-match-p "^<2031-01-08 Wed 01:00-09:30>$" (+sleep-test--entry m))))
+    (should-error (+sleep-plan "2031-01-07" "25:00" "09:00"))
+    (should-error (+sleep-plan "2031-1-7"))))
+
+;;; Task 2: day making, staging, last night, the morning
+
+(defun +sleep-test--sleep-children (date)
+  "How many Sleep headings day DATE's subtree has."
+  (let ((day (+endgame--day-marker date)))
+    (with-current-buffer (marker-buffer day)
+      (org-with-wide-buffer
+       (goto-char day)
+       (count-matches "^\\*\\* Sleep$" (point) (save-excursion (org-end-of-subtree t t) (point)))))))
+
+(ert-deftest sleep-staged-copy-moves-by-night ()
+  (+sleep-test--with-vault
+    (let ((id (org-entry-get (+sleep-plan "2031-01-07") "ID")))
+      (should (string-match-p "<2031-01-08 Wed 01:00-09:00>" (+endgame-test--read +endgame-upcoming-file)))
+      ;; its stamp is on 01-08, but it is night 01-07's
+      (+endgame-day-ensure "2031-01-08")
+      (should (string-match-p id (+endgame-test--read +endgame-upcoming-file)))
+      (should-not (equal (org-entry-get (+sleep-copy "2031-01-08") "ID") id))
+      (let ((out (json-parse-string (+endgame-day-ensure "2031-01-07") :object-type 'alist)))
+        (should (= (alist-get 'moved out) 1)))
+      (should-not (string-match-p id (+endgame-test--read +endgame-upcoming-file)))
+      (let ((m (+sleep-copy "2031-01-07")))
+        (should (equal (org-entry-get m "ID") id))
+        (org-with-point-at m
+          (should (= (org-current-level) 2))
+          (save-excursion
+            (org-up-heading-safe)
+            (should (string-match-p "2031-01-07" (org-get-heading t t t t))))))
+      (should (= 1 (+sleep-test--sleep-children "2031-01-07")))
+      (should (= 1 (+sleep-test--sleep-children "2031-01-08")))
+      (should-not (string-match-p "^\\*\\*\\* Sleep"
+                                  (+endgame-test--read (buffer-file-name (marker-buffer (+sleep-copy "2031-01-07")))))))))
+
+(ert-deftest sleep-day-creation-copies-default ()
+  (+sleep-test--with-vault
+    (+endgame-day-ensure "2031-01-07")
+    (should (= 1 (+sleep-test--sleep-children "2031-01-07")))
+    (should (string-match-p "^<2031-01-08 Wed 01:00-09:00>$" (+sleep-test--entry (+sleep-copy "2031-01-07"))))
+    (should (equal (+sleep-test--source-prop "SKIP") "2031-01-08"))
+    (+endgame-day-ensure "2031-01-07")
+    (should (= 1 (+sleep-test--sleep-children "2031-01-07")))
+    ;; everything saved
+    (should-not (buffer-modified-p (marker-buffer (+sleep--source))))
+    (should-not (buffer-modified-p (marker-buffer (+sleep-copy "2031-01-07"))))))
+
+(ert-deftest sleep-day-creation-skipped-night ()
+  (+sleep-test--with-vault
+    (org-with-point-at (+sleep--source) (+repeat-skip-add "2031-01-08"))
+    (should (+sleep-skipped-p "2031-01-07"))
+    (should-not (+sleep-ensure-night "2031-01-07"))
+    (+endgame-day-ensure "2031-01-07")
+    (should (= 0 (+sleep-test--sleep-children "2031-01-07")))
+    (should-not (+sleep-copy "2031-01-07"))))
+
+(ert-deftest sleep-log-night-writes-clock ()
+  (+sleep-test--with-vault
+    (should-not (+sleep-night-logged-p "2031-01-07"))
+    (+sleep-log-night "2031-01-07" "2031-01-07 23:30" "2031-01-08 07:10")
+    (let ((text (+sleep-test--entry (+sleep-copy "2031-01-07"))))
+      (should (string-match-p (concat ":LOGBOOK:\nCLOCK: \\[2031-01-07 Tue 23:30\\]--\\[2031-01-08 Wed 07:10\\] =>  7:40\n:END:\n")
+                              text))
+      ;; the planned stamp is still the entry's
+      (should (string-match-p "^<2031-01-08 Wed 01:00-09:00>$" text)))
+    (should (+sleep-night-logged-p "2031-01-07"))
+    (should-not (+sleep-night-logged-p "2031-01-06"))
+    (should-not (string-match-p "SLEEP_TIME" (+endgame-test--read +endgame-upcoming-file)))
+    (should-error (+sleep-log-night "2031-01-07" "2031-01-08 09:00" "2031-01-08 07:00"))))
+
+(ert-deftest sleep-put-morning ()
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (+sleep-put-morning "2031-01-07" '(3 "7" 6 "  slept ok  "))
+    (let ((m (+sleep-copy "2031-01-07")))
+      (should (equal (org-entry-get m "MORNING_HEADACHE") "3"))
+      (should (equal (org-entry-get m "MORNING_FRESHNESS") "7"))
+      (should (equal (org-entry-get m "MORNING_MOOD") "6"))
+      (should-not (org-entry-get m "MORNING_NOTES"))
+      (should (string-match-p ">\nslept ok\n\\'" (+sleep-test--entry m))))
+    (should-error (+sleep-put-morning "2031-01-07" '(5 11 5 nil)))
+    (should (equal (org-entry-get (+sleep-copy "2031-01-07") "MORNING_FRESHNESS") "7"))))
+
+(ert-deftest sleep-day-init-asks-last-night-only-when-not-logged ()
+  (+sleep-test--with-vault
+    (let (asked)
+      (add-hook 'org-journal-after-entry-create-hook #'+org-journal-init-day)
+      (unwind-protect
+          (+endgame-test--answering (list "23:30" "7:10" "3" "7" "6" "fine")
+            (cl-letf (((symbol-function 'y-or-n-p) (lambda (p) (push p asked) t)))
+              (save-window-excursion
+                (org-journal-new-entry nil (+endgame--date-time "2031-01-08")))))
+        (remove-hook 'org-journal-after-entry-create-hook #'+org-journal-init-day))
+      (should (equal (reverse asked) '("Log last night? " "Log morning? ")))
+      (let ((text (+sleep-test--entry (+sleep-copy "2031-01-07"))))
+        (should (string-match-p "CLOCK: \\[2031-01-07 Tue 23:30\\]--\\[2031-01-08 Wed 07:10\\] =>  7:40" text))
+        (should (string-match-p ":MORNING_MOOD: +6" text))
+        (should (string-match-p "\nfine\n" text)))
+      ;; the new day has its own night
+      (should (= 1 (+sleep-test--sleep-children "2031-01-08")))
+      ;; a bed time after midnight is on the next date
+      (should (equal (+endgame-test--answering (list "1:15" "9:00")
+                       (+sleep--read-night "2031-01-08"))
+                     '("2031-01-09 01:15" "2031-01-09 09:00"))))
+    ;; last night logged: only the morning is asked
+    (let (asked)
+      (+sleep-log-night "2031-01-12" "2031-01-13 01:00" "2031-01-13 08:00")
+      ;; the next week: in tests org-journal leaves a blank time entry
+      ;; ("** ") at the end of a future day, and glues the next day's
+      ;; heading onto it
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (p) (push p asked) nil)))
+        (+endgame--create-day (+endgame--date-time "2031-01-13") t))
+      (should (equal asked '("Log morning? "))))))
 
 ;;; sleep-test.el ends here

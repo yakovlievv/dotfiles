@@ -12,8 +12,9 @@
 ;; - SPC j s: a session, the session routine with an area and a time range,
 ;;   into its day's DO list, or into the upcoming note for a future day
 ;; - `+endgame-day-ensure': creates any day without asking anything, then
-;;   moves that day's staged items from upcoming into its DO list. Making a
-;;   day by hand (`+org-journal-init-day') does the same move
+;;   moves that day's staged items from upcoming into its DO list and gives
+;;   it its night's Sleep heading (`+sleep-ensure-night', +sleep.el).
+;;   Making a day by hand (`+org-journal-init-day') does the same
 ;; - the areas registry (`+endgame-areas'), a clocktable per area from its
 ;;   SOURCES (dynamic block `endgame-areas') and planned vs clocked minutes
 ;;
@@ -43,6 +44,11 @@
 (declare-function +routines--copy "config")
 (declare-function +routines--names "config")
 (declare-function +org-journal-init-day "config")
+(declare-function +sleep--source "+sleep")
+(declare-function +sleep--add-days "+sleep")
+(declare-function +sleep-ensure-night "+sleep")
+(declare-function +sleep-log-night "+sleep")
+(declare-function +sleep-put-morning "+sleep")
 
 ;;; Where things live
 
@@ -390,6 +396,24 @@ Each text is shifted to sit under the DO list; the cookies are updated."
          (org-update-statistics-cookies nil)
          (set-marker do-list nil))))))
 
+(defun +endgame--append-to-day (day texts)
+  "Insert TEXTS (org subtrees, any level) as children of the journal DAY (a marker).
+They go right after the day's DO list, or last when it has none: next to
+the DO list, never inside it (a night's Sleep heading)."
+  (with-current-buffer (marker-buffer day)
+    (org-with-wide-buffer
+     (goto-char day)
+     (let* ((level (org-current-level))
+            (end (save-excursion (org-end-of-subtree t t) (point))))
+       (if (re-search-forward (format "^\\*\\{%d\\} DO list\\b" (1+ level)) end t)
+           (org-end-of-subtree t t)
+         (goto-char end))
+       (unless (bolp) (insert "\n"))
+       (dolist (text texts)
+         (insert (string-trim-right
+                  (+habits--shift-levels text (- (1+ level) (+endgame--text-level text))))
+                 "\n"))))))
+
 (defun +endgame--append-to-upcoming (text)
   "Append TEXT as a top-level heading at the end of the upcoming note."
   (with-current-buffer (+endgame--buffer +endgame-upcoming-file)
@@ -416,29 +440,36 @@ else its SCHEDULED day (a weekly reset copy), else nil."
 DAY is a marker at a journal day heading. An item is a top-level heading
 of the upcoming note whose first plain active timestamp (or, without
 one, its SCHEDULED) falls on that day; it keeps its whole subtree, properties and :CALDAV_UID: included,
-and is deleted from the upcoming note. Returns how many moved."
+and is deleted from the upcoming note. A night's Sleep copy (:SLEEP_ID:)
+is matched by its :NIGHT: instead, since its times are on the next
+morning, and becomes a child of the day, not a DO list item. Returns how
+many moved."
   (let ((date (with-current-buffer (marker-buffer day)
                 (org-with-wide-buffer
                  (goto-char day)
                  (+endgame--date (+habits--day-time)))))
-        texts)
+        texts sleep)
     (when (file-exists-p +endgame-upcoming-file)
       (with-current-buffer (+endgame--buffer +endgame-upcoming-file)
         (org-with-wide-buffer
          (let (regions)
            (goto-char (point-min))
            (while (re-search-forward "^\\* " nil t)
-             (let ((beg (line-beginning-position)))
-               (when (equal (+endgame--entry-date beg) date)
-                 (push (cons beg (save-excursion (goto-char beg) (org-end-of-subtree t t) (point)))
+             (let* ((beg (line-beginning-position))
+                    (night (and (org-entry-get beg "SLEEP_ID") (org-entry-get beg "NIGHT"))))
+               (when (equal (or night (+endgame--entry-date beg)) date)
+                 (push (list beg (save-excursion (goto-char beg) (org-end-of-subtree t t) (point)) night)
                        regions))))
            ;; bottom first, so the earlier regions stay where they are
-           (dolist (r regions)
-             (push (buffer-substring-no-properties (car r) (cdr r)) texts)
-             (delete-region (car r) (cdr r))))))
+           (pcase-dolist (`(,beg ,end ,night) regions)
+             (let ((text (buffer-substring-no-properties beg end)))
+               (if night (push text sleep) (push text texts)))
+             (delete-region beg end)))))
       (when texts
-        (+endgame--append-to-do-list day texts)))
-    (length texts)))
+        (+endgame--append-to-do-list day texts))
+      (when sleep
+        (+endgame--append-to-day day sleep)))
+    (+ (length texts) (length sleep))))
 
 (defun +endgame--merge-do-lists (day)
   "Fold DAY's extra DO lists into its first one. Returns how many went.
@@ -476,14 +507,21 @@ day setup then makes the new day's own, so a fresh day had two."
       (when (and fresh (org-entry-get day "ID"))
         (+endgame--merge-do-lists day))
       (when (and fresh (not +endgame--no-staging) (org-entry-get day "ID"))
-        ;; the upcoming note is saved (the day is the buffer being written
-        ;; in): until then vault-api would see the items in both places
-        (let* ((up (find-buffer-visiting +endgame-upcoming-file))
-               (dirty (and up (buffer-modified-p up)))
+        ;; the upcoming note (and the sleep source's :SKIP:) are saved (the
+        ;; day is the buffer being written in): until then vault-api would
+        ;; see the items in both places
+        (let* ((others (lambda ()
+                         (seq-filter
+                          (lambda (b) (and b (not (eq b (marker-buffer day)))))
+                          (list (find-buffer-visiting +endgame-upcoming-file)
+                                (ignore-errors (marker-buffer (+sleep--source)))))))
+               (dirty (seq-filter #'buffer-modified-p (funcall others)))
                (n (+endgame-stage-into-day day)))
+          (+sleep-ensure-night (+endgame--date (org-with-point-at day (+habits--day-time))))
+          (dolist (b (funcall others))
+            (unless (memq b dirty)
+              (with-current-buffer b (when (buffer-modified-p) (save-buffer)))))
           (when (> n 0)
-            (unless dirty
-              (with-current-buffer (find-buffer-visiting +endgame-upcoming-file) (save-buffer)))
             (message "Moved %d item%s from upcoming into the day" n (if (= n 1) "" "s"))))))))
 
 (advice-add '+org-journal-init-day :around #'+endgame--init-day-a)
@@ -507,7 +545,8 @@ The same path as making a day by hand: `org-journal-new-entry' writes the
 week file header, the day heading and the carryover, then
 `+org-journal-init-day' adds the ID, :daily:, the clocktable, the DO list
 and the habits due (and, through `+endgame--init-day-a', the staging
-move). Without ASK the sleep and morning prompts are answered no. Only
+move and the night's Sleep copy). Without ASK the last-night and morning
+prompts are answered no. Only
 org's today carries open TODOs over, so making a future day never takes
 today's. A day heading that exists without an ID is set up in place."
   (require 'org-journal)
@@ -542,32 +581,6 @@ today's. A day heading that exists without an ID is set up in place."
         day
       (+endgame--create-day (+endgame--date-time date) ask))))
 
-(defun +endgame--put-sleep (day sleep)
-  "Set :SLEEP_TIME: on DAY (a marker) from SLEEP, a list (BED WAKE).
-BED and WAKE are read like the bed and wake prompts of
-`+org-journal/set-sleep' read them (\"2026-11-04 23:30\", \"7:10\"), and
-stored the same way: an inactive range [bed]--[wake]."
-  (let ((fmt (org-time-stamp-format t t))
-        (bed (org-read-date t t (nth 0 sleep)))
-        (wake (org-read-date t t (nth 1 sleep))))
-    (unless (time-less-p bed wake)
-      (error "Bed time %s isn't before wake time %s" (nth 0 sleep) (nth 1 sleep)))
-    (org-entry-put day "SLEEP_TIME" (format "%s--%s" (format-time-string fmt bed) (format-time-string fmt wake)))))
-
-(defun +endgame--put-morning (day morning)
-  "Set the morning log on DAY (a marker) from MORNING, a list (HEADACHE FRESHNESS MOOD NOTES).
-The same properties as `+org-journal/set-morning-log': scores 1-10,
-:MORNING_NOTES: only when NOTES isn't empty."
-  (cl-loop for score in (seq-take morning 3)
-           for prop in '("MORNING_HEADACHE" "MORNING_FRESHNESS" "MORNING_MOOD")
-           do (let ((n (if (stringp score) (string-to-number score) score)))
-                (unless (and (integerp n) (<= 1 n 10))
-                  (error "%s must be 1-10, not %S" prop score))
-                (org-entry-put day prop (number-to-string n))))
-  (let ((notes (string-trim (or (nth 3 morning) ""))))
-    (unless (string-empty-p notes)
-      (org-entry-put day "MORNING_NOTES" notes))))
-
 (defun +endgame-day-ensure (&optional date sleep morning)
   "Make DATE's day exist, then move its staged items into it. JSON.
 DATE is \"YYYY-MM-DD\", nil for org's today. Creates the day heading in
@@ -579,10 +592,13 @@ file is the week file (absolute), files every file it saved, relative
 to the vault.
 
 SLEEP and MORNING are the answers to the two questions making a day by
-hand asks (\"Log last night's sleep?\", \"Log morning?\"), for a client
-that asked them itself: SLEEP is (BED WAKE), see `+endgame--put-sleep',
-MORNING is (HEADACHE FRESHNESS MOOD NOTES), see `+endgame--put-morning'.
-Nil leaves that log alone. They're written to an existing day too."
+hand asks (\"Log last night?\", \"Log morning?\"), for a client that
+asked them itself. Both go on last night's Sleep heading (the night of
+the day before DATE), made when missing: SLEEP is (BED WAKE), a closed
+CLOCK line (`+sleep-log-night'), MORNING is (HEADACHE FRESHNESS MOOD
+NOTES) (`+sleep-put-morning'). Nil leaves that log alone. They're
+written for an existing day too. A new day gets its own night's Sleep
+copy (`+sleep-ensure-night') after the staging move."
   (let ((inhibit-interaction t)
         (date (or date (+endgame--today)))
         (+endgame--saved nil)
@@ -593,9 +609,11 @@ Nil leaves that log alone. They're written to an existing day too."
         (when fresh
           (let ((+endgame--no-staging t))
             (setq day (+endgame--create-day (+endgame--date-time date)))))
-        (when sleep (+endgame--put-sleep day sleep))
-        (when morning (+endgame--put-morning day morning))
+        (let ((night (+sleep--add-days date -1)))
+          (when sleep (+sleep-log-night night (nth 0 sleep) (nth 1 sleep)))
+          (when morning (+sleep-put-morning night morning)))
         (let ((moved (+endgame-stage-into-day day)))
+          (when fresh (+sleep-ensure-night date))
           ;; these two even when an earlier, failed call left them unsaved
           (dolist (buf (list (marker-buffer day) (find-buffer-visiting +endgame-upcoming-file)))
             (when (and buf (buffer-modified-p buf))
