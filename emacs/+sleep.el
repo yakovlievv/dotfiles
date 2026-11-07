@@ -682,7 +682,7 @@ ahead, else NOW's night. clockedIn: some Sleep copy has an open clock."
 ;; (`/sleep/in' closes every open clock), Emacs forgets it instead of
 ;; closing it a second time.
 
-(defvar +sleep-api-url "http://server:8788"
+(defvar +sleep-api-url "https://server.tail1e29bb.ts.net:8443"
   "vault-api's address. The token is the auth-source password for host vault-api.")
 
 (defvar org-clock-mode-line-timer)
