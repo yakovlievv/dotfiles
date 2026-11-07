@@ -389,7 +389,10 @@ BED and WAKE are read as `org-read-date' reads them (\"2026-11-04
 23:30\"). The copy is made (`+sleep-plan') when NIGHT has none, a skipped
 night too: it was slept. An open clock on the copy (clocked in, never
 out) becomes this line; the same line twice is written once, so the
-phone may send it again. Asks nothing; the caller saves."
+phone may send it again. A night that already has a closed clock (clocked
+in and out from the phone or Emacs) is left as it is: answering \"Log last
+night?\" on top of that would log the night twice. Asks nothing; the
+caller saves."
   (+sleep--check-night night)
   (let ((b (org-read-date t t bed))
         (w (org-read-date t t wake)))
@@ -404,6 +407,7 @@ phone may send it again. Asks nothing; the caller saves."
             ((save-excursion (search-forward line end t)))
             ((re-search-forward +sleep--open-clock-re end t)
              (replace-match (concat (match-string 1) line) t t))
+            ((save-excursion (re-search-forward +sleep--closed-clock-re end t)))
             (t (+sleep--insert-clock copy line))))))
       copy)))
 

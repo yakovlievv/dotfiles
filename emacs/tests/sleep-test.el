@@ -637,4 +637,14 @@
         (should (string-match-p "^CLOCK: \\[2031-01-07 Tue 23:30\\]--\\[2031-01-08 Wed 09:00\\] =>  9:30$" text))
         (should (string-match-p "^<2031-01-08 Wed 01:00-09:00>$" text))))))
 
+(ert-deftest sleep-log-night-keeps-a-logged-night ()
+  "Clocked in and out already: a later \"Log last night?\" answer adds nothing."
+  (+sleep-test--with-vault
+    (+sleep-test--day "2031-01-07")
+    (+sleep-log-night "2031-01-07" "2031-01-08 00:30" "2031-01-08 08:45")
+    (+sleep-log-night "2031-01-07" "2031-01-07 23:30" "2031-01-08 09:00")
+    (let ((text (+sleep-test--copy-text "2031-01-07")))
+      (should (string-match-p "^CLOCK: \\[2031-01-08 Wed 00:30\\]--\\[2031-01-08 Wed 08:45\\] =>  8:15$" text))
+      (should (= 1 (with-temp-buffer (insert text) (count-matches "^CLOCK:" (point-min) (point-max))))))))
+
 ;;; sleep-test.el ends here
