@@ -690,8 +690,13 @@ prompts included, so it gets its habits and staged items."
    (list (completing-read "Routine: " (+routines--names) nil t)
          (read-string "Time (empty for none; 9:00, 9am+0:30): ")))
   (+endgame--ensure-day (+endgame--today) t)
-  (let ((+endgame--routine-time (and time (string-trim time))))
-    (funcall fn title)))
+  (if (+endgame--routine-habit title)
+      (message (if (+endgame-routine-add title (+endgame--today) time t)
+                   "%s: today's habit copy added (it counts for the habit)"
+                 "%s: today already has the habit's copy")
+               title)
+    (let ((+endgame--routine-time (and time (string-trim time))))
+      (funcall fn title))))
 
 (advice-add '+routines-insert-into-day :around #'+endgame--routines-insert-into-day-a)
 (advice-add '+routines--copy :filter-return #'+endgame--routines-copy-a)
@@ -699,12 +704,53 @@ prompts included, so it gets its habits and staged items."
 
 ;; The same, without the command: what the server calls
 
+(defun +endgame--routine-habit (title)
+  "ID of the habit in `+habits-file' whose title links routine TITLE, or nil.
+The morning routine is both: its steps are in the routines note, a habit
+links it, and only that habit's copy counts for the habit."
+  (when-let ((rid (with-current-buffer (find-file-noselect +routines-file)
+                    (org-with-wide-buffer
+                     (catch 'found
+                       (org-map-entries
+                        (lambda ()
+                          (when (equal (+habits--untitle (org-get-heading t t t t)) title)
+                            (throw 'found (org-entry-get nil "ID"))))
+                        "LEVEL=1")
+                       nil)))))
+    (with-current-buffer (+habits--buffer)
+      (org-with-wide-buffer
+       (goto-char (point-min))
+       (catch 'found
+         (while (re-search-forward (format "^\\*+ .*\\[\\[id:%s\\]" (regexp-quote rid)) nil t)
+           (when (equal (org-entry-get nil "STYLE") "habit")
+             (throw 'found (org-entry-get nil "ID"))))
+         nil)))))
+
+(defun +endgame--routine-times (time date)
+  "(START END) \"HH:MM\" of TIME, read like the routine time prompt, on DATE; nil for none."
+  (when (and time (not (string-empty-p (string-trim time))))
+    (let ((stamp (+endgame--stamp time (+endgame--date-time date) t)))
+      (when (string-match " \\([0-9]\\{2\\}:[0-9]\\{2\\}\\)\\(?:-\\([0-9]\\{2\\}:[0-9]\\{2\\}\\)\\)?>" stamp)
+        (list (match-string 1 stamp) (match-string 2 stamp))))))
+
 (defun +endgame-routine-add (title date &optional time ask)
   "Put routine TITLE into the day DATE (\"YYYY-MM-DD\"), stamped for that day.
 TIME is what the time prompt reads (\"9:00\", \"9am+0:30\"), nil or empty for
 none. A day without a note gets it in the upcoming note instead, unless
 ASK (an Emacs command) and the day isn't in the future: then the day is
-made first, with the sleep and morning questions. Returns `day', `upcoming', or nil when the day already has it."
+made first, with the sleep and morning questions. A routine a habit links
+(`+endgame--routine-habit') gets that habit's copy instead, so it counts
+for the habit. Returns `day', `upcoming', or nil when the day already has it."
+  (if-let ((hid (+endgame--routine-habit title)))
+      (unless (when-let ((d (+endgame--day-marker date))) (+endgame--day-habit-copy d hid))
+        (when (and ask (not (string> date (+endgame--today))))
+          (+endgame--ensure-day date ask))
+        (let ((m (apply #'+endgame-plan-habit hid date (+endgame--routine-times time date))))
+          (if (file-equal-p (buffer-file-name (marker-buffer m)) +endgame-upcoming-file) 'upcoming 'day)))
+    (+endgame--routine-add title date time ask)))
+
+(defun +endgame--routine-add (title date time ask)
+  "`+endgame-routine-add' for a routine no habit links: a routine copy."
   (let ((day (+endgame--day-marker date))
         (+endgame--routine-time time))
     (if (and (not day) (or (not ask) (string> date (+endgame--today))))

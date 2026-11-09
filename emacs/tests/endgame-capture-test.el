@@ -296,6 +296,38 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
       (should (string-match-p (concat ":ROUTINE:  Session routine\n:END:\n<" +endgame-test-future " Wed>\n")
                               week)))))
 
+(ert-deftest +endgame-routine-that-is-a-habit-gets-the-habit-copy ()
+  "SPC j r on a routine a habit links (the morning routine) adds the habit's
+copy, so ticking it counts for the habit; other routines stay routine copies."
+  (+endgame-test--with-vault
+    (+endgame-test--file
+     "roam/routines.org"
+     (concat "#+title: routines\n\n"
+             "* Morning routine\n:PROPERTIES:\n:ID:       rt-morning\n:END:\nwake up.\n- [ ] water\n- [ ] stretch\n"
+             "* Session routine\n- [ ] Start\n"))
+    (+endgame-test--file
+     "roam/habits.org"
+     (concat "#+title: my habits\n\n"
+             "* TODO [[id:rt-morning][morning routine]]\nSCHEDULED: <" (+endgame-test--date -1) " 09:00-09:30 .+1d>\n"
+             ":PROPERTIES:\n:ID:       src-morning\n:STYLE:    habit\n:SKIP:     " +endgame-test-future "\n:END:\n"))
+    (let ((org-id-track-globally t) (org-id-locations nil) (org-id-extra-files (list +routines-file)))
+    (should (equal (+endgame--routine-habit "Morning routine") "src-morning"))
+    (should-not (+endgame--routine-habit "Session routine"))
+    ;; the day is skipped for the habit, so making it adds no copy; SPC j r does
+    (+endgame-day-ensure +endgame-test-future)
+    (should (eq (+endgame-routine-add "Morning routine" +endgame-test-future "7am+0:15") 'day))
+    (let ((week (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
+      (should (string-match-p ":HABIT_ID: src-morning" week))
+      (should-not (string-match-p ":ROUTINE:  Morning routine" week))
+      (should (string-match-p (concat "SCHEDULED: <" +endgame-test-future " Wed 07:00-07:15>") week))
+      ;; its steps come from the routine it links
+      (should (string-match-p "- \\[ \\] water" week)))
+    ;; a second time: it's there already
+    (should-not (+endgame-routine-add "Morning routine" +endgame-test-future nil))
+    (should (eq (+endgame-routine-add "Session routine" +endgame-test-future nil) 'day))
+    (should (string-match-p ":ROUTINE:  Session routine"
+                            (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future)))))))))
+
 (ert-deftest +endgame-weekly-reset-copy-is-scheduled ()
   (+endgame-test--with-vault
     ;; staged: SCHEDULED under the heading, the UID still in the drawer
