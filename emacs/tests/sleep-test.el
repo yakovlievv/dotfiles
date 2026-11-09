@@ -63,8 +63,9 @@
     (should (equal (+sleep-night-of-time (+sleep-test--time "2031-03-01" "04:59")) "2031-02-28"))))
 
 (ert-deftest sleep-plan-into-day ()
+  "Night 01-07's copy lives on 01-08, the day I wake up."
   (+sleep-test--with-vault
-    (+sleep-test--day "2031-01-07")
+    (+sleep-test--day "2031-01-08")
     (should-not (+sleep-copy "2031-01-07"))
     (should-not (+sleep-skipped-p "2031-01-07"))
     (let* ((m (+sleep-plan "2031-01-07"))
@@ -83,7 +84,7 @@
         (should (= (org-current-level) 2))
         (save-excursion
           (org-up-heading-safe)
-          (should (string-match-p "2031-01-07" (org-get-heading t t t t)))))
+          (should (string-match-p "2031-01-08" (org-get-heading t t t t)))))
       (should (string-match-p "\\*\\*\\* TODO something\n\\*\\* Sleep\n\\(?:.*\n\\)*?\\*\\* 10:00\nprose\n\\'"
                               (+endgame-test--read (buffer-file-name (marker-buffer m)))))
       (should (equal (+sleep-test--source-prop "SKIP") "2031-01-08"))
@@ -158,14 +159,14 @@
        (count-matches "^\\*\\* Sleep$" (point) (save-excursion (org-end-of-subtree t t) (point)))))))
 
 (ert-deftest sleep-staged-copy-moves-by-night ()
+  "A copy waiting in upcoming moves into the day after its :NIGHT:."
   (+sleep-test--with-vault
     (let ((id (org-entry-get (+sleep-plan "2031-01-07") "ID")))
       (should (string-match-p "<2031-01-08 Wed 01:00-09:00>" (+endgame-test--read +endgame-upcoming-file)))
-      ;; its stamp is on 01-08, but it is night 01-07's
-      (+endgame-day-ensure "2031-01-08")
+      ;; making the bed day leaves it waiting
+      (+endgame-day-ensure "2031-01-07")
       (should (string-match-p id (+endgame-test--read +endgame-upcoming-file)))
-      (should-not (equal (org-entry-get (+sleep-copy "2031-01-08") "ID") id))
-      (let ((out (json-parse-string (+endgame-day-ensure "2031-01-07") :object-type 'alist)))
+      (let ((out (json-parse-string (+endgame-day-ensure "2031-01-08") :object-type 'alist)))
         (should (= (alist-get 'moved out) 1)))
       (should-not (string-match-p id (+endgame-test--read +endgame-upcoming-file)))
       (let ((m (+sleep-copy "2031-01-07")))
@@ -174,20 +175,22 @@
           (should (= (org-current-level) 2))
           (save-excursion
             (org-up-heading-safe)
-            (should (string-match-p "2031-01-07" (org-get-heading t t t t))))))
+            (should (string-match-p "2031-01-08" (org-get-heading t t t t))))))
+      ;; 01-07 got night 01-06's copy, 01-08 night 01-07's
       (should (= 1 (+sleep-test--sleep-children "2031-01-07")))
       (should (= 1 (+sleep-test--sleep-children "2031-01-08")))
       (should-not (string-match-p "^\\*\\*\\* Sleep"
                                   (+endgame-test--read (buffer-file-name (marker-buffer (+sleep-copy "2031-01-07")))))))))
 
 (ert-deftest sleep-day-creation-copies-default ()
+  "Making 01-08 gives it last night's (01-07) copy."
   (+sleep-test--with-vault
-    (+endgame-day-ensure "2031-01-07")
-    (should (= 1 (+sleep-test--sleep-children "2031-01-07")))
+    (+endgame-day-ensure "2031-01-08")
+    (should (= 1 (+sleep-test--sleep-children "2031-01-08")))
     (should (string-match-p "^<2031-01-08 Wed 01:00-09:00>$" (+sleep-test--entry (+sleep-copy "2031-01-07"))))
     (should (equal (+sleep-test--source-prop "SKIP") "2031-01-08"))
-    (+endgame-day-ensure "2031-01-07")
-    (should (= 1 (+sleep-test--sleep-children "2031-01-07")))
+    (+endgame-day-ensure "2031-01-08")
+    (should (= 1 (+sleep-test--sleep-children "2031-01-08")))
     ;; everything saved
     (should-not (buffer-modified-p (marker-buffer (+sleep--source))))
     (should-not (buffer-modified-p (marker-buffer (+sleep-copy "2031-01-07"))))))
@@ -197,8 +200,8 @@
     (org-with-point-at (+sleep--source) (+repeat-skip-add "2031-01-08"))
     (should (+sleep-skipped-p "2031-01-07"))
     (should-not (+sleep-ensure-night "2031-01-07"))
-    (+endgame-day-ensure "2031-01-07")
-    (should (= 0 (+sleep-test--sleep-children "2031-01-07")))
+    (+endgame-day-ensure "2031-01-08")
+    (should (= 0 (+sleep-test--sleep-children "2031-01-08")))
     (should-not (+sleep-copy "2031-01-07"))))
 
 (ert-deftest sleep-log-night-writes-clock ()
@@ -484,8 +487,8 @@
     (let ((sources (+endgame-area-sources "sleep"))
           (week (buffer-file-name (marker-buffer (+endgame--day-marker "2031-01-07")))))
       (should (equal (sort (copy-sequence sources) (lambda (a b) (string< (cdr a) (cdr b))))
-                     (sort (list (cons week (org-entry-get (+sleep-copy "2031-01-07") "ID"))
-                                 (cons week (org-entry-get (+sleep-copy "2031-01-08") "ID")))
+                     (sort (list (cons week (org-entry-get (+sleep-copy "2031-01-06") "ID"))
+                                 (cons week (org-entry-get (+sleep-copy "2031-01-07") "ID")))
                            (lambda (a b) (string< (cdr a) (cdr b)))))))
     ;; a day runs 05:00 to 05:00 (`org-extend-today-until'), as day clocktables count it
     (should (equal (+endgame-area-clocked "sleep" "2031-01-07") 330))
@@ -528,8 +531,10 @@
     (+endgame-test--answering (list "23:30" "7:10")
       (cl-letf (((symbol-function 'y-or-n-p) (lambda (p) (equal p "Log last night? "))))
         (+endgame--create-day (+endgame--date-time "2031-01-08") t)))
-    (should (string-match-p "CLOCK: \\[2031-01-07 Tue 23:30\\]" (+sleep-test--disk +endgame-upcoming-file)))
-    (should (string-match-p ":SKIP: +2031-01-08 2031-01-09"
+    ;; the copy is in the new day (its buffer is org-journal's, saved as usual); the source's :SKIP: is saved
+    (should (string-match-p "CLOCK: \\[2031-01-07 Tue 23:30\\]"
+                            (with-current-buffer (marker-buffer (+endgame--day-marker "2031-01-08")) (buffer-string))))
+    (should (string-match-p ":SKIP: +2031-01-08$"
                             (+sleep-test--disk (expand-file-name "roam/sleep_system.org" +endgame-test-dir))))))
 
 (ert-deftest sleep-skip-pruning-moves-the-default-on ()
@@ -559,7 +564,7 @@
 
 (ert-deftest sleep-clock-in-saves-a-dirty-buffer-and-any-buffer ()
   (+sleep-test--with-vault
-    (let ((file (+sleep-test--day "2031-01-07")))
+    (let ((file (+sleep-test--day "2031-01-08")))
       ;; an earlier call left the week buffer unsaved
       (with-current-buffer (find-file-noselect file)
         (goto-char (point-max))

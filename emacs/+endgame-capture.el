@@ -441,8 +441,8 @@ DAY is a marker at a journal day heading. An item is a top-level heading
 of the upcoming note whose first plain active timestamp (or, without
 one, its SCHEDULED) falls on that day; it keeps its whole subtree, properties and :CALDAV_UID: included,
 and is deleted from the upcoming note. A night's Sleep copy (:SLEEP_ID:)
-is matched by its :NIGHT: instead, since its times are on the next
-morning, and becomes a child of the day, not a DO list item. Returns how
+is matched by the day after its :NIGHT: instead (a night lives on the
+day I wake up), and becomes a child of the day, not a DO list item. Returns how
 many moved."
   (let ((date (with-current-buffer (marker-buffer day)
                 (org-with-wide-buffer
@@ -457,7 +457,7 @@ many moved."
            (while (re-search-forward "^\\* " nil t)
              (let* ((beg (line-beginning-position))
                     (night (and (org-entry-get beg "SLEEP_ID") (org-entry-get beg "NIGHT"))))
-               (when (equal (or night (+endgame--entry-date beg)) date)
+               (when (equal (if night (+sleep--add-days night 1) (+endgame--entry-date beg)) date)
                  (push (list beg (save-excursion (goto-char beg) (org-end-of-subtree t t) (point)) night)
                        regions))))
            ;; bottom first, so the earlier regions stay where they are
@@ -498,10 +498,11 @@ day setup then makes the new day's own, so a fresh day had two."
   (ignore-errors (marker-buffer (+sleep--source))))
 
 (defun +endgame--sleep-ensure-night (date)
-  "`+sleep-ensure-night' for a new day DATE; a broken sleep source is
+  "`+sleep-ensure-night' for a new day DATE: the night that ends that
+morning (the day before DATE) lives on DATE. A broken sleep source is
 reported, not fatal: the day is made anyway."
   (condition-case err
-      (+sleep-ensure-night date)
+      (+sleep-ensure-night (+sleep--add-days date -1))
     (error (message "Sleep: no Sleep heading for %s: %s" date (error-message-string err))
            nil)))
 

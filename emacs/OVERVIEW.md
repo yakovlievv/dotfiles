@@ -230,13 +230,15 @@ Spec: roam note "sleep scheduling". The night of bed-day D (the org day, until
   (`+sleep-source-id`), a repeating range `<… 01:00-09:00 +1d>` with a `:SKIP:`
   like a habit's (dates = the morning the times fall on). Dates older than a
   week are pruned and the stamp's date moves on with them.
-- A night's copy: `** Sleep` child of day D, right after its DO list (no TODO),
-  or a top-level heading in upcoming until day D exists; `:ID:`, `:SLEEP_ID:`,
+- A night's copy: `** Sleep` child of day D+1, the day I wake up (since
+  2026-11-09; older nights sit on day D), right after its DO list (no TODO),
+  or a top-level heading in upcoming until day D+1 exists; `:ID:`, `:SLEEP_ID:`,
   `:NIGHT:`, `:AREA: sleep`, `:CALDAV_UID:`, a plain active stamp. Making one puts
   the default's occurrence into `:SKIP:`. Skipped with no copy, or a copy whose
   stamp went inactive (event deleted on the phone): no sleep planned, no alarm.
 - Making a day (`+endgame-day-ensure`, the init hook): staging moves an upcoming
-  copy in by its `:NIGHT:`, then `+sleep-ensure-night` copies the default.
+  copy in when its `:NIGHT:` is the day before, then `+sleep-ensure-night` gives
+  the day last night's copy from the default.
 - Server (emacsclient, JSON): `+sleep-plan-json`, `+sleep-clock-in-json` (closes
   every open clock in the vault first; `already` while any Sleep clock is open),
   `+sleep-clock-out-json`, `+sleep-next-json` (last night while its wake is ahead,

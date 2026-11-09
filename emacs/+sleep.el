@@ -202,9 +202,13 @@ BOUND-MARKER: only inside the subtree at that marker."
        found))))
 
 (defun +sleep-copy (night)
-  "Marker at NIGHT's copy, in day NIGHT's note or in upcoming, or nil.
-A copy is found by its :NIGHT: and :SLEEP_ID:."
-  (or (when-let ((day (+endgame--day-marker night)))
+  "Marker at NIGHT's copy, in the note of the day after NIGHT or in upcoming, or nil.
+A copy is found by its :NIGHT: and :SLEEP_ID:. A night lives on the day I
+wake up (since 2026-11-09; before, on day NIGHT itself), so a copy
+of a day NIGHT note is only found when it is still there from before."
+  (or (when-let ((day (+endgame--day-marker (+sleep--add-days night 1))))
+        (+sleep--copy-in (marker-buffer day) night day))
+      (when-let ((day (+endgame--day-marker night)))
         (+sleep--copy-in (marker-buffer day) night day))
       (when (or (find-buffer-visiting +endgame-upcoming-file)
                 (file-exists-p +endgame-upcoming-file))
@@ -271,8 +275,9 @@ The default's occurrence goes into the source's :SKIP:. An existing copy
 is retimed in place when START or END is given, else left as it is; one
 whose stamp was made inactive (the night cancelled on the phone) gets an
 active stamp again, with these times. A new copy
-goes into day NIGHT's note as a child right after its DO list, or into
-upcoming when that day has no note yet (making the day moves it in). Asks nothing; the
+goes into the note of the day after NIGHT (the day I wake up) as a child
+right after its DO list, or into upcoming when that day has no note yet
+(making the day moves it in). Asks nothing; the
 caller saves."
   (+sleep--check-night night)
   (let* ((src (+sleep--source))
@@ -291,7 +296,7 @@ caller saves."
        (t
         (let* ((id (org-id-uuid))
                (text (+sleep--copy-text id night stamp))
-               (day (+endgame--day-marker night)))
+               (day (+endgame--day-marker (+sleep--add-days night 1))))
           (if day
               (+endgame--append-to-day day (list text))
             (+endgame--append-to-upcoming text))
@@ -328,9 +333,9 @@ caller saves."
 
 (defun +sleep-ensure-night (night)
   "Marker at NIGHT's copy, made from the default when missing.
-Nil when NIGHT is skipped and has no copy: no sleep planned. Making day
-NIGHT calls this after the staging move, so a copy planned ahead in
-upcoming is the one that stays."
+Nil when NIGHT is skipped and has no copy: no sleep planned. Making the
+day after NIGHT calls this after the staging move, so a copy planned
+ahead in upcoming is the one that stays."
   (or (+sleep-copy night)
       (unless (+sleep-skipped-p night)
         (+sleep-plan night))))
