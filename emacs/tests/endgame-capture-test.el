@@ -76,7 +76,7 @@
   "The sleep system note, with the default night (`+sleep-source-id').")
 
 (defmacro +endgame-test--with-vault (&rest body)
-  "Run BODY in a fresh vault: areas, upcoming, life, inbox, habits, routines,
+  "Run BODY in a fresh vault: areas, upcoming, tasks, habits, routines,
 journal, the sleep system note. The day ends at 05:00, as in the config."
   (declare (indent 0))
   `(let* ((+endgame-test-dir (file-name-as-directory (make-temp-file "endgame-test" t)))
@@ -96,7 +96,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
           (org-journal-enable-agenda-integration nil)
           (org-journal-enable-cache nil)
           (org-journal-hide-entries-p nil)
-          (org-agenda-files (list (expand-file-name "roam/inbox.org" +endgame-test-dir)))
+          (org-agenda-files (list (expand-file-name "roam/tasks.org" +endgame-test-dir)))
           (org-capture-templates nil)
           (org-extend-today-until 5)
           (+sleep-source-id "src-sleep")
@@ -112,8 +112,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
                     ":BASELINE_DAY:  0:25\n:SOURCES:\n:END:\n"
                     "*** TODO not an area\n")))
           (+endgame-upcoming-file (+endgame-test--file "roam/upcoming.org" "#+title: upcoming\n\nstaging.\n"))
-          (+endgame-life-file (+endgame-test--file "roam/life.org" "#+title: life\n\n* Appointments\n* Errands\n"))
-          (+endgame-inbox-file (+endgame-test--file "roam/inbox.org" "#+title: inbox\n\nraw capture.\n"))
+          (+endgame-tasks-file (+endgame-test--file "roam/tasks.org" "#+title: tasks\n\n* Inbox\nraw capture.\n* Errands\n* Appointments\n"))
           (+habits-file
            (+endgame-test--file
             "roam/habits.org"
@@ -199,15 +198,16 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
       (org-capture nil "a"))
     (+endgame-test--answering '("50% off %t socks" "2031-01-10")
       (org-capture nil "e"))
-    (let ((inbox (+endgame-test--read +endgame-inbox-file))
-          (life (+endgame-test--read +endgame-life-file)))
-      (should (string-match-p "^\\* TODO copy room keys\n:PROPERTIES:\n:CREATED: +\\[[-0-9]+ [^]]+\\]\n:END:" inbox))
-      (should (string-match-p (concat "^\\* TODO call the bank\nSCHEDULED: <" (+endgame--today)) inbox))
-      (should (string-match-p "^\\*\\* APPT barber <2031-01-06 Mon 14:00-14:45>\n:PROPERTIES:\n:CALDAV_UID: [-0-9a-f]+\n:END:" life))
-      (should (string-match-p "^\\*\\* TODO 50% off %t socks\nSCHEDULED: <2031-01-10 Fri>" life))
-      ;; the appointment under Appointments, the errand under Errands
-      (should (< (string-match "APPT barber" life) (string-match "^\\* Errands" life)
-                 (string-match "socks" life))))))
+    (let ((tasks (+endgame-test--read +endgame-tasks-file)))
+      (should (string-match-p "^\\*\\* TODO copy room keys\n:PROPERTIES:\n:CREATED: +\\[[-0-9]+ [^]]+\\]\n:END:" tasks))
+      (should (string-match-p (concat "^\\*\\* TODO call the bank\nSCHEDULED: <" (+endgame--today)) tasks))
+      (should (string-match-p "^\\*\\* APPT barber <2031-01-06 Mon 14:00-14:45>\n:PROPERTIES:\n:CALDAV_UID: [-0-9a-f]+\n:END:" tasks))
+      (should (string-match-p "^\\*\\* TODO 50% off %t socks\nSCHEDULED: <2031-01-10 Fri>" tasks))
+      ;; each under its heading: Inbox, then Errands, then Appointments
+      (should (< (string-match "^\\* Inbox" tasks) (string-match "copy room keys" tasks)
+                 (string-match "call the bank" tasks) (string-match "^\\* Errands" tasks)
+                 (string-match "socks" tasks) (string-match "^\\* Appointments" tasks)
+                 (string-match "APPT barber" tasks))))))
 
 ;;; Areas
 
@@ -461,16 +461,16 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
 (ert-deftest +endgame-move-to-day-appointment-and-weekly-reset ()
   (+endgame-test--with-vault
     ;; an appointment: only its timestamp moves
-    (with-current-buffer (find-file-noselect +endgame-life-file)
+    (with-current-buffer (find-file-noselect +endgame-tasks-file)
       (goto-char (point-max))
       (insert "** APPT barber\n<2031-01-08 Wed 14:00-14:45>\n** TODO call bank\nSCHEDULED: <2031-01-08 Wed>\n")
       (save-buffer))
-    (let ((json (json-parse-string (+endgame-move-to-day-json +endgame-life-file 5 nil "2031-01-10") :object-type 'alist)))
+    (let ((json (json-parse-string (+endgame-move-to-day-json +endgame-tasks-file 7 nil "2031-01-10") :object-type 'alist)))
       (should (equal (alist-get 'where json) "same")))
     (should (string-match-p "^\\*\\* APPT barber\n:PROPERTIES:\n:ID: .*\n:END:\n<2031-01-10 Fri 14:00-14:45>"
-                            (+endgame-test--read +endgame-life-file)))
+                            (+endgame-test--read +endgame-tasks-file)))
     ;; a plain task isn't a day item: refused, SCHEDULED is its path
-    (should-error (+endgame-move-to-day-json +endgame-life-file 11 nil "2031-01-10"))
+    (should-error (+endgame-move-to-day-json +endgame-tasks-file 9 nil "2031-01-10"))
     ;; the weekly reset is dated by its SCHEDULED, which moves
     (should (eq (+endgame-routine-add "Weekly reset routine" +endgame-test-future "15:30-16:30") 'upcoming))
     (with-current-buffer (+endgame--buffer +endgame-upcoming-file)

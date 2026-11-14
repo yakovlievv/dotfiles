@@ -63,13 +63,10 @@
   (expand-file-name "roam/20261031030202-upcoming.org" +endgame-vault-dir)
   "The staging note: day-own items for a day that doesn't exist yet.")
 
-(defvar +endgame-life-file
-  (expand-file-name "roam/20261031024752-life.org" +endgame-vault-dir)
-  "The life note, with the Appointments and Errands headings.")
-
-(defvar +endgame-inbox-file
-  (expand-file-name "roam/20261031024803-inbox.org" +endgame-vault-dir)
-  "The inbox note: raw captures go at its end.")
+(defvar +endgame-tasks-file
+  (expand-file-name "roam/20261031024752-tasks.org" +endgame-vault-dir)
+  "The tasks note, with the Inbox, Errands and Appointments headings.
+Raw captures go at the end of Inbox.")
 
 (defvar +endgame-session-routine "Session routine"
   "The routine in the routines note a session is a copy of.")
@@ -307,16 +304,16 @@ Nil when the entry has no plain active timestamp."
             ":PROPERTIES:\n:CREATED:  %U\n:END:")))
 
 (defvar +endgame-capture-templates
-  '(("i" "Inbox" entry (file +endgame-inbox-file)
+  '(("i" "Inbox" entry (file+headline +endgame-tasks-file "Inbox")
      "* TODO %^{Inbox}\n:PROPERTIES:\n:CREATED:  %U\n:END:"
      :immediate-finish t)
-    ("t" "Today (inbox, scheduled today)" entry (file +endgame-inbox-file)
+    ("t" "Today (inbox, scheduled today)" entry (file+headline +endgame-tasks-file "Inbox")
      "* TODO %^{Today}\nSCHEDULED: %(+endgame--today-stamp)\n:PROPERTIES:\n:CREATED:  %U\n:END:"
      :immediate-finish t)
-    ("a" "Appointment" entry (file+headline +endgame-life-file "Appointments")
+    ("a" "Appointment" entry (file+headline +endgame-tasks-file "Appointments")
      (function +endgame--appt-template)
      :immediate-finish t)
-    ("e" "Errand" entry (file+headline +endgame-life-file "Errands")
+    ("e" "Errand" entry (file+headline +endgame-tasks-file "Errands")
      (function +endgame--errand-template)
      :immediate-finish t))
   "The endgame's capture menu. Doom's own templates with these keys go.")

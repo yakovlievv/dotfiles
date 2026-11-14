@@ -60,9 +60,11 @@
        "*** TODO breakfast\n"
        "** 10:00 a journal entry\nprose, not a task\n"))
      (+endgame-today-test--file
-      "roam/life.org"
+      "roam/tasks.org"
       (concat
-       "#+title: life\n\n* Appointments\n"
+       "#+title: tasks\n\n"
+       "* Inbox\n** TODO call mom\n** TODO find the charger\n** DONE done already\n"
+       "* Appointments\n"
        "** APPT barber\n<2026-10-31 Sat 14:00-14:45>\n"
        "** APPT dentist\n<2026-11-02 Mon 10:00>\n"
        "* Errands\n"
@@ -94,13 +96,9 @@
        "#+title: areas\n\n* Pursuits category\n"
        "** Learning\n:PROPERTIES:\n:AREA_TAG:      learning\n:END:\n"
        "** Piano\n:PROPERTIES:\n:AREA_TAG:      piano\n:END:\n"))
-     (+endgame-today-test--file
-      "roam/inbox.org"
-      "#+title: inbox\n\n* TODO call mom\n* TODO find the charger\n* DONE done already\n")
      (let ((+endgame-upcoming-file (expand-file-name "roam/upcoming.org" org-directory))
            (+endgame-areas-file (expand-file-name "roam/areas.org" org-directory))
-           (+endgame-life-file (expand-file-name "roam/life.org" org-directory))
-           (+endgame-inbox-file (expand-file-name "roam/inbox.org" org-directory))
+           (+endgame-tasks-file (expand-file-name "roam/tasks.org" org-directory))
            (org-agenda-files (directory-files-recursively org-directory "\\.org\\'")))
        (cl-letf (((symbol-function 'org-today) (lambda () sat)))
          (unwind-protect (progn ,@body)
@@ -113,8 +111,7 @@
 
 (defvar +endgame-upcoming-file)
 (defvar +endgame-areas-file)
-(defvar +endgame-life-file)
-(defvar +endgame-inbox-file)
+(defvar +endgame-tasks-file)
 (defvar org-timeblock-svg)
 (defvar org-journal-time-format-post-midnight)
 
@@ -273,7 +270,7 @@
                         (goto-char (point-min))
                         (search-forward "barber")
                         (+endgame-today/toggle)
-                        (with-current-buffer (find-buffer-visiting +endgame-life-file)
+                        (with-current-buffer (find-buffer-visiting +endgame-tasks-file)
                           (list (buffer-modified-p)
                                 (progn (goto-char (point-min))
                                        (re-search-forward "^\\*\\* \\([A-Z]+\\) barber")

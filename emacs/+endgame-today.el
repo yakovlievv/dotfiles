@@ -136,10 +136,10 @@ The phone and the server read the files: an unsaved tick is invisible to them."
   (or (bound-and-true-p +endgame-areas-file)
       (+endgame-today--vault-file "roam/20261031030150-areas.org")))
 
-(defun +endgame-today--life-file ()
-  "The life note: Appointments and Errands."
-  (or (bound-and-true-p +endgame-life-file)
-      (+endgame-today--vault-file "roam/20261031024752-life.org")))
+(defun +endgame-today--tasks-file ()
+  "The tasks note: Inbox, Errands and Appointments."
+  (or (bound-and-true-p +endgame-tasks-file)
+      (+endgame-today--vault-file "roam/20261031024752-tasks.org")))
 
 (defun +endgame-today--rel (file)
   "FILE relative to the vault, the way vault-api names notes."
@@ -765,24 +765,22 @@ from the sessions in ITEMS (the today list) and clocked is nil."
   "Rollovers (org's Sched. Nx) from which a task is an offender to decide on."
   :type 'integer)
 
-(defun +endgame-today--inbox-file ()
-  "The inbox note: captures wait there until they're processed."
-  (or (bound-and-true-p +endgame-inbox-file)
-      (+endgame-today--vault-file "roam/20261031024803-inbox.org")))
+(defconst +endgame-today--inbox-re "^\\* Inbox[ \t]*$"
+  "The Inbox heading of the tasks note: captures wait there until processed.")
 
 (defun +endgame-today-inbox-count ()
-  "Open top-level tasks in the inbox note."
-  (let ((file (+endgame-today--inbox-file)))
-    (if (not (file-exists-p file))
-        0
+  "Open tasks under the Inbox heading of the tasks note."
+  (let ((file (+endgame-today--tasks-file)) (n 0))
+    (when (file-exists-p file)
       (with-current-buffer (+endgame-today--buffer file)
         (org-with-wide-buffer
          (goto-char (point-min))
-         (let ((n 0))
-           (while (re-search-forward "^\\* " nil t)
-             (when (member (org-get-todo-state) org-not-done-keywords)
-               (setq n (1+ n))))
-           n))))))
+         (when (re-search-forward +endgame-today--inbox-re nil t)
+           (let ((end (save-excursion (org-end-of-subtree t t))))
+             (while (re-search-forward "^\\*\\* " end t)
+               (when (member (org-get-todo-state) org-not-done-keywords)
+                 (setq n (1+ n)))))))))
+    n))
 
 (defun +endgame-today--priority (file)
   "The weekly priority in weekly journal FILE, or nil.
@@ -1193,7 +1191,7 @@ Both as `+endgame-today-now' returns them."
                                (seq-filter #'file-exists-p
                                            (list (+endgame-today--day-file abs)
                                                  (+endgame-today--upcoming-file)
-                                                 (+endgame-today--life-file))))))
+                                                 (+endgame-today--tasks-file))))))
     (erase-buffer)
     (let ((s (point)))
       (insert (propertize title 'face '+endgame-today-header)
@@ -1491,11 +1489,11 @@ the next window over. Away from the panel, just pop to it."
       (forward-line 1))))
 
 (defun +endgame-today/inbox ()
-  "Open the inbox note to process it."
+  "Open the tasks note at its Inbox heading to process it."
   (interactive)
-  (find-file-other-window (+endgame-today--inbox-file))
+  (find-file-other-window (+endgame-today--tasks-file))
   (goto-char (point-min))
-  (re-search-forward "^\\* " nil t)
+  (re-search-forward +endgame-today--inbox-re nil t)
   (beginning-of-line))
 
 (defun +endgame-today/heatmap ()

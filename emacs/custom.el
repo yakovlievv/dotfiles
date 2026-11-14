@@ -107,7 +107,7 @@
      "/Users/yako/org/roam/20261021165904-home_assistant.org"
      "/Users/yako/org/roam/20261025005104-sleep_optimization_system.org"
      "/Users/yako/org/roam/20261030154610-the_endgame_org_vault_as_the_brain_thin_clients_for_everything_else.org"
-     "/Users/yako/org/roam/20261031024752-life.org"
+     "/Users/yako/org/roam/20261031024752-tasks.org"
      "/Users/yako/org/roam/20261031030150-areas.org"
      "/Users/yako/org/roam/daily/2025-12-25.org"
      "/Users/yako/org/roam/daily/2025-12-26.org"
