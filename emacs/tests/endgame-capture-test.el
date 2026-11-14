@@ -81,8 +81,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
   (declare (indent 0))
   `(let* ((+endgame-test-dir (file-name-as-directory (make-temp-file "endgame-test" t)))
           (+endgame-vault-dir +endgame-test-dir)
-          (org-todo-keywords '((sequence "TODO(t)" "STRT(s!)" "|" "DONE(d!)" "KILL(k@)")
-                               (sequence "APPT(a)" "|" "DONE(d!)")))
+          (org-todo-keywords '((sequence "TODO(t)" "STRT(s!)" "|" "DONE(d!)" "KILL(k@)")))
           (org-log-into-drawer t)
           (org-tags-column 0)
           (org-journal-dir (expand-file-name "roam/daily/" +endgame-test-dir))
@@ -112,7 +111,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
                     ":BASELINE_DAY:  0:25\n:SOURCES:\n:END:\n"
                     "*** TODO not an area\n")))
           (+endgame-upcoming-file (+endgame-test--file "roam/upcoming.org" "#+title: upcoming\n\nstaging.\n"))
-          (+endgame-tasks-file (+endgame-test--file "roam/tasks.org" "#+title: tasks\n\n* Inbox\nraw capture.\n* Errands\n* Appointments\n"))
+          (+endgame-tasks-file (+endgame-test--file "roam/tasks.org" "#+title: tasks\n\n* Inbox\nraw capture.\n* Errands\n* Events\n"))
           (+habits-file
            (+endgame-test--file
             "roam/habits.org"
@@ -175,16 +174,17 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
     (org-mode)
     (insert "* TODO a\nSCHEDULED: <2031-01-01 Wed>\n:PROPERTIES:\n:GCAL: <2031-01-02 Thu>\n:END:\n"
             "<2031-01-03 Fri 09:00-10:00>\n** child <2031-01-04 Sat>\n"
-            "* APPT barber <2031-01-06 Mon 14:00-14:45>\n")
+            "* barber <2031-01-06 Mon 14:00-14:45>\n")
     (goto-char (point-min))
     (should (equal (+endgame-entry-stamp) "<2031-01-03 Fri 09:00-10:00>"))
-    (re-search-forward "^\\* APPT")
+    (re-search-forward "^\\* barber")
     (should (equal (+endgame-entry-time-range) '("2031-01-06" "14:00" "14:45" 45)))))
 
-;;; APPT and capture
+;;; Events and capture
 
-(ert-deftest +endgame-appt-is-its-own-sequence ()
-  (should (member '(sequence "APPT(a)" "|" "DONE(d!)") (default-value 'org-todo-keywords))))
+(ert-deftest +endgame-appt-keyword-is-gone ()
+  "An event is a plain heading: nothing defines the APPT keyword any more."
+  (should-not (member '(sequence "APPT(a)" "|" "DONE(d!)") (default-value 'org-todo-keywords))))
 
 (ert-deftest +endgame-capture-templates ()
   (+endgame-test--with-vault
@@ -201,13 +201,14 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
     (let ((tasks (+endgame-test--read +endgame-tasks-file)))
       (should (string-match-p "^\\*\\* TODO copy room keys\n:PROPERTIES:\n:CREATED: +\\[[-0-9]+ [^]]+\\]\n:END:" tasks))
       (should (string-match-p (concat "^\\*\\* TODO call the bank\nSCHEDULED: <" (+endgame--today)) tasks))
-      (should (string-match-p "^\\*\\* APPT barber <2031-01-06 Mon 14:00-14:45>\n:PROPERTIES:\n:CALDAV_UID: [-0-9a-f]+\n:END:" tasks))
+      (should (string-match-p "^\\*\\* barber <2031-01-06 Mon 14:00-14:45>\n:PROPERTIES:\n:CALDAV_UID: [-0-9a-f]+\n:END:" tasks))
       (should (string-match-p "^\\*\\* TODO 50% off %t socks\nSCHEDULED: <2031-01-10 Fri>" tasks))
-      ;; each under its heading: Inbox, then Errands, then Appointments
+      ;; each under its heading: Inbox, then Errands, then Events
       (should (< (string-match "^\\* Inbox" tasks) (string-match "copy room keys" tasks)
                  (string-match "call the bank" tasks) (string-match "^\\* Errands" tasks)
-                 (string-match "socks" tasks) (string-match "^\\* Appointments" tasks)
-                 (string-match "APPT barber" tasks))))))
+                 (string-match "socks" tasks) (string-match "^\\* Events" tasks)
+                 (string-match "\\*\\* barber" tasks)))
+      (should-not (string-match-p "APPT" tasks)))))
 
 ;;; Areas
 
@@ -460,14 +461,14 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
 
 (ert-deftest +endgame-move-to-day-appointment-and-weekly-reset ()
   (+endgame-test--with-vault
-    ;; an appointment: only its timestamp moves
+    ;; an event, a plain heading with a stamp: only its timestamp moves
     (with-current-buffer (find-file-noselect +endgame-tasks-file)
       (goto-char (point-max))
-      (insert "** APPT barber\n<2031-01-08 Wed 14:00-14:45>\n** TODO call bank\nSCHEDULED: <2031-01-08 Wed>\n")
+      (insert "** barber\n<2031-01-08 Wed 14:00-14:45>\n** TODO call bank\nSCHEDULED: <2031-01-08 Wed>\n")
       (save-buffer))
     (let ((json (json-parse-string (+endgame-move-to-day-json +endgame-tasks-file 7 nil "2031-01-10") :object-type 'alist)))
       (should (equal (alist-get 'where json) "same")))
-    (should (string-match-p "^\\*\\* APPT barber\n:PROPERTIES:\n:ID: .*\n:END:\n<2031-01-10 Fri 14:00-14:45>"
+    (should (string-match-p "^\\*\\* barber\n:PROPERTIES:\n:ID: .*\n:END:\n<2031-01-10 Fri 14:00-14:45>"
                             (+endgame-test--read +endgame-tasks-file)))
     ;; a plain task isn't a day item: refused, SCHEDULED is its path
     (should-error (+endgame-move-to-day-json +endgame-tasks-file 9 nil "2031-01-10"))

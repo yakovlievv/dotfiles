@@ -4,8 +4,9 @@
 ;; the vault is the brain, everything else is a thin client. This module is
 ;; how things get into the vault and how a day comes to exist:
 ;;
-;; - the APPT keyword: appointments are their own sequence, APPT | DONE
-;; - the capture menu under SPC SPC: i inbox, t today, a appointment, e errand
+;; - events: a plain heading with a stamp that has a time, no keyword (the old
+;;   APPT keyword is gone; vault-mcp still reads it as a plain event)
+;; - the capture menu under SPC SPC: i inbox, t today, a event, e errand
 ;; - SPC j r: a routine copy gets a plain active timestamp for its day,
 ;;   with an optional time; the weekly reset gets SCHEDULED instead
 ;;   (`+endgame-scheduled-routines')
@@ -65,7 +66,7 @@
 
 (defvar +endgame-tasks-file
   (expand-file-name "roam/20261031024752-tasks.org" +endgame-vault-dir)
-  "The tasks note, with the Inbox, Errands and Appointments headings.
+  "The tasks note, with the Inbox, Errands and Events headings.
 Raw captures go at the end of Inbox.")
 
 (defvar +endgame-session-routine "Session routine"
@@ -264,19 +265,13 @@ Nil when the entry has no plain active timestamp."
   "Today's date stamp, for capture templates: org's today, not the clock's."
   (+endgame--format-stamp (+endgame--date-time)))
 
-;;; APPT
+;;; Events
 
-;; Appointments are events: a fixed date and time, still ticked when they
-;; happened. Their own sequence keeps them apart from tasks (CalDAV maps
-;; them to VEVENTs) and C-c C-t on one goes straight to DONE. The agenda
-;; file scan (`my/org-agenda--todo-regexp') is derived from
-;; `org-todo-keywords', so it finds APPT headings without a change.
-(with-eval-after-load 'org
-  (add-to-list 'org-todo-keywords '(sequence "APPT(a)" "|" "DONE(d!)") t)
-  (when (boundp 'my/org-pill-todo-colors)
-    (add-to-list 'my/org-pill-todo-colors '("APPT" . sky) t)
-    (when (and (fboundp 'my/org-palette-faces-h) (require 'catppuccin-theme nil t))
-      (my/org-palette-faces-h))))
+;; Appointments are events: a plain heading with a stamp that has a time. No
+;; keyword, nothing to tick: you attend it and forget it. The calendar maps any
+;; such heading to a VEVENT, and the Events area in the areas note says where
+;; they live (its HOME heading, `Events' in the tasks note). `APPT', the old
+;; keyword, is still read by vault-mcp as a plain event; nothing here makes it.
 
 ;;; Capture: SPC SPC
 
@@ -288,9 +283,9 @@ Nil when the entry has no plain active timestamp."
     (replace-regexp-in-string "%\\([^ \t]\\)" "\\\\%\\1" title t)))
 
 (defun +endgame--appt-template ()
-  "Capture template for an appointment: asks the title and a time."
-  (let ((title (+endgame--read-title "Appointment: ")))
-    (concat "* APPT " title " "
+  "Capture template for an event: asks the title and a time. A plain heading."
+  (let ((title (+endgame--read-title "Event: ")))
+    (concat "* " title " "
             (+endgame--read-stamp "When (mon 2pm, mon 14:00-14:45, mon 2pm+0:45): " nil t)
             "\n:PROPERTIES:\n:CALDAV_UID: " (+endgame--uid) "\n:END:")))
 
@@ -310,7 +305,7 @@ Nil when the entry has no plain active timestamp."
     ("t" "Today (inbox, scheduled today)" entry (file+headline +endgame-tasks-file "Inbox")
      "* TODO %^{Today}\nSCHEDULED: %(+endgame--today-stamp)\n:PROPERTIES:\n:CREATED:  %U\n:END:"
      :immediate-finish t)
-    ("a" "Appointment" entry (file+headline +endgame-tasks-file "Appointments")
+    ("a" "Event" entry (file+headline +endgame-tasks-file "Events")
      (function +endgame--appt-template)
      :immediate-finish t)
     ("e" "Errand" entry (file+headline +endgame-tasks-file "Errands")
@@ -906,7 +901,7 @@ AREA is an area alist or its tag. Nil when the area has no sources."
 
 (defun +endgame-day-item-p (&optional pom)
   "Non-nil when the entry at POM is dated by its own timestamp, not SCHEDULED.
-A routine or session copy (its own :ROUTINE:), an appointment (APPT), or
+A routine or session copy (its own :ROUTINE:), an event (a plain heading with a stamp), or
 any entry with a plain active timestamp in a daily note or the upcoming note.
 Not a night's Sleep copy: `+sleep-plan' retimes those."
   (org-with-point-at (or pom (point))
@@ -914,7 +909,8 @@ Not a night's Sleep copy: `+sleep-plan' retimes those."
     ;; a night's Sleep copy is dated by its :NIGHT:: `+sleep-plan' moves it
     (and (not (org-entry-get nil "SLEEP_ID"))
          (or (org-entry-get nil "ROUTINE")
-             (equal (org-get-todo-state) "APPT")
+             ;; an event: a plain heading with its own stamp (the old APPT keyword too)
+             (and (member (org-get-todo-state) '(nil "APPT")) (+endgame-entry-stamp))
              (and (+endgame-entry-stamp)
                   (buffer-file-name)
                   (or (file-in-directory-p (buffer-file-name) org-journal-dir)
