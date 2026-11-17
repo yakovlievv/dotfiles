@@ -12,7 +12,7 @@ tracker). Not a coding setup.
 | `config.el` | Generated artifact. Never edit. |
 | `packages.el` | Extra packages. |
 | `+book-gallery.el` | Standalone book-tracker module, `load!`ed at the end of config. |
-| `+endgame-capture.el` | Capture, sessions, day creation, upcoming→day staging, the areas registry. |
+| `+endgame-capture.el` | Capture, sessions, day creation, upcoming→day staging, the areas registry. An area's clocked files (`SOURCES`): one file, one area, the narrowest source wins (`+endgame--files-of-others`: `file:` over a tag, a topic tag over a node-type tag in `+endgame-node-type-tags`, then fewer files, then the area listed first), same ladder as the calendar in vault-MCP. |
 | `+sleep.el` | Sleep scheduling: each night's `Sleep` heading, clocked in/out through vault-api. Loaded after `+endgame-capture`. |
 | `tests/` | ERT suites, run in batch without Doom (see each file's header). |
 | `.hunspell_personal` | Personal word list, version-controlled. |

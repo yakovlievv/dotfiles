@@ -838,12 +838,51 @@ or nil), sources (the SOURCES words), id. Never hardcoded: read from
                  (push (cons file id) out))))))))
     (nreverse out)))
 
+(defconst +endgame-node-type-tags
+  '("system" "project" "atomic" "concept" "material" "component" "sub" "tmn" "index" "structure" "topic")
+  "Filetags that say what kind of note it is, not what it is about.
+A topic tag (cs, piano) is narrower than any of these. shortcut: a fixed
+list, mirrored by NODE_TYPE_TAGS in vault-MCP core/areas.ts; add a new
+node type in both.")
+
+(defun +endgame--tag-rank (tag)
+  "How wide filetag TAG is as a claim, (NODE-TYPE-P . FILES): smaller is narrower."
+  (cons (if (member tag +endgame-node-type-tags) 1 0)
+        (length (+endgame--files-with-filetag tag))))
+
+(defun +endgame--files-of-others (area tag)
+  "Files with filetag TAG that an area other than AREA owns instead.
+One file, one owner, the narrowest source wins (same ladder as the
+calendar in vault-MCP): a file: source beats any tag, of two tags a topic
+tag beats a node-type tag, then the one on fewer files, then the area
+listed first."
+  (let ((mine (+endgame--tag-rank tag))
+        (me (alist-get 'tag area))
+        (before t)
+        out)
+    (dolist (other (+endgame-areas))
+      (if (equal (alist-get 'tag other) me)
+          (setq before nil)
+        (dolist (src (alist-get 'sources other))
+          (cond
+           ((string-prefix-p "file:" src)
+            (push (expand-file-name (substring src 5) +endgame-vault-dir) out))
+           ((string-prefix-p "tag:" src)
+            (let ((theirs (+endgame--tag-rank (substring src 4))))
+              (when (or (< (car theirs) (car mine))
+                        (and (= (car theirs) (car mine))
+                             (or (< (cdr theirs) (cdr mine))
+                                 (and (= (cdr theirs) (cdr mine)) before))))
+                (setq out (append (+endgame--files-with-filetag (substring src 4)) out)))))))))
+    out))
+
 (defun +endgame-area-sources (area)
   "Where AREA's clocked time comes from: a list of (FILE . ID).
 ID is nil for a whole file. AREA is an area alist or its tag. From the
-SOURCES words: tag:X is every file with filetag X, file:P the file at P
-from the vault, id:U the subtree of that heading, prop:KEY every heading
-in the journal that has property KEY (each by its :ID:; the Sleep
+SOURCES words: tag:X is every file with filetag X that no other area
+owns by a narrower source (`+endgame--files-of-others'), file:P the file
+at P from the vault, id:U the subtree of that heading, prop:KEY every
+heading in the journal that has property KEY (each by its :ID:; the Sleep
 headings with prop:SLEEP_ID)."
   (let ((area (if (stringp area) (+endgame--area area) area)))
     (delete-dups
@@ -851,7 +890,9 @@ headings with prop:SLEEP_ID)."
       for src in (alist-get 'sources area)
       append (cond
               ((string-prefix-p "tag:" src)
-               (mapcar #'list (+endgame--files-with-filetag (substring src 4))))
+               (let ((tag (substring src 4)))
+                 (mapcar #'list (seq-difference (+endgame--files-with-filetag tag)
+                                                (+endgame--files-of-others area tag)))))
               ((string-prefix-p "file:" src)
                (let ((f (expand-file-name (substring src 5) +endgame-vault-dir)))
                  (and (file-exists-p f) (list (list f)))))
