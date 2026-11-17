@@ -484,8 +484,10 @@
     (+endgame-day-ensure "2031-01-08")
     (+endgame--saving
       (+sleep-log-night "2031-01-07" "2031-01-07 23:30" "2031-01-08 07:10"))
-    (let ((sources (+endgame-area-sources "sleep"))
-          (week (buffer-file-name (marker-buffer (+endgame--day-marker "2031-01-07")))))
+    (let* ((sources (+endgame-area-sources "sleep"))
+          (week (buffer-file-name (marker-buffer (+endgame--day-marker "2031-01-07"))))
+          (sources (mapcar (lambda (s) (cons (file-truename (car s)) (cdr s))) sources))
+          (week (file-truename week)))
       (should (equal (sort (copy-sequence sources) (lambda (a b) (string< (cdr a) (cdr b))))
                      (sort (list (cons week (org-entry-get (+sleep-copy "2031-01-06") "ID"))
                                  (cons week (org-entry-get (+sleep-copy "2031-01-07") "ID")))

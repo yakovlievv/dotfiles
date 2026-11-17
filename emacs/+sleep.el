@@ -206,9 +206,9 @@ BOUND-MARKER: only inside the subtree at that marker."
 A copy is found by its :NIGHT: and :SLEEP_ID:. A night lives on the day I
 wake up (since 2026-11-09; before, on day NIGHT itself), so a copy
 of a day NIGHT note is only found when it is still there from before."
-  (or (when-let ((day (+endgame--day-marker (+sleep--add-days night 1))))
+  (or (when-let* ((day (+endgame--day-marker (+sleep--add-days night 1))))
         (+sleep--copy-in (marker-buffer day) night day))
-      (when-let ((day (+endgame--day-marker night)))
+      (when-let* ((day (+endgame--day-marker night)))
         (+sleep--copy-in (marker-buffer day) night day))
       (when (or (find-buffer-visiting +endgame-upcoming-file)
                 (file-exists-p +endgame-upcoming-file))
@@ -353,7 +353,7 @@ ahead in upcoming is the one that stays."
 
 (defun +sleep-night-logged-p (night)
   "Non-nil when NIGHT's copy has a closed CLOCK line."
-  (when-let ((copy (+sleep-copy night)))
+  (when-let* ((copy (+sleep-copy night)))
     (org-with-point-at copy
       (org-with-wide-buffer
        (re-search-forward +sleep--closed-clock-re (+sleep--entry-end copy) t)))))
@@ -842,7 +842,7 @@ the files and drops its own clock if it was one of them."
              (pcase (alist-get 'state r)
                ("already" (format "Sleep: already clocked in (night %s)" (alist-get 'night r)))
                (_ (concat (format "Sleep: clocked in (night %s)" (alist-get 'night r))
-                          (when-let ((closed (alist-get 'closed r)))
+                          (when-let* ((closed (alist-get 'closed r)))
                             (concat ", closed "
                                     (mapconcat (lambda (c)
                                                  (let ((h (alist-get 'heading c)))

@@ -26,8 +26,6 @@
        ophints           ; highlight the region an operation acts on
        smooth-scroll     ; pixel-precise trackpad scrolling (ultra-scroll)
        (popup +defaults)   ; tame sudden yet inevitable temporary windows
-       (vc-gutter +pretty) ; vcs diff in the fringe
-       treemacs
        vi-tilde-fringe   ; fringe tildes to mark beyond EOB
        window-select
        workspaces        ; tab emulation, persistence & separate workspaces
@@ -48,7 +46,6 @@
        electric          ; smarter, keyword-based electric-indent
        ibuffer
        undo
-       vc                ; version-control and Emacs, sitting in a tree
 
        :term
 
@@ -60,14 +57,13 @@
        :tools
        (eval +overlay)     ; run code, run (also, repls)
        lookup              ; navigate your code and its documentation
-       magit             ; a git porcelain for Emacs
        pdf
 
        :os
        (:if (featurep :system 'macos) macos)  ; improve compatibility with macOS
 
        :lang
-       (org :dragndrop +roam +pomodoro +present +agenda +habits +pretty +pandoc +journal)
+       (org +dragndrop +roam +agenda +habits +pretty +pandoc +journal)  ; org-pomodoro comes from packages.el (no +pomodoro flag in this Doom)
        emacs-lisp        ; drown in parentheses
        markdown          ; writing docs for people to ignore
        sh                ; she sells {ba,z,fi}sh shells on the C xor

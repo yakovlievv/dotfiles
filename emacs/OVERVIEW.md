@@ -18,7 +18,6 @@ tracker). Not a coding setup.
 | `.hunspell_personal` | Personal word list, version-controlled. |
 | `.env` | `GOOGLE_BOOKS_API_KEY` for ISBN lookup. |
 | `snippets/org-mode/` | 6 yasnippets, all clocktable variants. |
-| `minimal-server-conf/` | Separate stripped config for a remote server. |
 | `*.mp3` | Skyrim pomodoro sounds. |
 
 ## Doom modules (`init.el`)

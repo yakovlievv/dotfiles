@@ -45,6 +45,7 @@ Set GOOGLE_BOOKS_API_KEY in the .env file next to this file."
 ;;; State
 
 (defvar book-gallery--filter-status nil)
+(defvar book-gallery--filter-title nil)
 (defvar book-gallery--filter-tag nil)
 (defvar book-gallery--sort-key 'status)
 (defvar book-gallery--refresh-timer nil)
@@ -420,7 +421,7 @@ Set GOOGLE_BOOKS_API_KEY in the .env file next to this file."
 
 (defun book-gallery--extract-cover-url (props)
   "Extract cover URL from PROPS, stripping org link brackets."
-  (when-let ((raw (book-gallery--prop props "COVER")))
+  (when-let* ((raw (book-gallery--prop props "COVER")))
     (if (string-match "\\[\\[\\(.*?\\)\\]\\]" raw)
         (match-string 1 raw)
       raw)))
@@ -486,7 +487,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
          (file (plist-get book :file))
          (start (point))
          (cover-img (when cover-url
-                      (when-let ((local (book-gallery--download-cover cover-url)))
+                      (when-let* ((local (book-gallery--download-cover cover-url)))
                         (book-gallery--create-cover-image local))))
          (cover-px-w (when cover-img (car (image-size cover-img t))))
          (dot (propertize " · " 'face '(:foreground "#45475a")))
@@ -677,7 +678,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-open-at-point ()
   "Open the book file at point."
   (interactive)
-  (if-let ((file (get-text-property (point) 'book-file)))
+  (if-let* ((file (get-text-property (point) 'book-file)))
       (find-file file)
     (message "No book at point")))
 
@@ -749,7 +750,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
     (setq book-gallery--refresh-timer nil)))
 
 (defun book-gallery--auto-refresh ()
-  (when-let ((buf (get-buffer "*yako's library*")))
+  (when-let* ((buf (get-buffer "*yako's library*")))
     (when (buffer-live-p buf)
       (with-current-buffer buf
         (book-gallery--render)))))
@@ -931,7 +932,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-fill-from-isbn ()
   "Fill missing metadata on the book at point from ISBN lookup."
   (interactive)
-  (when-let ((file (get-text-property (point) 'book-file)))
+  (when-let* ((file (get-text-property (point) 'book-file)))
     (let* ((isbn (read-string "ISBN: "))
            (data (book-gallery--isbn-lookup isbn)))
       (if (null data)
@@ -967,7 +968,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 
 (defun book-gallery--set-status (new-status)
   "Set the status of the book at point to NEW-STATUS."
-  (when-let ((file (get-text-property (point) 'book-file)))
+  (when-let* ((file (get-text-property (point) 'book-file)))
     (with-current-buffer (find-file-noselect file)
       (save-excursion
         (goto-char (point-min))
@@ -987,7 +988,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-mark-done ()
   "Mark book at point as finished, set pages_read = total_pages."
   (interactive)
-  (when-let ((file (get-text-property (point) 'book-file)))
+  (when-let* ((file (get-text-property (point) 'book-file)))
     (with-current-buffer (find-file-noselect file)
       (save-excursion
         (goto-char (point-min))
@@ -1012,21 +1013,21 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-open-hsplit ()
   "Open the book at point in a horizontal split."
   (interactive)
-  (if-let ((file (get-text-property (point) 'book-file)))
+  (if-let* ((file (get-text-property (point) 'book-file)))
       (progn (split-window-below) (other-window 1) (find-file file))
     (message "No book at point")))
 
 (defun book-gallery-open-vsplit ()
   "Open the book at point in a vertical split."
   (interactive)
-  (if-let ((file (get-text-property (point) 'book-file)))
+  (if-let* ((file (get-text-property (point) 'book-file)))
       (progn (split-window-right) (other-window 1) (find-file file))
     (message "No book at point")))
 
 (defun book-gallery-set-rating (rating)
   "Set RATING (1-5) on the book at point."
   (interactive "p")
-  (when-let ((file (get-text-property (point) 'book-file)))
+  (when-let* ((file (get-text-property (point) 'book-file)))
     (when (<= 1 rating 5)
       (with-current-buffer (find-file-noselect file)
         (save-excursion
@@ -1048,7 +1049,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
 (defun book-gallery-set-pages ()
   "Prompt for current page and update PAGES_READ on the book at point."
   (interactive)
-  (when-let ((file (get-text-property (point) 'book-file)))
+  (when-let* ((file (get-text-property (point) 'book-file)))
     (let ((page (read-number "Page you're on: ")))
       (book-gallery--update-pages file page)
       (book-gallery-refresh))))
@@ -1057,7 +1058,7 @@ fill='%s' text-anchor='middle' dominant-baseline='central'>%s</text></svg>"
   "Toggle clock on the book at point. Clocks into the Read log heading.
 On clock-out, prompts for current page."
   (interactive)
-  (when-let ((file (get-text-property (point) 'book-file)))
+  (when-let* ((file (get-text-property (point) 'book-file)))
     (let ((buf (find-file-noselect file)))
       (if (and (org-clocking-p)
                (eq (marker-buffer org-clock-marker) buf))
@@ -1122,7 +1123,6 @@ On clock-out, prompts for current page."
            (fwd-pos (goto-char fwd-pos))
            (bwd-pos (goto-char bwd-pos))))))))
 
-(defvar book-gallery--filter-title nil)
 
 (defun book-gallery-search ()
   "Filter books by title."

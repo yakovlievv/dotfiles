@@ -252,7 +252,7 @@ lines (SCHEDULED, DEADLINE) and property lines don't count."
 (defun +endgame-entry-time-range (&optional pom)
   "(DATE START END MINUTES) of the entry at POM's timestamp, see `+endgame--stamp-range'.
 Nil when the entry has no plain active timestamp."
-  (when-let ((stamp (+endgame-entry-stamp pom)))
+  (when-let* ((stamp (+endgame-entry-stamp pom)))
     (+endgame--stamp-range stamp)))
 
 (defun +endgame--title ()
@@ -424,7 +424,7 @@ the DO list, never inside it (a night's Sleep heading)."
   "\"YYYY-MM-DD\" of the entry at POM: its first plain active timestamp's day,
 else its SCHEDULED day (a weekly reset copy), else nil."
   (or (car (+endgame-entry-time-range pom))
-      (when-let ((s (org-entry-get pom "SCHEDULED")))
+      (when-let* ((s (org-entry-get pom "SCHEDULED")))
         (car (+endgame--stamp-range s)))))
 
 (defun +endgame-stage-into-day (day)
@@ -700,7 +700,7 @@ prompts included, so it gets its habits and staged items."
   "ID of the habit in `+habits-file' whose title links routine TITLE, or nil.
 The morning routine is both: its steps are in the routines note, a habit
 links it, and only that habit's copy counts for the habit."
-  (when-let ((rid (with-current-buffer (find-file-noselect +routines-file)
+  (when-let* ((rid (with-current-buffer (find-file-noselect +routines-file)
                     (org-with-wide-buffer
                      (catch 'found
                        (org-map-entries
@@ -733,8 +733,8 @@ ASK (an Emacs command) and the day isn't in the future: then the day is
 made first, with the sleep and morning questions. A routine a habit links
 (`+endgame--routine-habit') gets that habit's copy instead, so it counts
 for the habit. Returns `day', `upcoming', or nil when the day already has it."
-  (if-let ((hid (+endgame--routine-habit title)))
-      (unless (when-let ((d (+endgame--day-marker date))) (+endgame--day-habit-copy d hid))
+  (if-let* ((hid (+endgame--routine-habit title)))
+      (unless (when-let* ((d (+endgame--day-marker date))) (+endgame--day-habit-copy d hid))
         (when (and ask (not (string> date (+endgame--today))))
           (+endgame--ensure-day date ask))
         (let ((m (apply #'+endgame-plan-habit hid date (+endgame--routine-times time date))))
@@ -834,7 +834,7 @@ or nil), sources (the SOURCES words), id. Never hardcoded: read from
          (while (re-search-forward re nil t)
            (save-excursion
              (when (ignore-errors (org-back-to-heading t) t)
-               (when-let ((id (and (org-entry-get nil key) (org-entry-get nil "ID"))))
+               (when-let* ((id (and (org-entry-get nil key) (org-entry-get nil "ID"))))
                  (push (cons file id) out))))))))
     (nreverse out)))
 
@@ -869,7 +869,7 @@ headings with prop:SLEEP_ID)."
    for table = (with-current-buffer (org-get-agenda-file-buffer file)
                  (org-with-wide-buffer
                   (when (or (not id)
-                            (when-let ((pos (org-find-entry-with-id id)))
+                            (when-let* ((pos (org-find-entry-with-id id)))
                               (goto-char pos)
                               (org-narrow-to-subtree)
                               t))
@@ -884,7 +884,7 @@ headings with prop:SLEEP_ID)."
 (defun +endgame-area-clocked (area from &optional to)
   "Minutes clocked in AREA's sources on the days FROM..TO (\"YYYY-MM-DD\").
 AREA is an area alist or its tag. Nil when the area has no sources."
-  (when-let ((sources (+endgame-area-sources area)))
+  (when-let* ((sources (+endgame-area-sources area)))
     (pcase-let ((`(,ts ,te) (+endgame--range from (or to from))))
       (apply #'+ (mapcar #'cadr (+endgame--area-tables
                                  sources (list :tstart ts :tend te :maxlevel 1)))))))
@@ -1324,7 +1324,7 @@ AREA is an area alist or its tag."
       (with-current-buffer (org-get-agenda-file-buffer file)
         (org-with-wide-buffer
          (when (or (not id)
-                   (when-let ((pos (org-find-entry-with-id id)))
+                   (when-let* ((pos (org-find-entry-with-id id)))
                      (goto-char pos)
                      (org-narrow-to-subtree)
                      t))
@@ -1347,7 +1347,7 @@ Its plain active timestamp, else its SCHEDULED (a lesson's
 SCHEDULED: <… 16:00-17:00>). DEADLINE doesn't count."
   (seq-find (lambda (r) (and r (nth 3 r) (> (nth 3 r) 0) (member (car r) days)))
             (list (+endgame-entry-time-range)
-                  (when-let ((sch (org-entry-get nil "SCHEDULED")))
+                  (when-let* ((sch (org-entry-get nil "SCHEDULED")))
                     (+endgame--stamp-range sch)))))
 
 (defun +endgame--union-minutes (spans)
@@ -1450,7 +1450,7 @@ without SOURCES are left out."
          (params (org-combine-plists params (list :block nil :tstart (car range) :tend (nth 1 range))))
          out)
     (dolist (area (+endgame-areas))
-      (when-let ((sources (+endgame-area-sources area)))
+      (when-let* ((sources (+endgame-area-sources area)))
         (let* ((tables (+endgame--area-tables sources params))
                (total (apply #'+ (mapcar #'cadr tables)))
                (week (alist-get 'baselineWeek area))

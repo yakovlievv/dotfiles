@@ -12,7 +12,7 @@
 ;;   (routine, habit and session copies in the daily note's DO list) and items
 ;;   staged for that day in the upcoming note. Timed first by time, untimed
 ;;   below, one done counter. The JSON is what vault-api serves the phone.
-;; - `+endgame/today-agenda' (SPC a d): the cheap version, a block agenda.
+;; - `+endgame/today-agenda' (SPC a d, via the dispatcher): the cheap version, a block agenda.
 ;; - `+endgame/today-panel' (SPC o t): a workspace with three windows: the
 ;;   org-timeblock timeline on the left, a dashboard on the right (the list
 ;;   with checkboxes, habits with this week's heatmap, today's clocked time,
@@ -177,7 +177,7 @@ buffer is first shown."
   "Marker at day ABS's heading in its weekly journal file, or nil."
   (let ((file (+endgame-today--day-file abs))
         (date (+endgame-today--date abs)))
-    (when (file-exists-p file)
+    (when (or (find-buffer-visiting file) (file-exists-p file)) ; a new week isn't saved yet
       (with-current-buffer (+endgame-today--buffer file)
         (org-with-wide-buffer
          (goto-char (point-min))
@@ -1253,6 +1253,10 @@ Interactively, also read the per-area numbers again."
         (+endgame-today-refresh)
         (+endgame-today--redraw-timeline)
         (when day-changed
+          ;; the new day's note is made the normal way (prompts), like opening the panel
+          (when (fboundp '+endgame--ensure-day)
+            (condition-case err (+endgame--ensure-day (+endgame--today) t)
+              (error (message "Today panel: making today's note failed: %s" (error-message-string err)))))
           ;; a note left on yesterday follows the day; any other day stays,
           ;; with its header ("today", "2d ago") worked out again
           (dolist (win (window-list nil 'no-mini))
@@ -1284,7 +1288,8 @@ When it's out of sight, refresh it once it's seen again."
 
 (defun +endgame-today--tick ()
   "The periodic refresh: the clock moves, and the day ends.
-A day ends at `org-extend-today-until', not midnight."
+A day ends at `org-extend-today-until', not midnight. The refresh that
+sees the new day also makes its note, with the usual prompts."
   (let ((buf (get-buffer +endgame-today-dashboard-buffer)))
     (cond ((not buf) (+endgame-today--stop-timer))
           ((get-buffer-window buf 'visible) (+endgame-today--refresh-panel))
@@ -2142,8 +2147,8 @@ the three windows out afresh."
 (when (fboundp 'map!)
   (map! :leader
         :desc "Today panel (toggle)"  "o t" #'+endgame/today-panel-toggle
-        :desc "Today panel (rebuild)" "o T" #'+endgame/today-panel-rebuild
-        :desc "Today list"  "a d" #'+endgame/today-agenda)
+        :desc "Today panel (rebuild)" "o T" #'+endgame/today-panel-rebuild)
+  ;; the today list is the agenda dispatcher's "d": SPC a d
   (map! :map +endgame-today-mode-map
         :n "RET" #'+endgame-today/toggle
         :n "x"   #'+endgame-today/toggle

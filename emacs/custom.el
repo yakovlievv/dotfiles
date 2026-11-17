@@ -107,7 +107,7 @@
      "/Users/yako/org/roam/20261021165904-home_assistant.org"
      "/Users/yako/org/roam/20261025005104-sleep_optimization_system.org"
      "/Users/yako/org/roam/20261030154610-the_endgame_org_vault_as_the_brain_thin_clients_for_everything_else.org"
-     "/Users/yako/org/roam/20261031024752-tasks.org"
+     "/Users/yako/org/roam/20261031024752-life.org"
      "/Users/yako/org/roam/20261031030150-areas.org"
      "/Users/yako/org/roam/daily/2025-12-25.org"
      "/Users/yako/org/roam/daily/2025-12-26.org"
@@ -123,7 +123,8 @@
      "/Users/yako/org/roam/daily/week34-2026-08-17.org"
      "/Users/yako/org/roam/daily/week43-2026-10-19.org"
      "/Users/yako/org/roam/daily/week44-2026-10-26.org"
-     "/Users/yako/org/roam/daily/week45-2026-11-02.org")))
+     "/Users/yako/org/roam/daily/week45-2026-11-02.org"))
+ '(warning-suppress-log-types '((org-element org-element-cache))))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
