@@ -224,6 +224,38 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
       (should-not (+endgame-area-sources "piano"))
       (should (string-match-p "\"tag\":\"learning\"" (+endgame-areas-json))))))
 
+(ert-deftest +endgame-area-sources-narrowest-wins ()
+  "One file, one area: a topic tag beats a node-type tag whatever the order,
+a file: source beats any tag, and of two topic tags the narrower wins."
+  (+endgame-test--with-vault
+    (cl-flet ((note (name tags) (+endgame-test--file (concat "roam/" name ".org")
+                                                     (concat "#+title: " name "\n#+filetags: " tags "\n\n* item\n")))
+              (files (tag) (sort (mapcar (lambda (s) (file-name-nondirectory (car s))) (+endgame-area-sources tag)) #'string<)))
+      (note "sys" ":system:") (note "proj" ":project:")
+      (note "both" ":system:cs:") (note "proj-cs" ":project:cs:") (note "cs" ":cs:")
+      (note "pinned" ":system:") (note "narrow" ":x:y:") (note "wide" ":x:")
+      (note "tie1" ":p:q:")
+      (let* ((+endgame--areas-cache nil)
+             ;; maintenance is listed FIRST: order alone would give it every shared file
+             (+endgame-areas-file
+              (+endgame-test--file
+               "roam/areas2.org"
+               (concat "#+title: areas\n\n* Cat\n"
+                       "** Maintenance\n:PROPERTIES:\n:AREA_TAG: maintenance\n:SOURCES: tag:system tag:project\n:END:\n"
+                       "** Coding\n:PROPERTIES:\n:AREA_TAG: coding\n:SOURCES: tag:cs\n:END:\n"
+                       "** Piano\n:PROPERTIES:\n:AREA_TAG: piano\n:SOURCES: file:roam/pinned.org\n:END:\n"
+                       "** Wide\n:PROPERTIES:\n:AREA_TAG: wide\n:SOURCES: tag:x\n:END:\n"
+                       "** Narrow\n:PROPERTIES:\n:AREA_TAG: narrow\n:SOURCES: tag:y\n:END:\n"
+                       "** First\n:PROPERTIES:\n:AREA_TAG: first\n:SOURCES: tag:p\n:END:\n"
+                       "** Second\n:PROPERTIES:\n:AREA_TAG: second\n:SOURCES: tag:q\n:END:\n"))))
+        (should (equal (files "maintenance") '("proj.org" "sys.org")))
+        (should (equal (files "coding") '("both.org" "cs.org" "proj-cs.org")))
+        (should (equal (files "piano") '("pinned.org")))
+        (should (equal (files "narrow") '("narrow.org")))
+        (should (equal (files "wide") '("wide.org")))
+        (should (equal (files "first") '("tie1.org")))
+        (should-not (files "second"))))))
+
 ;;; Sessions, routines, days
 
 (ert-deftest +endgame-session-into-upcoming-then-day ()
