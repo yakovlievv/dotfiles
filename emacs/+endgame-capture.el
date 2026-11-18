@@ -10,7 +10,7 @@
 ;; - SPC j r: a routine copy gets a plain active timestamp for its day,
 ;;   with an optional time; the weekly reset gets SCHEDULED instead
 ;;   (`+endgame-scheduled-routines')
-;; - SPC j s: a session, the session routine with an area and a time range,
+;; - SPC j s: a session, a plain heading with an area and a time range,
 ;;   into its day's DO list, or into the upcoming note for a future day
 ;; - `+endgame-day-ensure': creates any day without asking anything, then
 ;;   moves that day's staged items from upcoming into its DO list and gives
@@ -1222,21 +1222,13 @@ heading itself: :AREA:, or a local tag that is an area's AREA_TAG."
 
 (defun +endgame--session-text (tag stamp)
   "A fresh session for area TAG at STAMP, as a level 1 heading.
-The session routine copied the way `SPC j r' copies it, titled
-\"TAG session\", with the area as tag, :AREA: and a :CALDAV_UID:, STAMP
-after the drawer."
-  (let* ((copy (+routines--copy +endgame-session-routine 1))
-         (eol (string-match "\n" copy))
-         (cookie (and (string-match " \\[[0-9]*/[0-9]*\\]\\'" (substring copy 0 eol))
-                      (match-string 0 (substring copy 0 eol))))
-         (rest (substring copy (1+ eol)))
-         (rest (if (string-match "^:END:\n" rest)
-                   (concat (substring rest 0 (match-beginning 0))
-                           ":AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n" stamp "\n"
-                           (substring rest (match-end 0)))
-                 (concat ":PROPERTIES:\n:ROUTINE:  " +endgame-session-routine
-                         "\n:AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n" stamp "\n" rest))))
-    (concat "* TODO " tag " session" (or cookie "") " :" tag ":\n" rest)))
+Just a heading titled \"TAG session\" with the area as tag: no TODO keyword,
+no checklist, nothing to check off. :ROUTINE: Session routine is what marks
+it as a session, next to :AREA: and a :CALDAV_UID:, STAMP after the drawer."
+  (concat "* " tag " session :" tag ":\n"
+          ":PROPERTIES:\n:ROUTINE:  " +endgame-session-routine
+          "\n:AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n"
+          stamp "\n"))
 
 (defun +endgame-session-add (tag stamp &optional ask)
   "Add a session for area TAG at STAMP (an active timestamp, or what org's
@@ -1299,7 +1291,7 @@ STAMP is an active timestamp or what org's date prompt reads.
 (defun +endgame-sessions (from &optional to)
   "Sessions on the days FROM..TO (\"YYYY-MM-DD\"), in the journal and upcoming.
 A list of alists: area, date, start, end, minutes, state, title, file,
-line. Killed sessions are left out."
+line. state is nil for a plain-heading session. Killed (old TODO) sessions are left out."
   (let ((to (or to from))
         sessions)
     (dolist (file (delete-dups
@@ -1330,7 +1322,7 @@ line. Killed sessions are left out."
                        (start . ,(nth 1 range))
                        (end . ,(nth 2 range))
                        (minutes . ,(nth 3 range))
-                       (state . ,(substring-no-properties (org-get-todo-state)))
+                       (state . ,(and (org-get-todo-state) (substring-no-properties (org-get-todo-state))))
                        (title . ,(+endgame--title))
                        (file . ,file)
                        (line . ,(line-number-at-pos (line-beginning-position) t)))

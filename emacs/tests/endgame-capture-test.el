@@ -264,9 +264,9 @@ a file: source beats any tag, and of two topic tags the narrower wins."
     (should (eq (+endgame-session-add "learning" (concat +endgame-test-future " 10:00-12:00")) 'upcoming))
     (let ((up (+endgame-test--read +endgame-upcoming-file)))
       (should (string-match-p
-               (concat "^\\* TODO learning session \\[0/3\\] :learning:\n:PROPERTIES:\n"
+               (concat "^\\* learning session :learning:\n:PROPERTIES:\n"
                        ":ROUTINE:  Session routine\n:AREA:     learning\n:CALDAV_UID: [-0-9a-f]+\n:END:\n"
-                       "<" +endgame-test-future " Wed 10:00-12:00>\n- \\[ \\] Start")
+                       "<" +endgame-test-future " Wed 10:00-12:00>\n")
                up)))
     ;; a staged item from the calendar keeps its UID through the move
     (with-current-buffer (find-file-noselect +endgame-upcoming-file)
@@ -284,9 +284,9 @@ a file: source beats any tag, and of two topic tags the narrower wins."
       (let ((week (+endgame-test--read (gethash "file" out))))
         (should (string-match-p "^\\* Wednesday, 2031-01-08 :daily:\n:PROPERTIES:\n:CREATED:  20310108\n:ID: " week))
         (should (string-match-p (concat "#\\+BEGIN: clocktable .*:block " +endgame-test-future) week))
-        (should (string-match-p "^\\*\\* DO list \\[0/3\\]" week))
+        (should (string-match-p "^\\*\\* DO list \\[0/2\\]" week))
         (should (string-match-p "^\\*\\*\\* TODO piano\nSCHEDULED: <2031-01-08 Wed>" week)) ; the habit
-        (should (string-match-p "^\\*\\*\\* TODO learning session \\[0/3\\] :learning:" week))
+        (should (string-match-p "^\\*\\*\\* learning session :learning:" week))
         (should (string-match-p ":CALDAV_UID: uid-1@vault" week)))
       (let ((up (+endgame-test--read +endgame-upcoming-file)))
         (should-not (string-match-p "session" up))
@@ -393,7 +393,7 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
       (remove-hook 'org-journal-after-entry-create-hook #'+org-journal-init-day))
     (should-not (string-match-p "learning session" (+endgame-test--read +endgame-upcoming-file)))
     (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
-      (should (string-match-p "^\\*\\*\\* TODO learning session" (buffer-string))))))
+      (should (string-match-p "^\\*\\*\\* learning session" (buffer-string))))))
 
 (ert-deftest +endgame-carried-over-do-list-merges-into-the-days ()
   (+endgame-test--with-vault
@@ -459,7 +459,7 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
     (let* ((week (lambda () (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
            (m (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
                 (goto-char (point-min))
-                (re-search-forward "^\\*\\*\\* TODO learning session")
+                (re-search-forward "^\\*\\*\\* learning session")
                 (point-marker))))
       (should (+endgame-day-item-p m))
       ;; what the old path left: a SCHEDULED next to the timestamp
@@ -475,7 +475,7 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
       (should-not (string-match-p "learning session" (funcall week)))
       (should (string-match-p "^\\*\\* DO list \\[[0-9]+/[0-9]+\\]" (funcall week)))
       (let ((up (+endgame-test--read +endgame-upcoming-file)))
-        (should (string-match-p (concat "^\\* TODO learning session \\[0/3\\] :learning:\n:PROPERTIES:\n"
+        (should (string-match-p (concat "^\\* learning session :learning:\n:PROPERTIES:\n"
                                         "\\(?:.*\n\\)*?:END:\n<2031-01-09 Thu 10:00-12:00>\n")
                                 up))
         (should-not (string-match-p "SCHEDULED" up)))
@@ -486,7 +486,7 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
       ;; and back into an existing day, with a new time
       (let ((back (with-current-buffer (marker-buffer (+endgame--day-marker "2031-01-09"))
                     (goto-char (point-min))
-                    (re-search-forward "^\\*\\*\\* TODO learning session")
+                    (re-search-forward "^\\*\\*\\* learning session")
                     (point-marker))))
         (+endgame--saving (+endgame-move-to-day back +endgame-test-future "14:00" "15:30")))
       (should (string-match-p "<2031-01-08 Wed 14:00-15:30>" (funcall week))))))
