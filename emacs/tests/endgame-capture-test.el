@@ -1,6 +1,6 @@
 ;;; endgame-capture-test.el --- tests for +endgame-capture.el -*- lexical-binding: t; -*-
 ;;
-;; Runs without Doom, in a throwaway vault. The habits, routines and journal
+;; Runs without Doom, in a throwaway vault. The routines and journal
 ;; code the module builds on is read straight out of the literate config, so
 ;; the tests run against the real thing:
 ;;
@@ -15,7 +15,7 @@
 (require 'org-capture)
 
 (defvar +endgame-test-config (expand-file-name "~/org/roam/config/doom-config.org")
-  "The literate config the habits, routines and journal blocks come from.")
+  "The literate config the routines and journal blocks come from.")
 
 ;; Doom macros used in those blocks.
 (defmacro after! (feature &rest body)
@@ -34,7 +34,7 @@
           (re-search-forward "^#\\+end_src")
           (let ((code (buffer-substring beg (match-beginning 0))))
             (when (and (not (string-match-p "<<" code)) ; the tangled test files
-                       (or (member name '("repeat-skip" "habits" "habits-linked" "routines"))
+                       (or (member name '("repeat-skip" "habits" "routines-shared" "routines"))
                       (string-match-p "(defun \\+org-journal-init-day" code)
                           (string-match-p "org-use-property-inheritance" code)))
               (push code blocks)))))
@@ -91,7 +91,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
           (org-journal-time-prefix "** ")
           (org-journal-date-format "%A, %Y-%m-%d")
           (org-journal-file-header #'+org-journal-file-header)
-          (org-journal-carryover-items "TODO=\"TODO\"-HABIT_ID={.}-ROUTINE={.}")
+          (org-journal-carryover-items "TODO=\"TODO\"-ROUTINE={.}")
           (org-journal-enable-agenda-integration nil)
           (org-journal-enable-cache nil)
           (org-journal-hide-entries-p nil)
@@ -284,8 +284,7 @@ a file: source beats any tag, and of two topic tags the narrower wins."
       (let ((week (+endgame-test--read (gethash "file" out))))
         (should (string-match-p "^\\* Wednesday, 2031-01-08 :daily:\n:PROPERTIES:\n:CREATED:  20310108\n:ID: " week))
         (should (string-match-p (concat "#\\+BEGIN: clocktable .*:block " +endgame-test-future) week))
-        (should (string-match-p "^\\*\\* DO list \\[0/3\\]" week))
-        (should (string-match-p "^\\*\\*\\* TODO piano\nSCHEDULED: <2031-01-08 Wed>" week)) ; the habit
+        (should (string-match-p "^\\*\\* DO list \\[0/2\\]" week))
         (should (string-match-p "^\\*\\*\\* TODO learning session \\[0/3\\] :learning:" week))
         (should (string-match-p ":CALDAV_UID: uid-1@vault" week)))
       (let ((up (+endgame-test--read +endgame-upcoming-file)))
@@ -328,38 +327,6 @@ a file: source beats any tag, and of two topic tags the narrower wins."
                               week))
       (should (string-match-p (concat ":ROUTINE:  Session routine\n:END:\n<" +endgame-test-future " Wed>\n")
                               week)))))
-
-(ert-deftest +endgame-routine-that-is-a-habit-gets-the-habit-copy ()
-  "SPC j r on a routine a habit links (the morning routine) adds the habit's
-copy, so ticking it counts for the habit; other routines stay routine copies."
-  (+endgame-test--with-vault
-    (+endgame-test--file
-     "roam/routines.org"
-     (concat "#+title: routines\n\n"
-             "* Morning routine\n:PROPERTIES:\n:ID:       rt-morning\n:END:\nwake up.\n- [ ] water\n- [ ] stretch\n"
-             "* Session routine\n- [ ] Start\n"))
-    (+endgame-test--file
-     "roam/habits.org"
-     (concat "#+title: my habits\n\n"
-             "* TODO [[id:rt-morning][morning routine]]\nSCHEDULED: <" (+endgame-test--date -1) " 09:00-09:30 .+1d>\n"
-             ":PROPERTIES:\n:ID:       src-morning\n:STYLE:    habit\n:SKIP:     " +endgame-test-future "\n:END:\n"))
-    (let ((org-id-track-globally t) (org-id-locations nil) (org-id-extra-files (list +routines-file)))
-    (should (equal (+endgame--routine-habit "Morning routine") "src-morning"))
-    (should-not (+endgame--routine-habit "Session routine"))
-    ;; the day is skipped for the habit, so making it adds no copy; SPC j r does
-    (+endgame-day-ensure +endgame-test-future)
-    (should (eq (+endgame-routine-add "Morning routine" +endgame-test-future "7am+0:15") 'day))
-    (let ((week (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
-      (should (string-match-p ":HABIT_ID: src-morning" week))
-      (should-not (string-match-p ":ROUTINE:  Morning routine" week))
-      (should (string-match-p (concat "SCHEDULED: <" +endgame-test-future " Wed 07:00-07:15>") week))
-      ;; its steps come from the routine it links
-      (should (string-match-p "- \\[ \\] water" week)))
-    ;; a second time: it's there already
-    (should-not (+endgame-routine-add "Morning routine" +endgame-test-future nil))
-    (should (eq (+endgame-routine-add "Session routine" +endgame-test-future nil) 'day))
-    (should (string-match-p ":ROUTINE:  Session routine"
-                            (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future)))))))))
 
 (ert-deftest +endgame-weekly-reset-copy-is-scheduled ()
   (+endgame-test--with-vault
@@ -513,8 +480,8 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
     (should (string-match-p "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <2031-01-11 Sat 15:30-16:30>\n"
                             (+endgame-test--read +endgame-upcoming-file)))))
 
-(ert-deftest +endgame-move-to-day-dates-a-habit-copy-with-no-date ()
-  ;; a habit's copy in the DO list: :ROUTINE: but no timestamp, no SCHEDULED
+(ert-deftest +endgame-move-to-day-dates-a-copy-with-no-date ()
+  ;; a routine copy in the DO list: :ROUTINE: but no timestamp, no SCHEDULED
   (+endgame-test--with-vault
     (+endgame-day-ensure +endgame-test-future)
     (let* ((day (+endgame--day-marker +endgame-test-future))
@@ -526,7 +493,7 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
                      (point-marker)))))
       (+endgame--append-to-do-list
        day (list (concat "* TODO piano session [0/1] :piano:\n:PROPERTIES:\n"
-                         ":HABIT_ID: ac15a432\n:STYLE:    habit\n:ROUTINE: Session routine\n:END:\n"
+                         ":ROUTINE: Session routine\n:END:\n"
                          "- [ ] Start\n")))
       (let ((m (funcall find (marker-buffer day))))
         (should (+endgame-day-item-p m))
@@ -576,58 +543,12 @@ copy, so ticking it counts for the habit; other routines stay routine copies."
       (setq n (1+ n) start (match-end 0)))
     n))
 
-(ert-deftest +endgame-plan-habit-into-upcoming-then-day ()
-  ;; a calendar move of one future occurrence: skip it, plan a timed copy
-  (+endgame-test--with-vault
-    (let ((out (json-parse-string
-                (+endgame-plan-habit-json "src-piano" +endgame-test-future "07:15" nil +endgame-test-future))))
-      (should (equal (gethash "where" out) "upcoming"))
-      (should (gethash "id" out)))
-    (should (string-match-p (concat ":SKIP: +" +endgame-test-future)
-                            (+endgame-test--read +habits-file)))
-    (let ((up (+endgame-test--read +endgame-upcoming-file)))
-      (should (string-match-p (concat "^\\* TODO piano\nSCHEDULED: <" +endgame-test-future " Wed 07:15>\n") up))
-      (should (string-match-p ":HABIT_ID: src-piano" up))
-      (should (string-match-p ":CALDAV_UID: [-0-9a-f]+" up))
-      (should-not (string-match-p ":SKIP:" up)))
-    ;; making the day: the planned copy moves in, the habit isn't copied again
-    (let* ((out (json-parse-string (+endgame-day-ensure +endgame-test-future)))
-           (week (+endgame-test--read (gethash "file" out))))
-      (should (= (gethash "moved" out) 1))
-      (should (= 1 (+endgame-test--count "TODO piano" week)))
-      (should (string-match-p (concat "SCHEDULED: <" +endgame-test-future " Wed 07:15>") week)))
-    (should-not (string-match-p "piano" (+endgame-test--read +endgame-upcoming-file)))))
-
-(ert-deftest +endgame-plan-habit-to-another-day ()
-  ;; moved from wednesday to thursday: wednesday has none, thursday one
-  (+endgame-test--with-vault
-    (+endgame-plan-habit-json "src-piano" "2031-01-09" "18:00" "18:30" +endgame-test-future)
-    (let ((wed (+endgame-test--read (gethash "file" (json-parse-string (+endgame-day-ensure +endgame-test-future))))))
-      (should-not (string-match-p "TODO piano" wed)))
-    (let ((thu (+endgame-test--read (gethash "file" (json-parse-string (+endgame-day-ensure "2031-01-09"))))))
-      (should (= 1 (+endgame-test--count "TODO piano" thu)))
-      (should (string-match-p "SCHEDULED: <2031-01-09 Thu 18:00-18:30>" thu)))))
-
-(ert-deftest +endgame-plan-habit-on-a-day-that-has-its-copy ()
-  (+endgame-test--with-vault
-    (+endgame-day-ensure +endgame-test-future)
-    (let ((out (json-parse-string (+endgame-plan-habit-json "src-piano" +endgame-test-future "09:00"))))
-      (should (equal (gethash "where" out) "day"))
-      (let ((week (+endgame-test--read (gethash "file" out))))
-        (should (= 1 (+endgame-test--count "TODO piano" week)))
-        (should (string-match-p (concat "SCHEDULED: <" +endgame-test-future " Wed 09:00>") week))))
-    ;; no FROM: nothing skipped
-    (should-not (string-match-p ":SKIP:" (+endgame-test--read +habits-file)))))
-
 (ert-deftest +endgame-skip-json-adds-a-date ()
   (+endgame-test--with-vault
     (let ((out (json-parse-string (+endgame-skip-json +habits-file nil "src-piano" "2031-01-09"))))
       (should (equal (gethash "skip" out) ["2031-01-09"])))
     (let ((out (json-parse-string (+endgame-skip-json +habits-file 3 nil "2031-01-08"))))
       (should (equal (gethash "skip" out) ["2031-01-08" "2031-01-09"])))
-    (should (string-match-p ":SKIP: +2031-01-08 2031-01-09" (+endgame-test--read +habits-file)))
-    ;; that day gets no copy
-    (let ((wed (+endgame-test--read (gethash "file" (json-parse-string (+endgame-day-ensure +endgame-test-future))))))
-      (should-not (string-match-p "TODO piano" wed)))))
+    (should (string-match-p ":SKIP: +2031-01-08 2031-01-09" (+endgame-test--read +habits-file)))))
 
 ;;; endgame-capture-test.el ends here

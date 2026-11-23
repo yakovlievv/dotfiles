@@ -42,268 +42,11 @@ Dates before the entry's SCHEDULED date go: they can't occur any more."
   (setq org-agenda-skip-function-global #'+repeat-skip-agenda))
 
 (defvar +habits-file (expand-file-name "~/org/roam/20261025131500-my_habits.org")
-  "The habits note: the source of every habit, kept out of the agenda.")
-
-(defvar +habits--syncing nil
-  "Non-nil while a habit copy is updating its source, so the hook can't recurse.")
-
-(defun +habits--buffer ()
-  "A buffer visiting `+habits-file', re-read first when the file changed
-under it and it has no unsaved changes: the server (the phone, the
-calendar) writes the habits note too, and in the daemon, under
-`inhibit-interaction', the reread prompt would be an error."
-  (let ((buf (find-buffer-visiting +habits-file)))
-    (when (and buf (not (buffer-modified-p buf)) (not (verify-visited-file-modtime buf)))
-      (with-current-buffer buf (revert-buffer t t t)))
-    (or buf (find-file-noselect +habits-file))))
-
-(defun +habits--source (hid)
-  "Marker at the habit with ID HID in `+habits-file', or nil."
-  (when (and hid (file-exists-p +habits-file))
-    (with-current-buffer (+habits--buffer)
-      (org-with-wide-buffer
-       (let ((pos (org-find-entry-with-id hid)))
-         (and pos (copy-marker pos)))))))
-
-(defun +habits--shift-levels (text delta)
-  "TEXT with every heading moved DELTA levels."
-  (if (zerop delta)
-      text
-    (replace-regexp-in-string
-     "^\\(\\*+\\) "
-     (lambda (m) (concat (make-string (max 1 (+ (length (match-string 1 m)) delta)) ?*) " "))
-     text t t)))
-
-(defun +habits--copy (level day)
-  "Copy of the habit at point as a TODO at LEVEL scheduled on DAY (a time).
-A habit whose title links to a node (=[[id:…][Morning routine]]=) gets
-that node's contents, after its own body: see `+habits--linked-text'.
-The copy's title has its links as plain text, so the daily note
-doesn't link the routines in the graph."
-  (let* ((title (org-get-heading t t t t))
-         (tags (org-get-tags nil t))
-         (props (seq-remove (lambda (p) (member (car p) '("ID" "STYLE" "LAST_REPEAT" "CATEGORY" "SKIP" "CALDAV_UID" "CALDAV_HREF")))
-                            (org-entry-properties nil 'standard)))
-         ;; end measured from the habit's own heading: with no body,
-         ;; `org-end-of-meta-data' lands on the next sibling
-         (end (save-excursion (org-end-of-subtree t t)))
-         (body (save-excursion
-                 (org-end-of-meta-data t)
-                 (buffer-substring-no-properties (min (point) end) end))))
-    (let* ((own (string-trim-right body))
-           (parts (delq nil (list (unless (string-empty-p own)
-                                    (+habits--shift-levels own (- level (org-current-level))))
-                                  (+habits--linked-text title level))))
-           (text (mapconcat (lambda (s) (concat s "\n")) (seq-remove #'string-empty-p parts) "")))
-      (concat (make-string level ?*) " TODO " (org-link-display-format title)
-              (if (+habits--steps-p text) " [/]" "")   ; it has steps
-              (if tags (concat " :" (string-join tags ":") ":") "") "\n"
-              "SCHEDULED: " (+habits--copy-stamp day) "\n"
-              ":PROPERTIES:\n"
-              ":ID:       " (org-id-new) "\n"
-              ":HABIT_ID: " (org-id-get-create) "\n"
-              ":STYLE:    habit\n"
-              (mapconcat (lambda (p) (format ":%s: %s\n" (car p) (cdr p))) props "")
-              ":END:\n"
-              text))))
-
-(defun +habits--copy-stamp (day)
-  "The copy's SCHEDULED stamp on DAY (a time), with the time of day of
-the habit at point when its own SCHEDULED has one (=<… 08:00 .+1d>=)."
-  (let ((s (org-entry-get nil "SCHEDULED"))
-        (date (format-time-string "%Y-%m-%d %a" day)))
-    (if (and s (string-match " \\([0-9]\\{1,2\\}:[0-9]\\{2\\}\\(?:-[0-9]\\{1,2\\}:[0-9]\\{2\\}\\)?\\)" s))
-        (format "<%s %s>" date (match-string 1 s))
-      (format "<%s>" date))))
-
-(defvar +habits-planned-ids-functions nil
-  "Functions called with a day (a time) that return the HABIT_IDs already
-planned for it elsewhere (the upcoming note), so making the day doesn't
-copy those habits a second time.")
-
-(defun +habits--due (day)
-  "Markers at the habits due on DAY: SCHEDULED on or before it, not done,
-and DAY not in their :SKIP:."
-  (when (file-exists-p +habits-file)
-    (with-current-buffer (+habits--buffer)
-      (org-with-wide-buffer
-       (let ((today (time-to-days day)) due)
-         (org-map-entries
-          (lambda ()
-            (let ((s (org-get-scheduled-time (point))))
-              (when (and s (<= (time-to-days s) today)
-                         (not (member (org-get-todo-state) org-done-keywords))
-                         (not (+repeat-skipped-p day)))
-                (push (point-marker) due))))
-          "STYLE=\"habit\"")
-         (nreverse due))))))
-
-(defun +habits--day-time ()
-  "The date of the journal day heading at point, as a time, or nil."
-  (let ((h (org-get-heading t t t t)))
-    (when (string-match "\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\)" h)
-      (encode-time 0 0 12
-                   (string-to-number (match-string 3 h))
-                   (string-to-number (match-string 2 h))
-                   (string-to-number (match-string 1 h))))))
-
-(defun +habits-insert-into-day ()
-  "Copy the habits due on the journal day at point into its DO list.
-Point must be on the day heading. Habits already in the day are skipped.
-Returns the number of habits added."
-  (let* ((day (+habits--day-time))
-         (level (org-current-level))
-         (end (save-excursion (org-end-of-subtree t t)))
-         (added 0))
-    (when day
-      (save-excursion
-        ;; the DO list, or one made at the end of the day
-        (unless (re-search-forward (format "^\\*\\{%d\\} DO list\\b" (1+ level)) end t)
-          (goto-char end)
-          (unless (bolp) (insert "\n"))
-          (insert (make-string (1+ level) ?*) " DO list [0/0]\n")
-          (forward-line -1))
-        (let ((do-list (copy-marker (line-beginning-position)))
-              (do-end (save-excursion (org-end-of-subtree t t)))
-              (present (save-excursion
-                         (let (ids)
-                           (while (re-search-forward "^[ \t]*:HABIT_ID:[ \t]+\\(\\S-+\\)" end t)
-                             (push (match-string 1) ids))
-                           ;; and the ones planned for this day in upcoming
-                           (dolist (f +habits-planned-ids-functions ids)
-                             (setq ids (append (funcall f day) ids))))))
-              copies)
-          (dolist (m (+habits--due day))
-            (with-current-buffer (marker-buffer m)
-              (org-with-wide-buffer
-               (goto-char m)
-               (unless (member (org-id-get) present)
-                 (push (+habits--copy (+ level 2) day) copies))))
-            (set-marker m nil))
-          (when copies
-            (goto-char do-end)
-            (unless (bolp) (insert "\n"))
-            (setq added (length copies))
-            (let ((start (point)))
-              (insert (string-join (nreverse copies)))
-              (let ((stop (point-marker)))   ; the copies' own cookies
-                (goto-char start)
-                (while (< (point) stop)
-                  (when (org-at-heading-p) (org-update-statistics-cookies nil))
-                  (forward-line 1))
-                (set-marker stop nil)))
-            (when (buffer-live-p (find-buffer-visiting +habits-file))
-              (with-current-buffer (find-buffer-visiting +habits-file)
-                (when (buffer-modified-p) (save-buffer))))
-            (save-excursion
-              (goto-char do-list)       ; the DO list's own cookie, not its last child's
-              (org-update-statistics-cookies nil)))
-          (set-marker do-list nil))))
-    added))
-
-(defun +habits/insert-day ()
-  "Add the habits due on the day at point (or today) that it doesn't have yet."
-  (interactive)
-  (unless (and (derived-mode-p 'org-journal-mode) (org-current-level))
-    (org-journal-new-entry t))
-  (while (> (org-current-level) 1)
-    (org-up-heading-safe))
-  (org-back-to-heading t)
-  (let ((n (+habits-insert-into-day)))
-    (message (if (zerop n) "No habits to add" "Added %d habit%s")
-             n (if (= n 1) "" "s"))))
-
-(defun +habits--flush-log ()
-  "Write a pending time-only state note now instead of after the command.
-Org defers it to `post-command-hook' behind one global marker, so a
-second `org-todo' in the same command would clobber it, and under
-emacsclient --eval it would never be written at all."
-  (when (and (memq 'org-add-log-note (default-value 'post-command-hook))
-             (memq org-log-note-how '(time state)))
-    (save-window-excursion (org-add-log-note))))
-
-(defun +habits--log-source ()
-  "The habit copy at point went done: mark its source done."
-  (let ((m (+habits--source (org-entry-get nil "HABIT_ID"))))
-    (if (not m)
-        (message "Habit source not found; copy changed, nothing logged")
-      ;; Stored without its <>: `org-get-repeat' scans the whole entry for a
-      ;; repeater and would otherwise make org repeat the copy as well.
-      (org-entry-put nil "HABIT_PREV_SCHEDULED"
-                     (let ((s (org-entry-get m "SCHEDULED")))
-                       (if s (substring s 1 -1) "none")))
-      (org-entry-put nil "HABIT_PREV_REPEAT"
-                     (or (org-entry-get m "LAST_REPEAT") "none"))
-      (+habits--flush-log)              ; the copy's own "State DONE" line
-      (with-current-buffer (marker-buffer m)
-        (org-with-wide-buffer
-         (goto-char m)
-         (let ((+habits--syncing t))
-           (org-todo "DONE")
-           (+habits--flush-log)))         ; the source's line
-        (save-buffer))
-      (set-marker m nil))))
-
-(defun +habits--unlog-source ()
-  "The habit copy at point left done: put its source back as it was."
-  (let ((m (+habits--source (org-entry-get nil "HABIT_ID")))
-        (prev-s (org-entry-get nil "HABIT_PREV_SCHEDULED"))
-        (prev-r (org-entry-get nil "HABIT_PREV_REPEAT")))
-    (cond
-     ((not m) (message "Habit source not found; copy changed, source untouched"))
-     ((not prev-s) (message "No record of how this habit was logged; fix the source by hand"))
-     (t
-      (with-current-buffer (marker-buffer m)
-        (org-with-wide-buffer
-         (goto-char m)
-         (let ((+habits--syncing t)
-               (end (save-excursion (outline-next-heading) (point))))
-           ;; SCHEDULED back to what it was
-           (unless (equal prev-s "none")
-             (save-excursion
-               (when (re-search-forward org-scheduled-time-regexp end t)
-                 (replace-match (concat org-scheduled-string " <" prev-s ">") t t))))
-           (if (equal prev-r "none")
-               (org-entry-delete nil "LAST_REPEAT")
-             (org-entry-put nil "LAST_REPEAT" prev-r))
-           ;; drop the newest DONE line in the LOGBOOK
-           (save-excursion
-             (when (re-search-forward "^[ \t]*:LOGBOOK:[ \t]*$" end t)
-               (let ((dend (save-excursion (re-search-forward "^[ \t]*:END:[ \t]*$" end t))))
-                 (when (re-search-forward "^[ \t]*- State \"DONE\" .*\n" dend t)
-                   (replace-match "")))))))
-        (save-buffer))
-      (org-entry-delete nil "HABIT_PREV_SCHEDULED")
-      (org-entry-delete nil "HABIT_PREV_REPEAT")))
-    (when m (set-marker m nil))))
-
-(defun +habits--sync-h ()
-  "On `org-after-todo-state-change-hook': keep a habit copy's source in step."
-  (when (and (not +habits--syncing) (org-entry-get nil "HABIT_ID"))
-    (let ((was (equal org-last-state "DONE"))
-          (now (equal org-state "DONE")))
-      (cond ((and now (not was)) (+habits--log-source))
-            ((and was (not now)) (+habits--unlog-source))))))
-
-(add-hook 'org-after-todo-state-change-hook #'+habits--sync-h)
-
-(defun +habits--parse-source-a (fn &optional pom)
-  "Around `org-habit-parse-todo': parse the source of a habit copy.
-A copy whose source is gone isn't a habit (nil), rather than an error."
-  (let ((hid (org-entry-get pom "HABIT_ID")))
-    (if (not hid)
-        (funcall fn pom)
-      (let ((m (+habits--source hid)))
-        (when m
-          (prog1 (with-current-buffer (marker-buffer m)
-                   (org-with-wide-buffer (funcall fn (marker-position m))))
-            (set-marker m nil)))))))
-
-(advice-add 'org-habit-parse-todo :around #'+habits--parse-source-a)
+  "The habits note: the source of every habit.")
 
 (defun +habits--never-blocked-a (fn change-plist)
-  "Around org's TODO dependencies: a habit (source or copy) can go DONE with
-steps still open, so ticking it never fails, from the phone neither."
+  "Around org's TODO dependencies: a habit can go DONE with steps still
+open, so ticking it never fails, from the phone neither."
   (or (equal (org-entry-get (plist-get change-plist :position) "STYLE") "habit")
       (funcall fn change-plist)))
 
@@ -312,7 +55,7 @@ steps still open, so ticking it never fails, from the phone neither."
 (advice-add 'org-block-todo-from-checkboxes
             :around #'+habits--never-blocked-a)
 
-(defun +habits--fresh (text)
+(defun +routines--fresh (text)
   "TEXT, part of a subtree, as a fresh copy for a day.
 Every heading in a done state is TODO again and cookies are empty;
 :ID: lines, LOGBOOKs and CLOSED stamps go, so no ID is doubled in the
@@ -360,88 +103,33 @@ reset."
     (setq text (replace-regexp-in-string "\\[[0-9]+/[0-9]+\\]" "[/]" text t t))
     (replace-regexp-in-string "\\[[0-9]+%\\]" "[%]" text t t)))
 
-(defun +habits--steps-p (text)
-  "Non-nil when TEXT has steps: sub-headings or checkboxes."
-  (string-match-p "^\\(?:\\*+ \\|[ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\[[ X-]\\]\\)" text))
-
-(defun +habits--first-step (end)
+(defun +routines--first-step (end)
   "Start of the first step (a checkbox or a sub-heading) after point, or END."
   (if (re-search-forward "^\\(?:\\*+ \\|[ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\[[ X-]\\]\\)" end t)
       (line-beginning-position)
     end))
 
-(defun +habits--untitle (title)
+(defun +routines--untitle (title)
   "TITLE without its statistics cookie."
   (string-trim (replace-regexp-in-string "\\[[0-9]*\\(?:%\\|/[0-9]*\\)\\]" "" title t t)))
 
-(defun +habits--node (id level)
-  "The node with ID as (TITLE . TEXT), its contents shifted under a heading at LEVEL.
-A heading or a file-level node (then TITLE is its #+title), TITLE
-without its cookie. Its text and sub-headings come along, fresh (see
-`+habits--fresh'); its own property drawer and planning line don't.
-A node in the routines note brings only its steps, from the first
-one on (see `+habits--first-step'), like `+routines--copy'.
-Nil, with a message, when the node isn't found."
-  (let ((m (org-id-find id 'marker)))
-    (if (not m)
-        (progn (message "Habit: linked node %s not found" id) nil)
-      (prog1
-          (with-current-buffer (marker-buffer m)
-            (org-with-wide-buffer
-             (goto-char m)
-             (let* ((heading (org-at-heading-p))
-                    (base (if heading (org-current-level) 0))
-                    (end (if heading (save-excursion (org-end-of-subtree t t)) (point-max)))
-                    (start (if heading
-                               (save-excursion (org-end-of-meta-data t) (min (point) end))
-                             ;; a file node: after its drawer and #+ keywords
-                             (save-excursion
-                               (goto-char (point-min))
-                               (when (looking-at org-property-drawer-re)
-                                 (goto-char (match-end 0))
-                                 (forward-line 1))
-                               (while (and (not (eobp)) (looking-at "^\\(#\\+.*\\|[ \t]*\\)$"))
-                                 (forward-line 1))
-                               (point))))
-                    ;; a routine brings only its steps: its intro stays in the note
-                    (start (if (and (bound-and-true-p +routines-file) buffer-file-name
-                                    (file-equal-p buffer-file-name +routines-file))
-                               (save-excursion (goto-char start) (+habits--first-step end))
-                             start))
-                    (title (if heading
-                               (org-get-heading t t t t)
-                             (or (cadr (assoc "TITLE" (org-collect-keywords '("TITLE"))))
-                                 (file-name-base (buffer-file-name)))))
-                    (text (+habits--fresh (buffer-substring-no-properties start end))))
-               (cons (+habits--untitle (substring-no-properties title))
-                     (+habits--shift-levels (string-trim text "\\(?:[ \t]*\n\\)+") (- level base))))))
-        (set-marker m nil)))))
+(defun +routines--shift-levels (text delta)
+  "TEXT with every heading moved DELTA levels."
+  (if (zerop delta)
+      text
+    (replace-regexp-in-string
+     "^\\(\\*+\\) "
+     (lambda (m) (concat (make-string (max 1 (+ (length (match-string 1 m)) delta)) ?*) " "))
+     text t t)))
 
-(defun +habits--linked-text (title level)
-  "What a habit titled TITLE brings from the nodes it links, for a copy at LEVEL.
-One id: link: that node's contents, straight under the copy. Two or
-more: each node as a TODO of its own below the copy (its title, then
-its contents), in the order of the links, so the day shows the choices
-side by side. Nodes that can't be found are left out. Nil when TITLE
-has no id: link."
-  (let ((pos 0) ids)
-    (while (string-match "\\[\\[id:\\([^]]+\\)\\]" title pos)
-      (push (match-string 1 title) ids)
-      (setq pos (match-end 0)))
-    (setq ids (nreverse ids))
-    (if (cdr ids)
-        (let ((parts (delq nil (mapcar
-                                (lambda (id)
-                                  (let ((node (+habits--node id (1+ level))))
-                                    (when node
-                                      (if (string-empty-p (cdr node))
-                                          (concat (make-string (1+ level) ?*) " TODO " (car node))
-                                        (concat (make-string (1+ level) ?*) " TODO " (car node)
-                                                (if (+habits--steps-p (cdr node)) " [/]" "")
-                                                "\n" (cdr node))))))
-                                ids))))
-          (and parts (string-join parts "\n")))
-      (cdr (and ids (+habits--node (car ids) level))))))
+(defun +journal--day-time ()
+  "The date of the journal day heading at point, as a time, or nil."
+  (let ((h (org-get-heading t t t t)))
+    (when (string-match "\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\)" h)
+      (encode-time 0 0 12
+                   (string-to-number (match-string 3 h))
+                   (string-to-number (match-string 2 h))
+                   (string-to-number (match-string 1 h))))))
 
 (require 'calendar)
 (require 'color)
@@ -676,21 +364,21 @@ A grid is a vector of week columns, each a vector of seven cells
   "Titles of the routines in `+routines-file', in file order."
   (with-current-buffer (find-file-noselect +routines-file)
     (org-with-wide-buffer
-     (org-map-entries (lambda () (+habits--untitle (substring-no-properties (org-get-heading t t t t))))
+     (org-map-entries (lambda () (+routines--untitle (substring-no-properties (org-get-heading t t t t))))
                       "LEVEL=1"))))
 
 (defun +routines--copy (title level)
   "Routine TITLE as a fresh copy at LEVEL, for a DO list.
 The routine and its steps as they are in the routines note, boxes
 unticked, heading steps made TODOs, empty cookies and no IDs (see
-`+habits--fresh'), plus :ROUTINE: (inherited), so carryover leaves it
+`+routines--fresh'), plus :ROUTINE: (inherited), so carryover leaves it
 and its steps in their day. The text before the first step (a checkbox
 or a sub-heading) stays in the note; what follows it comes along."
   (with-current-buffer (find-file-noselect +routines-file)
     (org-with-wide-buffer
      (let ((pos (catch 'found
                   (org-map-entries (lambda ()
-                                     (when (equal (+habits--untitle (org-get-heading t t t t)) title)
+                                     (when (equal (+routines--untitle (org-get-heading t t t t)) title)
                                        (throw 'found (point))))
                                    "LEVEL=1")
                   nil)))
@@ -700,14 +388,14 @@ or a sub-heading) stays in the note; what follows it comes along."
               ;; the first step: a checkbox or a sub-heading
               (first (save-excursion
                        (org-end-of-meta-data t)
-                       (+habits--first-step end)))
+                       (+routines--first-step end)))
               (steps (string-trim-right
-                      (+habits--fresh (buffer-substring-no-properties first end)))))
+                      (+routines--fresh (buffer-substring-no-properties first end)))))
          (concat (make-string level ?*) " TODO " title
                  (if (string-empty-p steps) "" " [/]") "\n"
                  ":PROPERTIES:\n:ROUTINE:  " title "\n:END:\n"
                  (if (string-empty-p steps) ""
-                   (concat (+habits--shift-levels steps (- level (org-current-level))) "\n"))))))))
+                   (concat (+routines--shift-levels steps (- level (org-current-level))) "\n"))))))))
 
 (defun +routines-insert-into-day (title)
   "Append routine TITLE to the bottom of the DO list of the journal day at point.
@@ -870,104 +558,6 @@ Not logged as a state change."
            (kill-buffer b)))
        (delete-directory +habits-test-dir t))))
 
-(defun +habits-test--goto-day ()
-  (goto-char (point-min))
-  (re-search-forward "^\\* Sunday")
-  (org-back-to-heading t))
-
-(defun +habits-test--goto-copy (title)
-  (goto-char (point-min))
-  (re-search-forward (format "^\\*+ \\(?:TODO\\|DONE\\) %s" title))
-  (org-back-to-heading t))
-
-(defun +habits-test--source-text ()
-  "The habits file, with runs of spaces collapsed (org-todo re-aligns tags)."
-  (with-current-buffer (find-file-noselect +habits-file)
-    (replace-regexp-in-string " +" " " (buffer-substring-no-properties (point-min) (point-max)))))
-
-(ert-deftest +habits-copies-due-habits-into-do-list ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (should (= 3 (+habits-insert-into-day)))
-    (let ((text (buffer-string)))
-      ;; a body-less habit doesn't swallow the next one
-      (should (= 1 (how-many "^\\*+ TODO read$" (point-min) (point-max))))
-      (should (= 1 (how-many "^\\*+ TODO stretch$" (point-min) (point-max))))
-      (should-not (string-match-p ":ID:       src-" text))
-      ;; due habit copied, the future one not
-      ;; it has a sub-task, so a cookie
-      (should (string-match-p "^\\*\\*\\* TODO piano \\[0/1\\] +:music:$" text))
-      (should-not (string-match-p "weekly review" text))
-      (should (string-match-p (concat "SCHEDULED: <" (+habits-test--today-stamp) ">") text))
-      (should (string-match-p ":HABIT_ID: src-piano" text))
-      (should (string-match-p ":STYLE:    habit" text))
-      (should (string-match-p ":EFFORT: 0:25" text))
-      (should (string-match-p "Play scales first." text))
-      ;; sub-heading shifted from level 2 to level 4
-      (should (string-match-p "^\\*\\*\\*\\* TODO scales$" text))
-      (should (string-match-p "- \\[ \\] C major" text))
-      ;; no history or repeater copied
-      (should-not (string-match-p "LOGBOOK" text))
-      (should-not (string-match-p "LAST_REPEAT" text))
-      (should-not (string-match-p "\\.\\+1d" text)))))
-
-(defun +habits-test--source-put (id prop value)
-  "Set PROP to VALUE on the source habit with ID."
-  (with-current-buffer (find-file-noselect +habits-file)
-    (org-with-wide-buffer
-     (goto-char (org-find-entry-with-id id))
-     (org-entry-put nil prop value))))
-
-(ert-deftest +habits-skipped-day-gets-no-copy ()
-  (+habits-test--with-vault
-    (+habits-test--source-put "src-piano" "SKIP" (concat "2020-01-01 " (+habits-test--date)))
-    (+habits-test--goto-day)
-    (should (= 2 (+habits-insert-into-day)))
-    (should-not (string-match-p "TODO piano" (buffer-string)))
-    ;; the next day isn't skipped: the habit is still due there
-    (should (+habits--due (time-add (current-time) (days-to-time 1))))
-    (should (seq-some (lambda (m) (equal (org-entry-get m "ID") "src-piano"))
-                      (+habits--due (time-add (current-time) (days-to-time 1)))))))
-
-(ert-deftest +habits-skip-not-copied-and-time-kept ()
-  (+habits-test--with-vault
-    (+habits-test--source-put "src-stretch" "SKIP" "2020-01-01")
-    (with-current-buffer (find-file-noselect +habits-file)
-      (goto-char (org-find-entry-with-id "src-stretch"))
-      (re-search-forward "SCHEDULED: <[^>]*>")
-      (replace-match (concat "SCHEDULED: <" (+habits-test--today-stamp -1) " 07:15 .+1d>") t t))
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (let ((text (buffer-string)))
-      (should-not (string-match-p ":SKIP:" text))
-      (should (string-match-p (concat "TODO stretch\nSCHEDULED: <" (+habits-test--today-stamp) " 07:15>") text))
-      ;; a habit without a time stays a whole-day copy
-      (should (string-match-p (concat "TODO read\nSCHEDULED: <" (+habits-test--today-stamp) ">") text)))))
-
-(ert-deftest +habits-reread-when-the-file-changed-under-them ()
-  ;; the server wrote the habits note (a :SKIP: from the calendar) while it was open
-  (+habits-test--with-vault
-    (with-current-buffer (find-file-noselect +habits-file) (buffer-string))
-    (sleep-for 1.1)                     ; a new mtime
-    (with-temp-file +habits-file
-      (insert-file-contents +habits-file)
-      (goto-char (point-min))
-      (re-search-forward ":ID:       src-read\n")
-      (insert ":SKIP:     " (+habits-test--date) "\n"))
-    (let ((inhibit-interaction t))
-      (+habits-test--goto-day)
-      (should (= 2 (+habits-insert-into-day)))
-      (should-not (string-match-p "TODO read" (buffer-string))))))
-
-(ert-deftest +habits-planned-elsewhere-not-copied ()
-  (+habits-test--with-vault
-    (let ((+habits-planned-ids-functions
-           (list (lambda (day)
-                   (should (equal (format-time-string "%Y-%m-%d" day) (+habits-test--date)))
-                   '("src-read")))))
-      (+habits-test--goto-day)
-      (should (= 2 (+habits-insert-into-day)))
-      (should-not (string-match-p "TODO read" (buffer-string))))))
 
 (ert-deftest +repeat-skip-add-keeps-dates-sorted-and-alive ()
   (+habits-test--with-vault
@@ -1000,281 +590,7 @@ Not logged as a state change."
       (should-not (funcall titles 1))
       (should (funcall titles 2)))))
 
-(defun +habits-test--add-linked (title-link)
-  "Add a due habit titled TITLE-LINK to the habits file, and a routines note."
-  (+habits-test--file
-   "routines.org"
-   (concat ":PROPERTIES:\n:ID:       r-file\n:END:\n#+title: routines\n\n"
-           "Every heading is a routine.\n"
-           "* Morning routine\n"
-           ":PROPERTIES:\n:ID:       r-morning\n:END:\n"
-           "Boot sequence.\n"
-           "** DONE Steps\nCLOSED: [2026-10-24 Sat 08:00]\n"
-           ":PROPERTIES:\n:ID:       r-steps\n:CUSTOM:   kept\n:END:\n"
-           ":LOGBOOK:\n- State \"DONE\"       from \"TODO\"       [2026-10-24 Sat 08:00]\n:END:\n"
-           "*** stretch\n"))
-  (with-current-buffer (find-file-noselect +habits-file)
-    (goto-char (point-max))
-    (insert "* TODO " title-link "\n"
-            "SCHEDULED: <" (+habits-test--today-stamp -1) " .+1d>\n"
-            ":PROPERTIES:\n:ID:       src-linked\n:STYLE:    habit\n:END:\n")
-    (save-buffer)))
 
-(defmacro +habits-test--with-ids (&rest body)
-  "BODY with org-id able to find IDs in the test notes."
-  (declare (indent 0))
-  `(let* ((+routines-file (expand-file-name "routines.org" +habits-test-dir))
-          (org-id-track-globally t)
-          (org-id-locations nil)
-          (org-id-extra-files (list +routines-file)))
-     ,@body))
-
-(ert-deftest +habits-linked-habit-copies-the-node ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "[[id:r-morning][morning routine]]")
-    (+habits-test--with-ids
-      (+habits-test--goto-day)
-      (should (= 4 (+habits-insert-into-day)))
-      (let ((text (buffer-string)))
-        ;; the copy's title is the link's text, the source is the habit
-        (should (string-match-p "^\\*\\*\\* TODO morning routine \\[0/1\\]$" text))
-        (should-not (string-match-p "id:r-morning" text))
-        (should (string-match-p ":HABIT_ID: src-linked" text))
-        ;; the routine's steps, fresh: TODO again, shifted from 2 to 4;
-        ;; its intro stays in the note
-        (should-not (string-match-p "Boot sequence" text))
-        (should (string-match-p
-                 (concat "habit\n:END:\n"
-                         "\\*\\*\\*\\* TODO Steps \\[0/1\\]\n:PROPERTIES:\n:CUSTOM:   kept\n:END:\n"
-                         "\\*\\*\\*\\*\\* TODO stretch\n")
-                 text))
-        ;; no ID doubled, no history or done stamp of the note's steps
-        (should-not (string-match-p "r-morning\n\\|:ID: +r-" text))
-        (should-not (string-match-p "CLOSED\\|2026-10-24" text))))))
-
-(ert-deftest +habits-linked-habit-copies-a-file-node ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "[[id:r-file][all routines]]")
-    (+habits-test--with-ids
-      (+habits-test--goto-day)
-      (+habits-insert-into-day)
-      (let ((text (buffer-string)))
-        ;; from the first heading on (the note's intro stays), one below the copy
-        (should (string-match-p "habit\n:END:\n\\*\\*\\*\\* TODO Morning routine \\[0/1\\]\n" text))
-        (should-not (string-match-p "Every heading is a routine" text))
-        (should (string-match-p "^\\*\\*\\*\\*\\* TODO Steps \\[0/1\\]$" text))
-        (should-not (string-match-p ":ID: +r-\\|#\\+title: routines" text))))))
-
-(ert-deftest +habits-habit-linking-several-nodes-gets-each-as-a-heading ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "shutdown: [[id:r-morning][full]] or [[id:r-steps][minimal]] [[id:gone][x]]")
-    (+habits-test--with-ids
-      (+habits-test--goto-day)
-      (+habits-insert-into-day)
-      (let ((text (buffer-string)))
-        ;; each node under its own title at copy+1, contents below it, in link order;
-        ;; the node that isn't found is left out
-        (should (string-match-p
-                 (concat ":HABIT_ID: src-linked\n:STYLE:    habit\n:END:\n"
-                         ;; each routine's intro stays in the note
-                         "\\*\\*\\*\\* TODO Morning routine \\[0/1\\]\n"
-                         "\\*\\*\\*\\*\\* TODO Steps \\[0/1\\]\n:PROPERTIES:\n:CUSTOM:   kept\n:END:\n"
-                         "\\*\\*\\*\\*\\*\\* TODO stretch\n"
-                         ;; a linked node's own drawer stays behind
-                         "\\*\\*\\*\\* TODO Steps \\[0/1\\]\n\\*\\*\\*\\*\\* TODO stretch\n")
-                 text))
-        (should-not (string-match-p ":ID: +r-" text))))))
-
-(ert-deftest +habits-habit-with-open-steps-can-be-ticked ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "[[id:r-morning][morning routine]]")
-    (+habits-test--with-ids
-      (+habits-test--goto-day)
-      (+habits-insert-into-day)
-      ;; what org-mode installs when the option is on before the buffer opens
-      (let ((org-enforce-todo-dependencies t)
-            (org-blocker-hook (list #'org-block-todo-from-children-or-siblings-or-parent)))
-        (goto-char (point-min))
-        (re-search-forward "^\\*+ TODO morning routine")
-        (org-todo "DONE")
-        (should (equal (org-get-todo-state) "DONE"))
-        ;; the source was logged as usual
-        (with-current-buffer (find-file-noselect +habits-file)
-          (should (string-match-p ":LAST_REPEAT: \\[" (buffer-string))))
-        ;; a step with open sub-steps is still blocked (from code org just
-        ;; leaves the state)
-        (re-search-forward "^\\*+ TODO Steps")
-        (org-todo "DONE")
-        (should (equal (org-get-todo-state) "TODO"))))))
-
-(ert-deftest +habits-habit-linking-a-checkbox-routine-can-be-ticked ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "[[id:r-evening][evening routine]]")
-    (with-current-buffer (find-file-noselect (expand-file-name "routines.org" +habits-test-dir))
-      (goto-char (point-max))
-      (insert "* Evening routine\n:PROPERTIES:\n:ID:       r-evening\n:END:\n"
-              "- [X] tea\n- [ ] read\n")
-      (save-buffer))
-    (+habits-test--with-ids
-      (+habits-test--goto-day)
-      (+habits-insert-into-day)
-      ;; the boxes come in unticked, counted by the copy's cookie
-      (should (string-match-p "TODO evening routine \\[0/2\\]$" (buffer-string)))
-      (should (string-match-p "^- \\[ \\] tea\n- \\[ \\] read\n" (buffer-string)))
-      (let ((org-enforce-todo-checkbox-dependencies t)
-            (org-blocker-hook (list #'org-block-todo-from-checkboxes)))
-        (goto-char (point-min))
-        (re-search-forward "^\\*+ TODO evening routine")
-        (org-todo "DONE")
-        (should (equal (org-get-todo-state) "DONE"))))))
-
-(ert-deftest +habits-linked-habit-without-its-node-is-still-copied ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "[[id:gone][morning routine]]")
-    (+habits-test--with-ids
-      (+habits-test--goto-day)
-      (should (= 4 (+habits-insert-into-day)))
-      (should (string-match-p "TODO morning routine\nSCHEDULED"
-                              (buffer-string))))))
-
-(ert-deftest +habits-heatmap-shows-a-linked-title-as-its-text ()
-  (+habits-test--with-vault
-    (+habits-test--add-linked "[[id:r-morning][morning routine]]")
-    (should (member "morning routine"
-                    (mapcar (lambda (h) (alist-get 'title h))
-                            (alist-get 'habits (+habits-heatmap-data 1)))))))
-
-(ert-deftest +habits-carryover-match-skips-copies ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (let* ((org-use-property-inheritance '("HABIT_ID"))
-           (carried (org-map-entries (lambda () (org-get-heading t t t t))
-                                     "TODO=\"TODO\"-HABIT_ID={.}|TODO=\"STRT\"-HABIT_ID={.}")))
-      (should (member "buy milk" carried))
-      (should-not (member "piano" carried))
-      ;; a sub-task under a copy inherits HABIT_ID for the match, so it stays too
-      (should-not (member "scales" carried))
-      ;; ...but the sync hook doesn't treat it as a copy
-      (+habits-test--goto-copy "piano")
-      (re-search-forward "^\\*+ TODO scales")
-      (should-not (org-entry-get nil "HABIT_ID")))))
-
-(ert-deftest +habits-do-list-cookie-counts-the-copies ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    ;; buy milk + 3 due habits, none done
-    (should (string-match-p "^\\*\\* DO list \\[0/4\\]$" (buffer-string)))))
-
-(ert-deftest +habits-org-todo-keeps-the-case ()
-  "A state change mustn't re-case the entry (it broke repeaters once)."
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (+habits-test--goto-copy "piano")
-    (org-todo "DONE")
-    (should (string-match-p "^\\*\\*\\* DONE piano \\[0/1\\] +:music:" (buffer-string)))
-    (should (string-match-p "^\\* TODO piano :music:\nSCHEDULED: <[0-9-]+ [A-Z][a-z][a-z] \\.\\+1d>"
-                            (+habits-test--source-text)))))
-
-(ert-deftest +habits-insert-twice-adds-nothing ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (+habits-test--goto-day)
-    (should (= 0 (+habits-insert-into-day)))
-    (should (= 1 (how-many ":HABIT_ID: src-piano" (point-min) (point-max))))))
-
-(ert-deftest +habits-done-logs-source-and-undo-restores-it ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (let ((before (+habits-test--source-text)))
-      (+habits-test--goto-copy "piano")
-      (org-todo "DONE")
-      (let ((after (+habits-test--source-text)))
-        (should (= (1+ (with-temp-buffer (insert before) (how-many "State \"DONE\"" (point-min) (point-max))))
-                   (with-temp-buffer (insert after) (how-many "State \"DONE\"" (point-min) (point-max)))))
-        (should-not (string-match-p (concat "piano :music:\nSCHEDULED: "
-                                            (regexp-quote (concat "<" (+habits-test--today-stamp -1) " .+1d>")))
-                                    after))
-        (should (string-match-p (concat ":LAST_REPEAT: \\[" (+habits-test--date)) after))
-        ;; source stays a TODO (repeater)
-        (should (string-match-p "^\\* TODO piano" after)))
-      ;; the copy kept its own state line and remembers the source
-      (+habits-test--goto-copy "piano")
-      (should (equal "DONE" (org-get-todo-state)))
-      (should (org-entry-get nil "HABIT_PREV_SCHEDULED"))
-      ;; undo
-      (org-todo "TODO")
-      (should (equal before (+habits-test--source-text)))
-      (+habits-test--goto-copy "piano")
-      (should-not (org-entry-get nil "HABIT_PREV_SCHEDULED")))))
-
-(ert-deftest +habits-kill-only-changes-copy ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (let ((before (+habits-test--source-text))
-          (org-log-done nil)
-          (org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d!)" "KILL(k)"))))
-      (+habits-test--goto-copy "piano")
-      (org-todo "KILL")
-      (should (equal before (+habits-test--source-text))))))
-
-(ert-deftest +habits-parse-todo-reads-source ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (+habits-test--goto-copy "piano")
-    (let ((h (org-habit-parse-todo (point))))
-      (should h)
-      ;; repeater of the source (.+1d -> 1 day), and its done dates
-      (should (= 1 (nth 1 h)))
-      (should (= 1 (length (nth 4 h)))))))
-
-(ert-deftest +habits-copy-without-source-is-not-a-habit ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (+habits-test--goto-copy "piano")
-    (org-entry-put nil "HABIT_ID" "gone")
-    (should-not (org-habit-parse-todo (point)))))
-
-(ert-deftest +habits-agenda-shows-copy-with-graph-only-on-its-day ()
-  (+habits-test--with-vault
-    (+habits-test--goto-day)
-    (+habits-insert-into-day)
-    (save-buffer)
-    (let ((org-agenda-files (list (buffer-file-name)))
-          (org-habit-scheduled-past-days 0)
-          (org-agenda-span 1)
-          (org-agenda-sticky nil))
-      ;; today: the copy is a habit line with the graph
-      (org-agenda-list nil (+habits-test--date) 1)
-      (with-current-buffer org-agenda-buffer-name
-        (should (string-match-p "piano" (buffer-string)))
-        ;; its habit data is the source's (.+1d), so org-habit draws its graph
-        (let ((pos (next-single-property-change (point-min) 'org-habit-p)))
-          (should pos)
-          (should (= 1 (nth 1 (get-text-property pos 'org-habit-p))))))
-      ;; an unchecked copy from yesterday doesn't show up on today
-      (with-current-buffer (find-file-noselect (car org-agenda-files))
-        (goto-char (point-min))
-        (re-search-forward (concat "SCHEDULED: <" (+habits-test--today-stamp) ">"))
-        (replace-match (concat "SCHEDULED: <" (+habits-test--today-stamp -1) ">") t t)
-        (save-buffer))
-      (org-agenda-list nil (+habits-test--date) 1)
-      (with-current-buffer org-agenda-buffer-name
-        (should-not (string-match-p "piano" (buffer-string))))
-      ;; ...while without the setting org would carry it as overdue
-      (let ((org-habit-scheduled-past-days nil))
-        (org-agenda-list nil (+habits-test--date) 1)
-        (with-current-buffer org-agenda-buffer-name
-          (should (string-match-p "piano" (buffer-string))))))))
-
-;;; Routines
 
 (defmacro +routines-test--with-day (&rest body)
   "BODY in a journal file with one day (point on it), routines from a temp note."
@@ -1393,9 +709,9 @@ Not logged as a state change."
 (ert-deftest +routines-stay-in-their-day-on-carryover ()
   (+routines-test--with-day
     (+routines-insert-into-day "Morning routine")
-    (let* ((org-use-property-inheritance '("HABIT_ID" "ROUTINE"))
+    (let* ((org-use-property-inheritance '("ROUTINE"))
            (carried (org-map-entries (lambda () (org-get-heading t t t t))
-                                     "TODO=\"TODO\"-HABIT_ID={.}-ROUTINE={.}|TODO=\"STRT\"-HABIT_ID={.}-ROUTINE={.}")))
+                                     "TODO=\"TODO\"-ROUTINE={.}|TODO=\"STRT\"-ROUTINE={.}")))
       (should (equal carried '("buy milk"))))))
 
 (ert-deftest +routines-make-a-do-list-when-the-day-has-none ()
@@ -1528,3 +844,55 @@ Not logged as a state change."
       ;; a month line and seven weekday rows per grid: 5 grids
       (should (= 5 (how-many "^Mon  " (point-min) (point-max))))
       (should (search-forward "■" nil t)))))
+
+(ert-deftest +habits-a-ticked-habit-repeats-and-clears-its-boxes ()
+  (require 'org-checklist)
+  (let ((org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d!)")))
+        (org-log-into-drawer t)
+        (org-log-repeat 'time))
+    (with-temp-buffer
+      (org-mode)
+      (insert "* TODO morning routine [1/2]\n"
+              "SCHEDULED: <" (+habits-test--today-stamp -1) " .+1d>\n"
+              ":PROPERTIES:\n:STYLE: habit\n:RESET_CHECK_BOXES: t\n:END:\n"
+              "- [X] wake up [1/1]\n- [ ] stretch\n")
+      (goto-char (point-min))
+      (org-todo "DONE")
+      (should (equal (org-get-todo-state) "TODO"))
+      (should (string-match-p ":LAST_REPEAT:" (buffer-string)))
+      (should-not (string-match-p "\\[X\\]" (buffer-string)))
+      (should (string-match-p "- \\[ \\] wake up" (buffer-string)))
+      (should (string-match-p "- \\[ \\] stretch" (buffer-string))))))
+
+(ert-deftest +habits-without-reset-boxes-keeps-its-ticks ()
+  (require 'org-checklist)
+  (let ((org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d!)")))
+        (org-log-into-drawer t)
+        (org-log-repeat 'time))
+    (with-temp-buffer
+      (org-mode)
+      (insert "* TODO stretch\n"
+              "SCHEDULED: <" (+habits-test--today-stamp -1) " .+1d>\n"
+              ":PROPERTIES:\n:STYLE: habit\n:END:\n"
+              "- [X] a\n")
+      (goto-char (point-min))
+      (org-todo "DONE")
+      (should (string-match-p "- \\[X\\] a" (buffer-string))))))
+
+(ert-deftest +habits-with-open-steps-can-be-ticked ()
+  (let ((org-todo-keywords '((sequence "TODO(t)" "|" "DONE(d!)")))
+        (org-log-into-drawer t)
+        (org-log-repeat 'time)
+        (org-enforce-todo-dependencies t)
+        (org-enforce-todo-checkbox-dependencies t)
+        (org-blocker-hook (list #'org-block-todo-from-children-or-siblings-or-parent
+                                #'org-block-todo-from-checkboxes)))
+    (with-temp-buffer
+      (org-mode)
+      (insert "* TODO piano\n"
+              "SCHEDULED: <" (+habits-test--today-stamp -1) " .+1d>\n"
+              ":PROPERTIES:\n:STYLE: habit\n:END:\n"
+              "- [ ] scales\n** TODO a sub-task\n")
+      (goto-char (point-min))
+      (org-todo "DONE")
+      (should (string-match-p ":LAST_REPEAT:" (buffer-string))))))

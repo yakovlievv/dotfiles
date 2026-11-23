@@ -141,12 +141,14 @@ folder works.
 
 ## Org core
 
-Vault at `~/org/`; archive to `archive/arch_%s`. `org-habit` loaded; mermaid enabled
+Vault at `~/org/`; archive to `archive/arch_%s`. `org-habit` and `org-checklist` loaded; mermaid enabled
 via `ob-mermaid`. LaTeX preview off at startup, emphasis markers hidden, native src
 fontification, inherited tasks shown in agenda, habit graph at column 50 (30 days
 back / 10 forward). Custom agenda sorting; scheduled repeats skipped after deadline.
 A heading's `:SKIP:` dates (one occurrence of a repeater left out) are hidden through
-`org-agenda-skip-function-global` (`+repeat-skip-agenda`); a skipped habit day gets no copy.
+`org-agenda-skip-function-global` (`+repeat-skip-agenda`).
+A habit is a plain repeating task in the habits note (an agenda file): no copies in the
+daily notes, no MISS state; `:RESET_CHECK_BOXES: t` clears its steps on the repeat.
 
 - `my/org-clock-in-when-doing` on `org-after-todo-state-change-hook` — switching to
   `STRT` auto-clocks in.

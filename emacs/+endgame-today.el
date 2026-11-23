@@ -9,7 +9,7 @@
 ;;   Tasks scheduled, due or overdue in their homes (straight from
 ;;   `org-agenda-list', so the agenda files, skip settings and
 ;;   `org-extend-today-until' are the agenda's own), APPTs, the day's own items
-;;   (routine, habit and session copies in the daily note's DO list) and items
+;;   (routine and session copies in the daily note's DO list) and items
 ;;   staged for that day in the upcoming note. Timed first by time, untimed
 ;;   below, one done counter. The JSON is what vault-api serves the phone.
 ;; - `+endgame/today-agenda' (SPC a d, via the dispatcher): the cheap version, a block agenda.
@@ -315,7 +315,7 @@ and the heading (a session's timestamp, written above its drawer)."
 (defun +endgame-today--kind (state)
   "What the heading at point is, for the today list, given its todo STATE."
   (let ((routine (+endgame-today--prop "ROUTINE")))
-    (cond ((+endgame-today--prop "HABIT_ID") 'habit)
+    (cond ((equal (+endgame-today--prop "STYLE") "habit") 'habit)
           ((equal routine "Session routine") 'session)
           (routine 'routine)
           ((or (equal state "APPT") (null state)) 'appt)
