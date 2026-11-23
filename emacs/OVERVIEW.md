@@ -3,6 +3,16 @@
 Emacs here does exactly one job: drive the `~/org` vault (notes, tutoring, book
 tracker). Not a coding setup.
 
+## The model
+
+An area has **tasks**, **sessions**, **habits**, **projects** and **systems**, and
+nothing else. A task is a TODO; a session is a timed block of an area (a plain
+heading with a timestamp, no keyword), optionally with the steps of a session
+template; a habit is a task with `:STYLE: habit`. There is no appointment, event,
+errand or routine: a dentist is a session of an area, a morning routine is a habit.
+The vault note "areas" is the registry (colour, sources, `SESSION_TEMPLATE`,
+`SESSION_STATES`, calendar rules); everything else reads it.
+
 ## Layout
 
 | File | Role |
@@ -12,7 +22,7 @@ tracker). Not a coding setup.
 | `config.el` | Generated artifact. Never edit. |
 | `packages.el` | Extra packages. |
 | `+book-gallery.el` | Standalone book-tracker module, `load!`ed at the end of config. |
-| `+endgame-capture.el` | Capture, sessions, day creation, upcoming→day staging, the areas registry. An area's clocked files (`SOURCES`): one file, one area, the narrowest source wins (`+endgame--files-of-others`: `file:` over a tag, a topic tag over a node-type tag in `+endgame-node-type-tags`, then fewer files, then the area listed first), same ladder as the calendar in vault-MCP. |
+| `+endgame-capture.el` | Capture (`SPC SPC`: `i` inbox with an optional date, `t` task with an area picker, `s` session), session templates, day creation, upcoming→day staging, the areas registry. One implementation, `+endgame-capture`, that the menu, the phone and the calendar all use (`+endgame-capture-json`). An area's clocked files (`SOURCES`): one file, one area, the narrowest source wins (`+endgame--files-of-others`: `file:` over a tag, a topic tag over a node-type tag in `+endgame-node-type-tags`, then fewer files, then the area listed first), same ladder as the calendar in vault-backend. |
 | `+sleep.el` | Sleep scheduling: each night's `Sleep` heading, clocked in/out through vault-api. Loaded after `+endgame-capture`. |
 | `tests/` | ERT suites, run in batch without Doom (see each file's header). |
 | `.hunspell_personal` | Personal word list, version-controlled. |
@@ -165,7 +175,7 @@ cascades into encrypting children).
 the checkbox and OKAY/YES/NO sequences. `WAIT`/`HOLD`/`KILL` prompt for a note; notes
 go into `:LOGBOOK:`. `org-log-note-clock-out` on — clocking out asks where you
 stopped. TODO dependencies and checkbox dependencies enforced, except for habits,
-routine copies (close with skipped steps left open) and lessons.
+lessons.
 ⚠ This list is a *superset* of Doom's; dropping a keyword makes files using it
 invisible to the ripgrep agenda scan below.
 

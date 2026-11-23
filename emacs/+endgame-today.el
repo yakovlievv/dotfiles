@@ -8,8 +8,8 @@
 ;; - `+endgame-today-items' / `+endgame-today-json': the today list for a date.
 ;;   Tasks scheduled, due or overdue in their homes (straight from
 ;;   `org-agenda-list', so the agenda files, skip settings and
-;;   `org-extend-today-until' are the agenda's own), APPTs, the day's own items
-;;   (routine and session copies in the daily note's DO list) and items
+;;   `org-extend-today-until' are the agenda's own), the day's own items
+;;   (the sessions in the daily note's DO list) and items
 ;;   staged for that day in the upcoming note. Timed first by time, untimed
 ;;   below, one done counter. The JSON is what vault-api serves the phone.
 ;; - `+endgame/today-agenda' (SPC a d, via the dispatcher): the cheap version, a block agenda.
@@ -137,7 +137,7 @@ The phone and the server read the files: an unsaved tick is invisible to them."
       (+endgame-today--vault-file "roam/20261031030150-areas.org")))
 
 (defun +endgame-today--tasks-file ()
-  "The tasks note: Inbox, Errands and Appointments."
+  "The tasks note: the Inbox and the tasks of the areas."
   (or (bound-and-true-p +endgame-tasks-file)
       (+endgame-today--vault-file "roam/20261031024752-tasks.org")))
 
@@ -313,13 +313,14 @@ and the heading (a session's timestamp, written above its drawer)."
                       (match-string-no-properties 1))))))))
 
 (defun +endgame-today--kind (state)
-  "What the heading at point is, for the today list, given its todo STATE."
-  (let ((routine (+endgame-today--prop "ROUTINE")))
-    (cond ((equal (+endgame-today--prop "STYLE") "habit") 'habit)
-          ((equal routine "Session routine") 'session)
-          (routine 'routine)
-          ((or (equal state "APPT") (null state)) 'appt)
-          (t 'task))))
+  "What the heading at point is, for the today list, given its todo STATE:
+a habit (:STYLE: habit), a session (no keyword, or an area's session state,
+like a lesson's), else a task."
+  (cond ((equal (+endgame-today--prop "STYLE") "habit") 'habit)
+        ((or (null state)
+             (member state (and (fboundp '+endgame-session-states) (+endgame-session-states))))
+         'session)
+        (t 'task)))
 
 (defun +endgame-today--item (abs &optional seen)
   "The heading at point as a today-list item for day ABS.
@@ -424,7 +425,8 @@ For a task closed that day: it was on the list only if it had a date by then."
 
 (defun +endgame-today--day-own-markers (abs)
   "Markers at the day-own items of day ABS: its DO list, and staged ones.
-The DO list's direct children with a todo keyword, and top-level
+The DO list's direct children with a todo keyword or a stamp on that day
+(the sessions), and top-level
 headings of the upcoming note with an active timestamp on that day."
   (let (out)
     (let ((day (+endgame-today--day-marker abs)))
@@ -438,7 +440,9 @@ headings of the upcoming note with an active timestamp on that day."
                (let ((do-end (save-excursion (org-end-of-subtree t t)))
                      (re (format "^\\*\\{%d\\} " (+ level 2))))
                  (while (re-search-forward re do-end t)
-                   (when (org-get-todo-state)
+                   ;; a task with a keyword, or a session: a plain heading with its own stamp
+                   (when (or (org-get-todo-state)
+                             (save-excursion (+endgame-today--entry-on abs)))
                      (push (copy-marker (line-beginning-position)) out))))))))
         (set-marker day nil)))
     (let ((file (+endgame-today--upcoming-file)))
@@ -465,7 +469,7 @@ headings of the upcoming note with an active timestamp on that day."
   "The today list for DATE (YYYY-MM-DD, nil for org's today), as data.
 An alist: date, items, ahead (deadline warnings, not due yet) and
 counts (done, total: the checkable items). Each item is an alist of
-ref, id, title, state, done, kind (appt session routine habit task),
+ref, id, title, state, done, kind (session habit task),
 start and end (minutes or nil), tags, area, file (relative to the
 vault), line, progress, rollover (org's Sched. Nx), overdue (days
 past a deadline), agenda (org's own leader text), checkable and marker."
@@ -946,7 +950,7 @@ refresh, and only a clock-out changes them; gr reads them now."
 
 (defun +endgame-today--kind-icon (kind)
   "One character for KIND."
-  (pcase kind ('habit "↻") ('session "◆") ('routine "≡") ('appt "●") (_ " ")))
+  (pcase kind ('habit "↻") ('session "◆") (_ " ")))
 
 (defun +endgame-today--put-action (start action &optional item)
   "Mark START to the end of the line with ACTION (a command) and ITEM."
@@ -1349,14 +1353,13 @@ sees the new day also makes its note, with the usual prompts."
 (defun +endgame-today--reopen-state (item)
   "The open state ITEM (the heading at point) had before it was done.
 What it had when the dashboard ticked it, else its newest state note,
-else APPT for an appointment, else its keyword sequence's first state."
+else its keyword sequence's first state."
   (let ((end (save-excursion (outline-next-heading) (point)))
         (open (lambda (s) (and s (member s org-not-done-keywords) s))))
     (or (funcall open (gethash (alist-get 'ref item) +endgame-today--was))
         (save-excursion
           (and (re-search-forward "^[ \t]*- State \"[^\"]+\"[ \t]+from \"\\([^\"]+\\)\"" end t)
                (funcall open (match-string 1))))
-        (and (eq (alist-get 'kind item) 'appt) (funcall open "APPT"))
         (nth 2 (assoc (org-get-todo-state) org-todo-kwd-alist))
         (car org-not-done-keywords))))
 
@@ -1402,7 +1405,7 @@ On a line that isn't an item, run what the line leads to."
 
 (defun +endgame-today/schedule ()
   "Not today: give the item on this line a new date.
-A session, routine copy or appointment moves to that day, timestamp and
+A session moves to that day, timestamp and
 heading (`+endgame-move-to-day'); a time typed replaces its time. Any
 other item gets a SCHEDULED."
   (interactive)

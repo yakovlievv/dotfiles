@@ -27,8 +27,7 @@
   (declare (indent 0))
   `(let* ((+endgame-today-test-dir (file-name-as-directory (make-temp-file "endgame-today-test" t)))
           (org-directory +endgame-today-test-dir)
-          (org-todo-keywords '((sequence "TODO(t)" "NEXT(n)" "STRT(s!)" "|" "DONE(d!)" "KILL(k@)")
-                               (sequence "APPT(a)" "|" "DONE(d!)")))
+          (org-todo-keywords '((sequence "TODO(t)" "NEXT(n)" "STRT(s!)" "|" "DONE(d!)" "KILL(k@)")))
           (org-log-into-drawer t)
           (org-log-done 'time)
           (org-extend-today-until 5)
@@ -46,17 +45,17 @@
        "Ship the today panel.\nNothing else matters.\n\n"
        "* Friday, 2026-10-30 :daily:\n:PROPERTIES:\n:ID:       fri\n:END:\n"
        "** DO list [0/1]\n"
-       "*** TODO Morning routine\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:END:\n<2026-10-30 Fri 09:00>\n"
+       "*** shave <2026-10-30 Fri 09:00>\n"
        "* Saturday, 2026-10-31 :daily:\n:PROPERTIES:\n:ID:       sat\n:END:\n"
        "** DO list [1/5]\n"
        "*** TODO piano\nSCHEDULED: <2026-10-31 Sat>\n:PROPERTIES:\n:ID:       copy-piano\n:STYLE:    habit\n:END:\n"
        "*** DONE read\nCLOSED: [2026-10-31 Sat 09:30] SCHEDULED: <2026-10-31 Sat>\n"
        ":PROPERTIES:\n:ID:       copy-read\n:STYLE:    habit\n:END:\n"
-       "*** TODO learning session [0/3] :learning:\n<2026-10-31 Sat 16:00-18:00>\n"
-       ":PROPERTIES:\n:ROUTINE:  Session routine\n:AREA:     learning\n:END:\n"
+       "*** learning session <2026-10-31 Sat 16:00-18:00> [0/3] :learning:\n"
+       ":PROPERTIES:\n:AREA:     learning\n:END:\n"
        "- [ ] Start\n- [ ] During\n- [ ] End\n"
-       "*** TODO Full Shutdown routine [0/1]\n:PROPERTIES:\n:ROUTINE:  Full Shutdown routine\n:END:\n"
-       "<2026-10-31 Sat 21:30>\n- [ ] tea\n"
+       "*** evening reading <2026-10-31 Sat 21:30> [0/1] :learning:\n:PROPERTIES:\n:AREA:     learning\n:END:\n"
+       "- [ ] tea\n"
        "*** TODO breakfast\n"
        "** 10:00 a journal entry\nprose, not a task\n"))
      (+endgame-today-test--file
@@ -64,10 +63,9 @@
       (concat
        "#+title: tasks\n\n"
        "* Inbox\n** TODO call mom\n** TODO find the charger\n** DONE done already\n"
-       "* Appointments\n"
-       "** APPT barber\n<2026-10-31 Sat 14:00-14:45>\n"
-       "** APPT dentist\n<2026-11-02 Mon 10:00>\n"
-       "* Errands\n"
+       "* tasks\n"
+       "** barber\n<2026-10-31 Sat 14:00-14:45>\n"
+       "** dentist\n<2026-11-02 Mon 10:00>\n"
        "** TODO copy room keys\nSCHEDULED: <2026-10-28 Wed>\n"
        "** DONE post the letter\nCLOSED: [2026-10-31 Sat 11:00] SCHEDULED: <2026-10-29 Thu>\n"
        "** DONE old errand\nCLOSED: [2026-10-31 Sat 12:00]\n"))
@@ -86,10 +84,10 @@
       "roam/upcoming.org"
       (concat
        "#+title: upcoming\n\n"
-       "* TODO piano session [0/1] :piano:\n:PROPERTIES:\n:ROUTINE:  Session routine\n:AREA:     piano\n:END:\n"
-       "<2026-10-31 Sat 09:00-09:30>\n- [ ] play\n"
-       "* TODO learning session [0/1] :learning:\n:PROPERTIES:\n:ROUTINE:  Session routine\n:END:\n"
-       "<2026-11-02 Mon 16:00-18:00>\n- [ ] Start\n"))
+       "* piano session <2026-10-31 Sat 09:00-09:30> [0/1] :piano:\n:PROPERTIES:\n:AREA:     piano\n:END:\n"
+       "- [ ] play\n"
+       "* learning session <2026-11-02 Mon 16:00-18:00> [0/1] :learning:\n"
+       "- [ ] Start\n"))
      (+endgame-today-test--file
       "roam/areas.org"
       (concat
@@ -128,28 +126,29 @@
       (should (equal (alist-get 'date data) "2026-10-31"))
       ;; timed by start, then open untimed, then done
       (should (equal (+endgame-today-test--titles (seq-take items 4))
-                     '("piano session" "barber" "learning session" "Full Shutdown routine")))
+                     '("piano session" "barber" "learning session" "evening reading")))
       (should (equal (+endgame-today-test--titles (last items 2)) '("read" "post the letter")))
       (should (member "copy room keys" (+endgame-today-test--titles items)))
       (should (member "breakfast" (+endgame-today-test--titles items)))
       ;; another day's, a future one, prose, a closed task that was never planned
-      (dolist (gone '("Morning routine" "dentist" "later" "10:00 a journal entry" "old errand"
+      (dolist (gone '("shave" "dentist" "later" "10:00 a journal entry" "old errand"
                       "write the chapter"))
         (should-not (member gone (+endgame-today-test--titles items))))
-      (should (equal (alist-get 'counts data) '((done . 2) (total . 9)))))))
+      (should (equal (alist-get 'counts data) '((done . 2) (total . 5)))))))
 
 (ert-deftest +endgame-today-items-know-what-they-are ()
   (+endgame-today-test--with-vault
     (let ((items (alist-get 'items (+endgame-today-items nil))))
       (cl-flet ((get (title key) (alist-get key (+endgame-today-test--item title items))))
-        (should (eq (get "barber" 'kind) 'appt))
-        (should (equal (get "barber" 'state) "APPT"))
+        (should (eq (get "barber" 'kind) 'session))
+        (should-not (get "barber" 'state))
+        (should-not (get "barber" 'checkable))
         (should (equal (list (get "barber" 'start) (get "barber" 'end)) '(840 885)))
         (should (eq (get "piano" 'kind) 'habit))
         (should (equal (get "piano" 'ref) "copy-piano"))
-        (should (eq (get "Full Shutdown routine" 'kind) 'routine))
-        (should (equal (get "Full Shutdown routine" 'start) 1290))
-        (should (equal (get "Full Shutdown routine" 'progress) "[0/1]"))
+        (should (eq (get "evening reading" 'kind) 'session))
+        (should (equal (get "evening reading" 'start) 1290))
+        (should (equal (get "evening reading" 'progress) "[0/1]"))
         ;; staged in upcoming, with its area
         (should (eq (get "piano session" 'kind) 'session))
         (should (equal (get "piano session" 'area) "piano"))
@@ -176,12 +175,12 @@
            (data (json-read-from-string (+endgame-today-json "2026-10-31")))
            (barber (seq-find (lambda (i) (equal (alist-get 'title i) "barber")) (alist-get 'items data))))
       (should (equal (alist-get 'date data) "2026-10-31"))
-      (should (equal (alist-get 'counts data) '((done . 2) (total . 9))))
+      (should (equal (alist-get 'counts data) '((done . 2) (total . 5))))
       (dolist (key '(ref title state done kind start end tags area file))
         (should (assq key barber)))
       (should (equal (alist-get 'start barber) "14:00"))
       (should (equal (alist-get 'end barber) "14:45"))
-      (should (equal (alist-get 'kind barber) "appt"))
+      (should (equal (alist-get 'kind barber) "session"))
       (should (eq (alist-get 'done barber) :json-false))
       (should (equal (alist-get 'priority (alist-get 'week data)) "Ship the today panel. Nothing else matters."))
       (should (equal (alist-get 'number (alist-get 'week data)) 44))
@@ -203,11 +202,8 @@
   (+endgame-today-test--with-vault
     (with-temp-buffer
       (org-mode)
-      (insert "* DONE barber\n:LOGBOOK:\n- State \"DONE\"       from \"APPT\"       [2026-10-31 Sat 15:00]\n:END:\n"
-              "* DONE errand\n")
+      (insert "* DONE errand\n")
       (goto-char (point-min))
-      (should (equal (+endgame-today--reopen-state '((kind . appt))) "APPT"))
-      (outline-next-heading)
       (should (equal (+endgame-today--reopen-state '((kind . task))) "TODO"))
       (puthash "x" "NEXT" +endgame-today--was)
       (should (equal (+endgame-today--reopen-state '((kind . task) (ref . "x"))) "NEXT"))
@@ -221,9 +217,9 @@
             (+endgame-today-refresh)
             (let ((text (buffer-string)))
               (should (string-match-p "\\`TODAY · Sat 31 Oct · W44" text))
-              (should (string-match-p "2/9" text))
+              (should (string-match-p "2/5" text))
               (should (string-match-p "Ship the today panel" text))
-              (should (string-match-p "\\[ \\] 14:00–14:45 ● barber" text))
+              (should (string-match-p "14:00–14:45 ◆ barber" text))
               (should (string-match-p "Sched\\. 3x" text))
               (should (string-match-p "WATCH OUT" text))
               (should (string-match-p "CLOCKED  2:12" text)))
@@ -268,15 +264,15 @@
             (cl-flet ((tick ()
                         (+endgame-today-refresh)
                         (goto-char (point-min))
-                        (search-forward "barber")
+                        (search-forward "breakfast")
                         (+endgame-today/toggle)
-                        (with-current-buffer (find-buffer-visiting +endgame-tasks-file)
+                        (with-current-buffer (find-buffer-visiting (+endgame-today--day-file sat))
                           (list (buffer-modified-p)
                                 (progn (goto-char (point-min))
-                                       (re-search-forward "^\\*\\* \\([A-Z]+\\) barber")
+                                       (re-search-forward "^\\*+ \\([A-Z]+\\) breakfast")
                                        (match-string 1))))))
               (should (equal (tick) '(nil "DONE")))
-              (should (equal (tick) '(nil "APPT"))))
+              (should (equal (tick) '(nil "TODO"))))
           (kill-buffer))))))
 
 (ert-deftest +endgame-today-dashboard-watch-out-at-the-bottom ()

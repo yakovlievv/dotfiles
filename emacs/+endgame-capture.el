@@ -1,17 +1,16 @@
 ;;; +endgame-capture.el --- capture, sessions and day creation for the endgame -*- lexical-binding: t; -*-
 
 ;; The emacs side of "the endgame" (roam note 9b510b89-c57e-40d3-b5b3-7807cd49e469):
-;; the vault is the brain, everything else is a thin client. This module is
-;; how things get into the vault and how a day comes to exist:
+;; the vault is the brain, everything else is a thin client. An area has
+;; tasks, sessions, habits, projects and systems; this module is how things
+;; get into the vault and how a day comes to exist:
 ;;
-;; - events: a plain heading with a stamp that has a time, no keyword (the old
-;;   APPT keyword is gone; vault-mcp still reads it as a plain event)
-;; - the capture menu under SPC SPC: i inbox, t today, a event, e errand
-;; - SPC j r: a routine copy gets a plain active timestamp for its day,
-;;   with an optional time; the weekly reset gets SCHEDULED instead
-;;   (`+endgame-scheduled-routines')
-;; - SPC j s: a session, the session routine with an area and a time range,
-;;   into its day's DO list, or into the upcoming note for a future day
+;; - capture, SPC SPC: i inbox (optionally with a date), t task (area picker),
+;;   s session (area, time range, optional template). One implementation,
+;;   `+endgame-capture', for the menu, the phone and the calendar
+;; - a session is a plain heading with a timed stamp and its area, no keyword
+;;   (a lesson keeps its keyword: an area's SESSION_STATES make it a session);
+;;   its steps come from a session template (`+endgame-templates-file')
 ;; - `+endgame-day-ensure': creates any day without asking anything, then
 ;;   moves that day's staged items from upcoming into its DO list and gives
 ;;   it its night's Sleep heading (`+sleep-ensure-night', +sleep.el).
@@ -19,11 +18,11 @@
 ;; - the areas registry (`+endgame-areas'), a clocktable per area from its
 ;;   SOURCES (dynamic block `endgame-areas') and planned vs clocked minutes
 ;;
-;; It builds on the doom config's `+routines-*' and
-;; `+org-journal-*' functions, so it loads after them, at the end of the
-;; config. The functions the server calls through emacsclient
-;; (`+endgame-day-ensure', `+endgame-areas-json', `+endgame-areas-report-json')
-;; never prompt, save the buffers they change and return a JSON string.
+;; It builds on the doom config's `+org-journal-*' functions, so it loads
+;; after them, at the end of the config. The functions the server calls
+;; through emacsclient (`+endgame-capture-json', `+endgame-day-ensure',
+;; `+endgame-areas-json', `+endgame-areas-report-json') never prompt, save the
+;; buffers they change and return a JSON string.
 
 (require 'cl-lib)
 (require 'json)
@@ -41,9 +40,6 @@
 (declare-function org-journal-new-entry "org-journal")
 (declare-function org-journal--get-entry-path "org-journal")
 (declare-function +journal--day-time "config")
-(declare-function +routines--shift-levels "config")
-(declare-function +routines--copy "config")
-(declare-function +routines--names "config")
 (declare-function +org-journal-init-day "config")
 (declare-function +sleep--source "+sleep")
 (declare-function +sleep--add-days "+sleep")
@@ -68,9 +64,6 @@
   (expand-file-name "roam/20261031024752-tasks.org" +endgame-vault-dir)
   "The tasks note, with the Inbox, Errands and Events headings.
 Raw captures go at the end of Inbox.")
-
-(defvar +endgame-session-routine "Session routine"
-  "The routine in the routines note a session is a copy of.")
 
 ;;; Small helpers
 
@@ -264,95 +257,331 @@ Nil when the entry has no plain active timestamp."
   "Today's date stamp, for capture templates: org's today, not the clock's."
   (+endgame--format-stamp (+endgame--date-time)))
 
-;;; Events
-
-;; Appointments are events: a plain heading with a stamp that has a time. No
-;; keyword, nothing to tick: you attend it and forget it. The calendar maps any
-;; such heading to a VEVENT, and the Events area in the areas note says where
-;; they live (its HOME heading, `Events' in the tasks note). `APPT', the old
-;; keyword, is still read by vault-mcp as a plain event; nothing here makes it.
-
 ;;; Capture: SPC SPC
 
-(defun +endgame--read-title (prompt)
-  "Read a non-empty title after PROMPT, escaped for a capture template."
-  (let ((title (string-trim (read-string prompt))))
-    (when (string-empty-p title) (user-error "Empty title"))
-    ;; a % that starts an escape (%t, %^{…}) is escaped; org leaves a lone one
-    (replace-regexp-in-string "%\\([^ \t]\\)" "\\\\%\\1" title t)))
+;; Three things are created: an inbox item (a TODO, optionally with a date),
+;; a task (a TODO of an area, optionally with a date) and a session (a timed
+;; block of an area, optionally from a template). `+endgame-capture' makes
+;; each of them, in this one place, for everybody: the menu below, the phone
+;; and the calendar (vault-api and vault-caldav ask through
+;; `+endgame-capture-json'), so an item looks the same whoever made it.
 
-(defun +endgame--appt-template ()
-  "Capture template for an event: asks the title and a time. A plain heading."
-  (let ((title (+endgame--read-title "Event: ")))
-    (concat "* " title " "
-            (+endgame--read-stamp "When (mon 2pm, mon 14:00-14:45, mon 2pm+0:45): " nil t)
-            "\n:PROPERTIES:\n:CALDAV_UID: " (+endgame--uid) "\n:END:")))
+(defvar +endgame-inbox-heading "Inbox"
+  "The level 1 heading of the tasks note that raw captures go under.")
 
-(defun +endgame--errand-template ()
-  "Capture template for an errand: asks the title, and a date that may stay empty."
-  (let* ((title (+endgame--read-title "Errand: "))
-         (date (string-trim (read-string "Date (empty for none; fri, +2d, 11-05): "))))
-    (concat "* TODO " title "\n"
-            (if (string-empty-p date) ""
-              (concat "SCHEDULED: " (+endgame--stamp date) "\n"))
-            ":PROPERTIES:\n:CREATED:  %U\n:END:")))
+(defvar +endgame-tasks-heading "tasks"
+  "The level 1 heading of the tasks note that the tasks of an area go under.")
 
-(defvar +endgame-capture-templates
-  '(("i" "Inbox" entry (file+headline +endgame-tasks-file "Inbox")
-     "* TODO %^{Inbox}\n:PROPERTIES:\n:CREATED:  %U\n:END:"
-     :immediate-finish t)
-    ("t" "Today (inbox, scheduled today)" entry (file+headline +endgame-tasks-file "Inbox")
-     "* TODO %^{Today}\nSCHEDULED: %(+endgame--today-stamp)\n:PROPERTIES:\n:CREATED:  %U\n:END:"
-     :immediate-finish t)
-    ("a" "Event" entry (file+headline +endgame-tasks-file "Events")
-     (function +endgame--appt-template)
-     :immediate-finish t)
-    ("e" "Errand" entry (file+headline +endgame-tasks-file "Errands")
-     (function +endgame--errand-template)
-     :immediate-finish t))
-  "The endgame's capture menu. Doom's own templates with these keys go.")
+(defconst +endgame-capture-kinds '("inbox" "task" "session"))
 
-(defun +endgame-capture-setup ()
-  "Put `+endgame-capture-templates' first in `org-capture-templates'."
-  (let ((keys (mapcar #'car +endgame-capture-templates)))
-    (setq org-capture-templates
-          (append +endgame-capture-templates
-                  (seq-remove (lambda (tpl) (member (car tpl) keys))
-                              org-capture-templates)))))
+(defun +endgame--invalid (fmt &rest args)
+  "Refuse a capture with a reason the caller can show (the server's 400)."
+  (error "[invalid] %s" (apply #'format fmt args)))
 
-;; Doom sets its default templates when org loads; org-capture loads later.
-(with-eval-after-load 'org-capture
-  (+endgame-capture-setup))
-
-;;; Copies in a day: DO list, staging
+(defun +endgame--shift-levels (text delta)
+  "TEXT with every heading moved DELTA levels."
+  (if (zerop delta)
+      text
+    (replace-regexp-in-string
+     "^\\(\\*+\\) "
+     (lambda (m) (concat (make-string (max 1 (+ (length (match-string 1 m)) delta)) ?*) " "))
+     text t t)))
 
 (defun +endgame--text-level (text)
   "Level of the first heading in TEXT, or 1."
   (if (string-match "^\\(\\*+\\) " text) (length (match-string 1 text)) 1))
 
 (defun +endgame--uid ()
-  "A fresh :CALDAV_UID: value. Set when an event is made, so the calendar
+  "A fresh :CALDAV_UID: value. Set when a session is made, so the calendar
 keeps knowing it when it moves (upcoming → day, a refile, a new title)."
   (org-id-uuid))
 
 (defun +endgame--timed-p (stamp)
-  "Non-nil when STAMP has a time of day: then it's a calendar event."
+  "Non-nil when STAMP has a time of day."
   (string-match-p " [0-9]\\{1,2\\}:[0-9]\\{2\\}" stamp))
 
-(defun +endgame--stamp-copy (text stamp &optional scheduled)
-  "TEXT (a copy from `+routines--copy') with STAMP on the line after its drawer.
-SCHEDULED: STAMP goes on the line under the heading as SCHEDULED instead.
-A timed copy is a calendar event, so it also gets a :CALDAV_UID:."
-  (let ((text (if (and (+endgame--timed-p stamp) (string-match "^:END:\n" text))
-                  (concat (substring text 0 (match-beginning 0))
-                          ":CALDAV_UID: " (+endgame--uid) "\n"
-                          (substring text (match-beginning 0)))
-                text)))
-    (cond (scheduled
-           (replace-regexp-in-string "\\`\\(.*\n\\)" (concat "\\1SCHEDULED: " stamp "\n") text t))
-          ((string-match "^:END:\n" text)
-           (concat (substring text 0 (match-end 0)) stamp "\n" (substring text (match-end 0))))
-          (t (replace-regexp-in-string "\\`\\(.*\n\\)" (concat "\\1" stamp "\n") text t)))))
+(defun +endgame--hhmm (s)
+  "S (\"9:30\", \"09:30\") as \"09:30\"; refuses anything else."
+  (unless (and (stringp s) (string-match "\\`\\([0-9]\\{1,2\\}\\):\\([0-9]\\{2\\}\\)\\'" s)
+               (< (string-to-number (match-string 1 s)) 24)
+               (< (string-to-number (match-string 2 s)) 60))
+    (+endgame--invalid "bad time %S (want HH:MM)" s))
+  (format "%02d:%s" (string-to-number (match-string 1 s)) (match-string 2 s)))
+
+(defun +endgame--capture-stamp (date time end repeater)
+  "The active timestamp of DATE (\"YYYY-MM-DD\"), with TIME and END (\"HH:MM\")
+and a REPEATER (\"+1w\") when given."
+  (unless (and (stringp date) (string-match-p "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\'" date))
+    (+endgame--invalid "bad date %S (want YYYY-MM-DD)" date))
+  (when (and end (not time)) (+endgame--invalid "end needs time"))
+  (let* ((time (and time (+endgame--hhmm time)))
+         (end (and end (+endgame--hhmm end))))
+    (when (and time end (string> time end)) (+endgame--invalid "end must be after time"))
+    (let ((stamp (+endgame--moved-stamp (+endgame--format-stamp (+endgame--date-time date)) date time end)))
+      (cond ((not repeater) stamp)
+            ((string-match-p "\\`[.+]?\\+[0-9]+[hdwmy]\\'" repeater)
+             (concat (substring stamp 0 -1) " " repeater ">"))
+            (t (+endgame--invalid "bad repeater %S" repeater))))))
+
+(defun +endgame--tag-suffix (tags)
+  "TAGS as the end of a heading line: \" :a:b:\", or \"\"."
+  (if tags (concat " :" (string-join (delete-dups (copy-sequence tags)) ":") ":") ""))
+
+(defun +endgame--props-text (props)
+  "PROPS, an alist of (KEY . VALUE), as drawer lines. The keys a capture owns are refused."
+  (mapconcat
+   (lambda (kv)
+     (let ((key (upcase (format "%s" (car kv))))
+           (val (string-trim (replace-regexp-in-string "[ \t\n]+" " " (format "%s" (cdr kv))))))
+       (unless (and (string-match-p "\\`[A-Z0-9_-]+\\'" key)
+                    (not (member key '("ID" "AREA" "CREATED" "STYLE"))))
+         (+endgame--invalid "property %s can't be set here" key))
+       (format ":%s: %s\n" key val)))
+   props ""))
+
+(defun +endgame--capture-area (tag)
+  "The area alist for TAG; TAG nil: the area with FALLBACK: yes. Refuses an unknown one."
+  (let ((areas (+endgame-areas)))
+    (if tag
+        (or (+endgame--area tag)
+            (+endgame--invalid "no area \"%s\". Areas: %s" tag
+                               (mapconcat (lambda (a) (alist-get 'tag a)) areas ", ")))
+      (or (seq-find (lambda (a) (eq t (alist-get 'fallback a))) areas)
+          (+endgame--invalid "needs an area (no area has FALLBACK: yes)")))))
+
+;;; Session templates
+
+(defvar +endgame-templates-file
+  (expand-file-name "roam/20261123220000-session_templates.org" +endgame-vault-dir)
+  "The session templates note: every level 1 heading is a template, its
+checklist the steps of a session (before, during, after).")
+
+(defun +endgame-template-names ()
+  "The templates of `+endgame-templates-file', in file order."
+  (when (file-exists-p +endgame-templates-file)
+    (with-current-buffer (+endgame--buffer +endgame-templates-file)
+      (org-with-wide-buffer
+       (org-map-entries #'+endgame--title "LEVEL=1")))))
+
+(defun +endgame--template-steps (name)
+  "The steps of template NAME (any case), boxes unticked. The text before the
+first step stays in the note."
+  (unless (file-exists-p +endgame-templates-file)
+    (+endgame--invalid "there is no session templates note"))
+  (with-current-buffer (+endgame--buffer +endgame-templates-file)
+    (org-with-wide-buffer
+     (let ((pos (catch 'found
+                  (org-map-entries (lambda ()
+                                     (when (string-equal-ignore-case (+endgame--title) (string-trim name))
+                                       (throw 'found (point))))
+                                   "LEVEL=1")
+                  nil)))
+       (unless pos
+         (+endgame--invalid "no session template \"%s\". Templates: %s" name
+                            (string-join (+endgame-template-names) ", ")))
+       (goto-char pos)
+       (let* ((end (save-excursion (org-end-of-subtree t t) (point)))
+              (first (save-excursion
+                       (org-end-of-meta-data t)
+                       (if (re-search-forward "^[ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\[[ X-]\\]" end t)
+                           (line-beginning-position)
+                         end))))
+         (string-trim-right
+          (replace-regexp-in-string
+           "^\\([ \t]*\\(?:[-+]\\|[0-9]+[.)]\\) \\)\\[[X-]\\]" "\\1[ ]"
+           (buffer-substring-no-properties first end))))))))
+
+;;; The three kinds
+
+(defun +endgame--task-text (kind title area-tag date time end repeater tags props body)
+  "A TODO as a level 1 heading: an inbox item (no area) or a task of AREA-TAG.
+DATE gives it a SCHEDULED. Without a :CALDAV_UID: in PROPS it gets an :ID:."
+  (let ((uid (cdr (assoc "CALDAV_UID" props))))
+    (concat "* TODO " title
+            (+endgame--tag-suffix (append (and (equal kind "task") (list area-tag)) tags))
+            "\n"
+            (if date (format "SCHEDULED: %s\n" (+endgame--capture-stamp date time end repeater)) "")
+            ":PROPERTIES:\n"
+            (if uid "" (format ":ID: %s\n" (org-id-uuid)))
+            (format ":CREATED: %s\n" (format-time-string "[%Y-%m-%d %a %H:%M]"))
+            (+endgame--props-text props)
+            ":END:\n"
+            (if body (concat body "\n") ""))))
+
+(defun +endgame--session-text (tag stamp &optional title template props body tags)
+  "A fresh session for area TAG at STAMP, as a level 1 heading.
+A plain heading, no keyword: the stamp, a [/] cookie when TEMPLATE brings
+steps, the area as its tag, :AREA: and a :CALDAV_UID: (PROPS may name one),
+then TEMPLATE's steps and BODY."
+  (let* ((steps (and template (+endgame--template-steps template)))
+         (uid (or (cdr (assoc "CALDAV_UID" props)) (+endgame--uid)))
+         (props (seq-remove (lambda (kv) (equal (upcase (format "%s" (car kv))) "CALDAV_UID")) props)))
+    (concat "* " (or title (concat tag " session")) " " stamp
+            (if steps " [/]" "")
+            (+endgame--tag-suffix (cons tag tags))
+            "\n:PROPERTIES:\n:AREA: " tag "\n:CALDAV_UID: " uid "\n"
+            (+endgame--props-text props)
+            ":END:\n"
+            (if steps (concat steps "\n") "")
+            (if body (concat body "\n") ""))))
+
+(defun +endgame--place-day-item (text date &optional ask)
+  "Put TEXT (a level 1 heading) into DATE's DO list, or into upcoming when the
+day has no note. Returns `day' or `upcoming'. Without ASK (the server, the
+calendar) a day is never made: the item waits in upcoming until the day is
+made. ASK (SPC SPC) makes a day that isn't in the future first, sleep and
+morning questions included."
+  (let ((day (+endgame--day-marker date)))
+    (cond (day
+           (+endgame--append-to-do-list day (list text))
+           'day)
+          ((or (not ask) (string> date (+endgame--today)))
+           (+endgame--append-to-upcoming text)
+           'upcoming)
+          (t
+           (+endgame--append-to-do-list (+endgame--ensure-day date ask) (list text))
+           'day))))
+
+(defun +endgame--append-under-heading (file heading text)
+  "Append TEXT (a level 1 heading) as the last child of the level 1 heading HEADING of FILE."
+  (with-current-buffer (+endgame--buffer file)
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (unless (re-search-forward (format "^\\* +%s\\(?:[ \t]+:[^ \t\n]*:\\)?[ \t]*$" (regexp-quote heading)) nil t)
+       (+endgame--invalid "no \"* %s\" heading in %s" heading (file-name-nondirectory file)))
+     (org-back-to-heading t)
+     (let ((level (org-current-level)))
+       (goto-char (save-excursion (org-end-of-subtree t t)))
+       (unless (bolp) (insert "\n"))
+       (insert (string-trim-right (+endgame--shift-levels text (- (1+ level) (+endgame--text-level text))))
+               "\n")))))
+
+(defun +endgame--find-prop (buffer key value)
+  "Marker at the heading in BUFFER whose drawer has KEY: VALUE, or nil."
+  (with-current-buffer buffer
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (when (re-search-forward (format "^[ \t]*:%s:[ \t]+%s[ \t]*$" key (regexp-quote value)) nil t)
+       (org-back-to-heading t)
+       (point-marker)))))
+
+(defun +endgame-capture (kind req &optional ask)
+  "Create one item of KIND (\"inbox\", \"task\" or \"session\") from REQ, an alist:
+title, area (a tag), date (\"YYYY-MM-DD\"), time and end (\"HH:MM\"), repeater
+(\"+1w\"), template (a session template), tags (a list), body, props (an
+alist of drawer properties, e.g. CALDAV_UID, ALERT, LOCATION).
+Inbox: title, optionally a date. Task: the same plus an area (default: the
+FALLBACK area). Session: an area and a time; date defaults to org's today.
+Asks nothing and saves nothing (the caller saves). Returns an alist:
+where (\"inbox\" \"tasks\" \"day\" \"upcoming\"), file, line, id, uid."
+  (unless (member kind +endgame-capture-kinds)
+    (+endgame--invalid "kind must be one of %s" (string-join +endgame-capture-kinds ", ")))
+  (let* ((get (lambda (k)
+                (let ((v (alist-get k req)))
+                  (and (stringp v) (not (string-empty-p (string-trim v))) (string-trim v)))))
+         (title (let ((s (funcall get 'title)))
+                  (and s (string-trim (replace-regexp-in-string "[ \t\n]+" " " (replace-regexp-in-string "\\`\\*+[ \t]*" "" s))))))
+         (tags (mapcar (lambda (tg)
+                         (if (string-match-p "\\`[[:alnum:]_@#%]+\\'" tg) tg
+                           (+endgame--invalid "bad tag %S" tg)))
+                       (alist-get 'tags req)))
+         (body (let ((b (funcall get 'body)))
+                 (when (and b (string-match-p "^\\*+[ \t]" b)) (+endgame--invalid "body can't contain headings"))
+                 b))
+         (props (mapcar (lambda (kv) (cons (format "%s" (car kv)) (cdr kv))) (alist-get 'props req)))
+         (date (funcall get 'date)) (time (funcall get 'time)) (end (funcall get 'end))
+         (repeater (funcall get 'repeater))
+         where text buffer find)
+    (pcase kind
+      ((or "inbox" "task")
+       (unless title (+endgame--invalid "title is required"))
+       (let* ((area (and (equal kind "task") (+endgame--capture-area (funcall get 'area))))
+              (tag (and area (alist-get 'tag area))))
+         (setq text (+endgame--task-text kind title tag date time end repeater tags props body)
+               where (if area "tasks" "inbox")
+               buffer (+endgame--buffer +endgame-tasks-file))
+         (+endgame--append-under-heading +endgame-tasks-file (if area +endgame-tasks-heading +endgame-inbox-heading) text)
+         (setq find (cons "ID" (and (string-match ":ID: \\(\\S-+\\)" text) (match-string 1 text))))
+         (when-let* ((uid (cdr (assoc "CALDAV_UID" props)))) (setq find (cons "CALDAV_UID" uid)))))
+      ("session"
+       (let* ((area (+endgame--capture-area (funcall get 'area)))
+              (tag (alist-get 'tag area))
+              (date (or date (+endgame--today)))
+              (_ (unless time (+endgame--invalid "a session needs a time")))
+              (stamp (+endgame--capture-stamp date time end repeater)))
+         (setq text (+endgame--session-text tag stamp title (funcall get 'template) props body tags)
+               where (symbol-name (+endgame--place-day-item text date ask))
+               buffer (if (equal where "day")
+                          (marker-buffer (+endgame--day-marker date))
+                        (+endgame--buffer +endgame-upcoming-file))
+               find (cons "CALDAV_UID" (and (string-match ":CALDAV_UID: \\(\\S-+\\)" text) (match-string 1 text)))))))
+    (let ((m (or (+endgame--find-prop buffer (car find) (cdr find))
+                 (error "Lost the %s I just made" kind))))
+      `((where . ,where)
+        (file . ,(buffer-file-name (marker-buffer m)))
+        (line . ,(with-current-buffer (marker-buffer m) (org-with-wide-buffer (line-number-at-pos m))))
+        (id . ,(org-entry-get m "ID"))
+        (uid . ,(org-entry-get m "CALDAV_UID"))))))
+
+(defun +endgame-capture-json (json)
+  "`+endgame-capture' for the server: JSON is {kind, title, area, date, time,
+end, repeater, template, tags, body, props}. Asks nothing, saves what it
+changes, returns {where, file, line, id, uid, files}. A refused capture is
+an error starting [invalid]: the server's 400."
+  (let ((inhibit-interaction t)
+        (+endgame--saved nil)
+        (req (json-parse-string json :object-type 'alist :array-type 'list
+                                :null-object nil :false-object nil))
+        result)
+    (+endgame--saving
+      (setq result (+endgame-capture (or (alist-get 'kind req) "") req)))
+    (+endgame--json
+     (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
+
+;; The menu: SPC SPC
+
+(defun +endgame--ask-title (prompt)
+  "A non-empty title, asked after PROMPT."
+  (let ((title (string-trim (read-string prompt))))
+    (when (string-empty-p title) (user-error "Empty title"))
+    title))
+
+(defun +endgame--ask-date ()
+  "An optional date (\"YYYY-MM-DD\"): empty for none; fri, +2d, 11-05 work."
+  (let ((in (string-trim (read-string "Date (empty for none; fri, +2d, 11-05): "))))
+    (unless (string-empty-p in)
+      (car (+endgame--stamp-range (+endgame--stamp in))))))
+
+(defun +endgame--read-template (&optional tag)
+  "Pick a session template, or none; TAG's default one is offered first. Returns its name or nil."
+  (let* ((names (+endgame-template-names))
+         (dflt (and tag (alist-get 'template (+endgame--area tag))))
+         (pick (and names
+                    (completing-read (format "Template%s: " (if dflt (format " (default %s)" dflt) ""))
+                                     (cons "(none)" names) nil t nil nil (or dflt "(none)")))))
+    (and pick (not (equal pick "(none)")) pick)))
+
+(defun +endgame/capture ()
+  "Capture: i inbox, t task, s session."
+  (interactive)
+  (pcase (read-char-choice "Capture: [i]nbox  [t]ask  [s]ession  " '(?i ?t ?s))
+    (?i (+endgame--capture-say
+         "inbox" `((title . ,(+endgame--ask-title "Inbox: ")) (date . ,(+endgame--ask-date)))))
+    (?t (let* ((area (+endgame--read-area))
+               (title (+endgame--ask-title "Task: ")))
+          (+endgame--capture-say "task" `((area . ,area) (title . ,title) (date . ,(+endgame--ask-date))))))
+    (?s (call-interactively #'+endgame/session))))
+
+(defun +endgame--capture-say (kind req)
+  "Capture KIND from REQ, save, and say where it went."
+  (let ((r (+endgame--saving (+endgame-capture kind req t))))
+    (message "%s captured in %s" kind (alist-get 'where r))))
+
+(with-eval-after-load 'org-capture
+  ;; Doom's own templates are no capture menu any more: SPC SPC is this module's.
+  (setq org-capture-templates nil))
+
+;;; Copies in a day: DO list, staging
 
 (defun +endgame--append-to-do-list (day texts)
   "Append TEXTS (org subtrees, any level) to the DO list of DAY.
@@ -375,7 +604,7 @@ Each text is shifted to sit under the DO list; the cookies are updated."
          (let ((start (point)))
            (dolist (text texts)
              (insert (string-trim-right
-                      (+routines--shift-levels text (- (+ level 2) (+endgame--text-level text))))
+                      (+endgame--shift-levels text (- (+ level 2) (+endgame--text-level text))))
                      "\n"))
            (let ((stop (point-marker)))   ; the copies' own cookies
              (goto-char start)
@@ -402,7 +631,7 @@ the DO list, never inside it (a night's Sleep heading)."
        (unless (bolp) (insert "\n"))
        (dolist (text texts)
          (insert (string-trim-right
-                  (+routines--shift-levels text (- (1+ level) (+endgame--text-level text))))
+                  (+endgame--shift-levels text (- (1+ level) (+endgame--text-level text))))
                  "\n"))))))
 
 (defun +endgame--append-to-upcoming (text)
@@ -414,7 +643,7 @@ the DO list, never inside it (a night's Sleep heading)."
      (unless (save-excursion (forward-line -1) (looking-at-p "[ \t]*$"))
        (insert "\n"))
      (let ((start (point)))
-       (insert (string-trim-right (+routines--shift-levels text (- 1 (+endgame--text-level text))))
+       (insert (string-trim-right (+endgame--shift-levels text (- 1 (+endgame--text-level text))))
                "\n")
        (goto-char start)
        (org-update-statistics-cookies nil)))))
@@ -631,95 +860,6 @@ copy (`+sleep-ensure-night') after the staging move."
     (+endgame--json
      (append result `((files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved)))))))))
 
-;;; Routines: SPC j r
-
-(defvar +endgame--routine-day nil
-  "The day (a time) of the routine being inserted, while `+routines-insert-into-day' runs.")
-
-(defvar +endgame--routine-time nil
-  "The time typed for the routine being inserted: a string, empty for none.")
-
-(defun +endgame--routine-stamp ()
-  "The stamp for the routine copy being inserted: its day, and the time if one was given."
-  (if (and +endgame--routine-time (not (string-empty-p +endgame--routine-time)))
-      (+endgame--stamp +endgame--routine-time +endgame--routine-day t)
-    (+endgame--format-stamp +endgame--routine-day)))
-
-(defun +endgame--routines-insert-into-day-a (fn &rest args)
-  "Around `+routines-insert-into-day': remember the day at point for the copy's stamp."
-  (let ((+endgame--routine-day (+journal--day-time)))
-    (apply fn args)))
-
-(defvar +endgame-scheduled-routines '("Weekly reset routine")
-  "Routines whose copy is SCHEDULED instead of getting a plain timestamp.
-An unfinished copy then keeps showing as overdue on the agenda (it still
-stays in its day: carryover skips :ROUTINE:). The weekly reset's trigger is
-\"saturday or sunday\", so it shouldn't vanish on sunday. Same list as
-SCHEDULED_ROUTINES in vault-mcp (src/core/capture.ts).")
-
-(defun +endgame--scheduled-routine-p (text)
-  "Non-nil when TEXT, a routine copy, is of a routine in `+endgame-scheduled-routines'."
-  (and (string-match "^:ROUTINE:[ \t]+\\(.+?\\)[ \t]*$" text)
-       (member-ignore-case (match-string 1 text) +endgame-scheduled-routines)))
-
-(defun +endgame--routines-copy-a (text)
-  "After `+routines--copy': a routine going into a day gets that day's timestamp.
-SCHEDULED for the routines in `+endgame-scheduled-routines'."
-  (if +endgame--routine-day
-      (+endgame--stamp-copy text (+endgame--routine-stamp) (+endgame--scheduled-routine-p text))
-    text))
-
-(defun +endgame--routines-insert-a (fn title &optional time)
-  "Around `+routines/insert': ask for an optional time, and set up a new day.
-A plain timestamp, not SCHEDULED: it shows on its day only, so an
-unfinished copy stays in its day. The routines in
-`+endgame-scheduled-routines' (the weekly reset) are SCHEDULED, so an
-unfinished one stays overdue. A time puts it on the timeline too.
-A day that doesn't exist yet is made the normal way, sleep and morning
-prompts included, so it gets its staged items."
-  (interactive
-   (list (completing-read "Routine: " (+routines--names) nil t)
-         (read-string "Time (empty for none; 9:00, 9am+0:30): ")))
-  (+endgame--ensure-day (+endgame--today) t)
-  (let ((+endgame--routine-time (and time (string-trim time))))
-    (funcall fn title)))
-
-(advice-add '+routines-insert-into-day :around #'+endgame--routines-insert-into-day-a)
-(advice-add '+routines--copy :filter-return #'+endgame--routines-copy-a)
-(advice-add '+routines/insert :around #'+endgame--routines-insert-a)
-
-;; The same, without the command: what the server calls
-
-(defun +endgame-routine-add (title date &optional time ask)
-  "Put routine TITLE into the day DATE (\"YYYY-MM-DD\"), stamped for that day.
-TIME is what the time prompt reads (\"9:00\", \"9am+0:30\"), nil or empty for
-none. A day without a note gets it in the upcoming note instead, unless
-ASK (an Emacs command) and the day isn't in the future: then the day is
-made first, with the sleep and morning questions. Returns `day',
-`upcoming', or nil when the day already has it."
-  (let ((day (+endgame--day-marker date))
-        (+endgame--routine-time time))
-    (if (and (not day) (or (not ask) (string> date (+endgame--today))))
-        (let ((+endgame--routine-day (+endgame--date-time date)))
-          (+endgame--append-to-upcoming (+routines--copy title 1))
-          'upcoming)
-      (let ((day (+endgame--ensure-day date ask)))
-        (with-current-buffer (marker-buffer day)
-          (org-with-wide-buffer
-           (goto-char day)
-           (and (+routines-insert-into-day title) 'day)))))))
-
-(defun +endgame-routine-json (title &optional date time)
-  "`+endgame-routine-add' for the server: asks nothing, saves, returns JSON.
-DATE nil is org's today. {\"where\": \"day\"|\"upcoming\"|\"exists\", \"files\"}."
-  (let ((inhibit-interaction t)
-        (+endgame--saved nil)
-        where)
-    (+endgame--saving
-      (setq where (+endgame-routine-add title (or date (+endgame--today)) time)))
-    (+endgame--json `((where . ,(if where (symbol-name where) "exists"))
-                      (files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved))))))))
-
 ;;; Areas
 
 (defvar +endgame--areas-cache nil
@@ -749,6 +889,9 @@ DATE nil is org's today. {\"where\": \"day\"|\"upcoming\"|\"exists\", \"files\"}
                      (baselineWeek . ,(+endgame--baseline (org-entry-get nil "BASELINE_WEEK")))
                      (baselineDay . ,(+endgame--baseline (org-entry-get nil "BASELINE_DAY")))
                      (sources . ,(split-string (or (org-entry-get nil "SOURCES") "") nil t))
+                     (template . ,(org-entry-get nil "SESSION_TEMPLATE" t))
+                     (sessionStates . ,(split-string (or (org-entry-get nil "SESSION_STATES") "") nil t))
+                     (fallback . ,(if (equal (org-entry-get nil "FALLBACK") "yes") t :json-false))
                      (id . ,(org-entry-get nil "ID")))
                    areas))))))
     (nreverse areas)))
@@ -886,25 +1029,22 @@ AREA is an area alist or its tag. Nil when the area has no sources."
 
 ;;; Moving a day item to another day
 
-;; A session, a routine copy or an appointment is dated by its own plain
-;; timestamp (the weekly reset by its SCHEDULED), and a session or routine
+;; A session is dated by its own plain timestamp (a lesson by its
+;; SCHEDULED), and a session
 ;; copy also by the day heading it sits under. Giving one a SCHEDULED for
 ;; another day leaves it where it was: today's list and the calendar still
 ;; show it today. `+endgame-move-to-day' moves the date itself, and the
 ;; heading with it. A copy with no date of its own gets a plain timestamp.
 
 (defun +endgame-day-item-p (&optional pom)
-  "Non-nil when the entry at POM is dated by its own timestamp, not SCHEDULED.
-A routine or session copy (its own :ROUTINE:), an event (a plain heading with a stamp), or
-any entry with a plain active timestamp in a daily note or the upcoming note.
-Not a night's Sleep copy: `+sleep-plan' retimes those."
+  "Non-nil when the entry at POM is dated by its own timestamp, not SCHEDULED:
+a session, or any entry with a plain active timestamp in a daily note or the
+upcoming note. Not a night's Sleep copy: `+sleep-plan' retimes those."
   (org-with-point-at (or pom (point))
     (org-back-to-heading t)
     ;; a night's Sleep copy is dated by its :NIGHT:: `+sleep-plan' moves it
     (and (not (org-entry-get nil "SLEEP_ID"))
-         (or (org-entry-get nil "ROUTINE")
-             ;; an event: a plain heading with its own stamp (the old APPT keyword too)
-             (and (member (org-get-todo-state) '(nil "APPT")) (+endgame-entry-stamp))
+         (or (+endgame-session-p)
              (and (+endgame-entry-stamp)
                   (buffer-file-name)
                   (or (file-in-directory-p (buffer-file-name) org-journal-dir)
@@ -1035,7 +1175,7 @@ LINE (1-based). Refuses an entry that isn't a day item. Returns
                        (unless (org-at-heading-p) (error "No heading on line %d of %s" line file))
                        (point-marker))))))
         (unless (+endgame-day-item-p m)
-          (error "%s isn't a session, routine copy or appointment" (org-with-point-at m (+endgame--title))))
+          (error "%s isn't a session" (org-with-point-at m (+endgame--title))))
         (let* ((to (+endgame-move-to-day m date time end))
                (to-file (buffer-file-name (marker-buffer to))))
           (setq result
@@ -1076,57 +1216,45 @@ Saves; returns JSON {\"skip\": [dates], \"files\"}."
 
 ;;; Sessions: SPC j s
 
+(defun +endgame-session-states ()
+  "The keywords a session may carry besides none: the SESSION_STATES of the
+areas (a lesson is NOPLAN, PLANNED or NOTPAID). A heading in one of these
+is a session, not a task."
+  (delete-dups (apply #'append (mapcar (lambda (a) (copy-sequence (alist-get 'sessionStates a)))
+                                       (+endgame-areas)))))
+
+(defun +endgame-session-p (&optional pom)
+  "Non-nil when the entry at POM is a session: a timed stamp (a plain one, or
+SCHEDULED for a lesson) and no keyword, or one of `+endgame-session-states'.
+A night's Sleep copy isn't: `+sleep-plan' owns those."
+  (org-with-point-at (or pom (point))
+    (org-back-to-heading t)
+    (and (not (org-entry-get nil "SLEEP_ID"))
+         (let ((state (org-get-todo-state)))
+           (or (null state) (member state (+endgame-session-states))))
+         (let ((stamp (or (+endgame-entry-stamp) (org-entry-get nil "SCHEDULED"))))
+           (and stamp (+endgame--timed-p stamp) t)))))
+
 (defun +endgame-session-area (&optional pom)
   "The area tag of the session at POM, or nil when it isn't a session.
-A session has :ROUTINE: Session routine (inherited) and its area on the
-heading itself: :AREA:, or a local tag that is an area's AREA_TAG."
+Its area is its own :AREA:, or a local tag that is an area's AREA_TAG."
   (org-with-point-at (or pom (point))
-    (when (equal (org-entry-get nil "ROUTINE" t) +endgame-session-routine)
+    (when (+endgame-session-p)
       (or (org-entry-get nil "AREA")
           (let ((tags (mapcar (lambda (a) (alist-get 'tag a)) (+endgame-areas))))
             (seq-find (lambda (tg) (member tg tags)) (org-get-tags nil t)))))))
 
-(defun +endgame--session-text (tag stamp)
-  "A fresh session for area TAG at STAMP, as a level 1 heading.
-The session routine copied the way `SPC j r' copies it, titled
-\"TAG session\", with the area as tag, :AREA: and a :CALDAV_UID:, STAMP
-after the drawer."
-  (let* ((copy (+routines--copy +endgame-session-routine 1))
-         (eol (string-match "\n" copy))
-         (cookie (and (string-match " \\[[0-9]*/[0-9]*\\]\\'" (substring copy 0 eol))
-                      (match-string 0 (substring copy 0 eol))))
-         (rest (substring copy (1+ eol)))
-         (rest (if (string-match "^:END:\n" rest)
-                   (concat (substring rest 0 (match-beginning 0))
-                           ":AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n" stamp "\n"
-                           (substring rest (match-end 0)))
-                 (concat ":PROPERTIES:\n:ROUTINE:  " +endgame-session-routine
-                         "\n:AREA:     " tag "\n:CALDAV_UID: " (+endgame--uid) "\n:END:\n" stamp "\n" rest))))
-    (concat "* TODO " tag " session" (or cookie "") " :" tag ":\n" rest)))
-
-(defun +endgame-session-add (tag stamp &optional ask)
+(defun +endgame-session-add (tag stamp &optional ask template)
   "Add a session for area TAG at STAMP (an active timestamp, or what org's
-date prompt reads, like \"mon 14:00-17:00\"). Returns where it went:
-`day' (that day's DO list) or `upcoming' (a day with no note yet).
-ASK (SPC j s) makes a missing day that isn't in the future first, sleep
-and morning questions included. Without ASK (the server, the calendar) a
-day is never made: the session waits in upcoming until Vlad makes the day."
+date prompt reads, like \"mon 14:00-17:00\"), optionally from TEMPLATE.
+Returns where it went: `day' (that day's DO list) or `upcoming' (a day
+with no note yet). See `+endgame--place-day-item' for ASK."
   (unless (+endgame--area tag) (user-error "No area with AREA_TAG %s" tag))
   (let* ((stamp (if (string-match-p (concat "\\`" org-tsr-regexp "\\'") stamp)
                     stamp
                   (+endgame--stamp stamp)))
-         (date (car (+endgame--stamp-range stamp)))
-         (text (+endgame--session-text tag stamp))
-         (day (+endgame--day-marker date)))
-    (cond (day
-           (+endgame--append-to-do-list day (list text))
-           'day)
-          ((or (not ask) (string> date (+endgame--today)))
-           (+endgame--append-to-upcoming text)
-           'upcoming)
-          (t
-           (+endgame--append-to-do-list (+endgame--ensure-day date ask) (list text))
-           'day))))
+         (date (car (+endgame--stamp-range stamp))))
+    (+endgame--place-day-item (+endgame--session-text tag stamp nil template) date ask)))
 
 (defun +endgame--read-area ()
   "Pick an area from the areas note; returns its tag."
@@ -1137,30 +1265,20 @@ day is never made: the session waits in upcoming until Vlad makes the day."
          (pick (completing-read "Area: " cands nil t)))
     (cdr (assoc pick cands))))
 
-(defun +endgame/session (tag stamp)
-  "Plan a session: pick an area and a time range (\"14:00-17:00\", \"mon 2pm+3:00\").
-It goes into that day's DO list, or into the upcoming note for a future
-day that has no note yet (the day's creation moves it in)."
+(defun +endgame/session (tag stamp &optional template)
+  "Plan a session: pick an area, a time range (\"14:00-17:00\", \"mon 2pm+3:00\")
+and a template (the area's default is offered). It goes into that day's DO
+list, or into the upcoming note for a future day that has no note yet (the
+day's creation moves it in)."
   (interactive
-   (list (+endgame--read-area)
-         (+endgame--read-stamp "Session (14:00-17:00, mon 2pm+3:00): " nil t)))
+   (let* ((tag (+endgame--read-area))
+          (stamp (+endgame--read-stamp "Session (14:00-17:00, mon 2pm+3:00): " nil t)))
+     (list tag stamp (+endgame--read-template tag))))
   (+endgame--saving
     (message "%s session %s %s" tag stamp
-             (if (eq (+endgame-session-add tag stamp t) 'upcoming)
+             (if (eq (+endgame-session-add tag stamp t template) 'upcoming)
                  "staged in upcoming"
                "added to its day"))))
-
-(defun +endgame-session-json (tag stamp)
-  "`+endgame-session-add' for the server: asks nothing, saves, returns JSON.
-STAMP is an active timestamp or what org's date prompt reads.
-{\"where\": \"day\"|\"upcoming\", \"files\"}."
-  (let ((inhibit-interaction t)
-        (+endgame--saved nil)
-        where)
-    (+endgame--saving
-      (setq where (+endgame-session-add tag stamp)))
-    (+endgame--json `((where . ,(symbol-name where))
-                      (files . ,(vconcat (mapcar #'+endgame--relative (reverse +endgame--saved))))))))
 
 (defun +endgame-sessions (from &optional to)
   "Sessions on the days FROM..TO (\"YYYY-MM-DD\"), in the journal and upcoming.
@@ -1171,7 +1289,7 @@ line. Killed sessions are left out."
     (dolist (file (delete-dups
                    (append
                     (+endgame--rg-files
-                     (format "^[ \t]*:ROUTINE:[ \t]+%s[ \t]*$" (regexp-quote +endgame-session-routine))
+                     "<[0-9]{4}-[0-9]{2}-[0-9]{2} [^>]* [0-9]{1,2}:[0-9]{2}"
                      (list (expand-file-name org-journal-dir) +endgame-upcoming-file))
                     ;; rg reads the disk: add what's only in a buffer so far
                     (cl-loop for buf in (buffer-list)
@@ -1184,8 +1302,7 @@ line. Killed sessions are left out."
         (org-with-wide-buffer
          (goto-char (point-min))
          (while (re-search-forward org-heading-regexp nil t)
-           (let ((area (and (equal (org-entry-get nil "ROUTINE") +endgame-session-routine)
-                            (not (equal (org-get-todo-state) "KILL"))
+           (let ((area (and (not (equal (org-get-todo-state) "KILL"))
                             (+endgame-session-area)))
                  (range (+endgame-entry-time-range)))
              (when (and area range
@@ -1196,7 +1313,7 @@ line. Killed sessions are left out."
                        (start . ,(nth 1 range))
                        (end . ,(nth 2 range))
                        (minutes . ,(nth 3 range))
-                       (state . ,(substring-no-properties (org-get-todo-state)))
+                       (state . ,(and (org-get-todo-state) (substring-no-properties (org-get-todo-state))))
                        (title . ,(+endgame--title))
                        (file . ,file)
                        (line . ,(line-number-at-pos (line-beginning-position) t)))

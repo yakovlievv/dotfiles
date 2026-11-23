@@ -1,6 +1,6 @@
 ;;; endgame-capture-test.el --- tests for +endgame-capture.el -*- lexical-binding: t; -*-
 ;;
-;; Runs without Doom, in a throwaway vault. The routines and journal
+;; Runs without Doom, in a throwaway vault. The habits and journal
 ;; code the module builds on is read straight out of the literate config, so
 ;; the tests run against the real thing:
 ;;
@@ -15,7 +15,7 @@
 (require 'org-capture)
 
 (defvar +endgame-test-config (expand-file-name "~/org/roam/config/doom-config.org")
-  "The literate config the routines and journal blocks come from.")
+  "The literate config the habits and journal blocks come from.")
 
 ;; Doom macros used in those blocks.
 (defmacro after! (feature &rest body)
@@ -34,7 +34,7 @@
           (re-search-forward "^#\\+end_src")
           (let ((code (buffer-substring beg (match-beginning 0))))
             (when (and (not (string-match-p "<<" code)) ; the tangled test files
-                       (or (member name '("repeat-skip" "habits" "routines-shared" "routines"))
+                       (or (member name '("repeat-skip" "habits"))
                       (string-match-p "(defun \\+org-journal-init-day" code)
                           (string-match-p "org-use-property-inheritance" code)))
               (push code blocks)))))
@@ -76,12 +76,13 @@
   "The sleep system note, with the default night (`+sleep-source-id').")
 
 (defmacro +endgame-test--with-vault (&rest body)
-  "Run BODY in a fresh vault: areas, upcoming, tasks, habits, routines,
+  "Run BODY in a fresh vault: areas, upcoming, tasks, habits, session templates,
 journal, the sleep system note. The day ends at 05:00, as in the config."
   (declare (indent 0))
   `(let* ((+endgame-test-dir (file-name-as-directory (make-temp-file "endgame-test" t)))
           (+endgame-vault-dir +endgame-test-dir)
-          (org-todo-keywords '((sequence "TODO(t)" "STRT(s!)" "|" "DONE(d!)" "KILL(k@)")))
+          (org-todo-keywords '((sequence "TODO(t)" "STRT(s!)" "|" "DONE(d!)" "KILL(k@)")
+                               (sequence "NOPLAN(N)" "PLANNED(L)" "|" "NOTPAID($!)")))
           (org-log-into-drawer t)
           (org-tags-column 0)
           (org-journal-dir (expand-file-name "roam/daily/" +endgame-test-dir))
@@ -91,7 +92,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
           (org-journal-time-prefix "** ")
           (org-journal-date-format "%A, %Y-%m-%d")
           (org-journal-file-header #'+org-journal-file-header)
-          (org-journal-carryover-items "TODO=\"TODO\"-ROUTINE={.}")
+          (org-journal-carryover-items "TODO=\"TODO\"")
           (org-journal-enable-agenda-integration nil)
           (org-journal-enable-cache nil)
           (org-journal-hide-entries-p nil)
@@ -106,25 +107,27 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
             (concat "#+title: areas\n\n"
                     "* Pursuits category\n"
                     "** Learning\n:PROPERTIES:\n:AREA_TAG:      learning\n:STRATEGY:      filler\n"
-                    ":BASELINE_WEEK: 4:00\n:SOURCES:       file:roam/curriculum.org\n:END:\n"
+                    ":BASELINE_WEEK: 4:00\n:SOURCES:       file:roam/curriculum.org\n:SESSION_TEMPLATE: deep session\n:END:\n"
                     "** Piano\n:PROPERTIES:\n:AREA_TAG:      piano\n:STRATEGY:      filler\n"
                     ":BASELINE_DAY:  0:25\n:SOURCES:\n:END:\n"
+                    "* Life category\n"
+                    "** Social\n:PROPERTIES:\n:AREA_TAG:      social\n:FALLBACK:      yes\n:SOURCES:\n:END:\n"
+                    "** Tutoring\n:PROPERTIES:\n:AREA_TAG:      tutoring\n:SESSION_STATES: NOPLAN PLANNED\n:SOURCES:\n:END:\n"
                     "*** TODO not an area\n")))
           (+endgame-upcoming-file (+endgame-test--file "roam/upcoming.org" "#+title: upcoming\n\nstaging.\n"))
-          (+endgame-tasks-file (+endgame-test--file "roam/tasks.org" "#+title: tasks\n\n* Inbox\nraw capture.\n* Errands\n* Events\n"))
+          (+endgame-tasks-file (+endgame-test--file "roam/tasks.org" "#+title: tasks\n\n* Inbox\nraw capture.\n* tasks\n"))
           (+habits-file
            (+endgame-test--file
             "roam/habits.org"
             (concat "#+title: my habits\n\n"
                     "* TODO piano\nSCHEDULED: <" (+endgame-test--date -1) " .+1d>\n"
                     ":PROPERTIES:\n:ID:       src-piano\n:STYLE:    habit\n:END:\n")))
-          (+routines-file
+          (+endgame-templates-file
            (+endgame-test--file
-            "roam/routines.org"
-            (concat "#+title: routines\n\n"
-                    "* Morning routine\nwake up.\n- [ ] water\n- [ ] stretch\n"
-                    "* Session routine\n- [ ] Start\n  - [ ] Clock in\n- [ ] During\n- [ ] End\n"
-                    "* Weekly reset routine\n*Trigger*: on saturday or sunday\n- [ ] do the laundry\n"))))
+            "roam/templates.org"
+            (concat "#+title: session templates\n\n"
+                    "* deep session\nhow to run one.\n- [X] Start\n  - [ ] Clock in\n- [ ] During\n- [ ] End\n"
+                    "* piano session\n- [ ] scales\n"))))
      (make-directory org-journal-dir t)
      (+endgame-test--file "roam/sleep_system.org" +endgame-test-sleep-source)
      (+endgame-test--file
@@ -186,36 +189,95 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
   "An event is a plain heading: nothing defines the APPT keyword any more."
   (should-not (member '(sequence "APPT(a)" "|" "DONE(d!)") (default-value 'org-todo-keywords))))
 
-(ert-deftest +endgame-capture-templates ()
+(ert-deftest +endgame-capture-inbox-and-task ()
   (+endgame-test--with-vault
-    (+endgame-capture-setup)
-    (should (equal (mapcar #'car org-capture-templates) '("i" "t" "a" "e")))
-    (+endgame-test--answering '("copy room keys")
-      (org-capture nil "i"))
-    (+endgame-test--answering '("call the bank")
-      (org-capture nil "t"))
-    (+endgame-test--answering '("barber" "2031-01-06 2pm+0:45")
-      (org-capture nil "a"))
-    (+endgame-test--answering '("50% off %t socks" "2031-01-10")
-      (org-capture nil "e"))
+    (let ((a (+endgame-capture "inbox" '((title . "copy room keys")))))
+      (should (equal (alist-get 'where a) "inbox"))
+      (should (alist-get 'id a)))
+    (+endgame-capture "inbox" '((title . "call the bank") (date . "2031-01-10")))
+    ;; a task of an area, tagged, scheduled; no area: the FALLBACK area
+    (+endgame-capture "task" '((title . "50% off %t socks") (area . "piano") (date . "2031-01-10")))
+    (let ((a (+endgame-capture "task" '((title . "fix the door") (tags . ("ai_gen"))))))
+      (should (equal (alist-get 'where a) "tasks")))
     (let ((tasks (+endgame-test--read +endgame-tasks-file)))
-      (should (string-match-p "^\\*\\* TODO copy room keys\n:PROPERTIES:\n:CREATED: +\\[[-0-9]+ [^]]+\\]\n:END:" tasks))
-      (should (string-match-p (concat "^\\*\\* TODO call the bank\nSCHEDULED: <" (+endgame--today)) tasks))
-      (should (string-match-p "^\\*\\* barber <2031-01-06 Mon 14:00-14:45>\n:PROPERTIES:\n:CALDAV_UID: [-0-9a-f]+\n:END:" tasks))
-      (should (string-match-p "^\\*\\* TODO 50% off %t socks\nSCHEDULED: <2031-01-10 Fri>" tasks))
-      ;; each under its heading: Inbox, then Errands, then Events
+      (should (string-match-p "^\\*\\* TODO copy room keys\n:PROPERTIES:\n:ID: [-0-9a-f]+\n:CREATED: \\[[-0-9]+ [^]]+\\]\n:END:" tasks))
+      (should (string-match-p "^\\*\\* TODO call the bank\nSCHEDULED: <2031-01-10 Fri>" tasks))
+      (should (string-match-p "^\\*\\* TODO 50% off %t socks :piano:\nSCHEDULED: <2031-01-10 Fri>" tasks))
+      (should (string-match-p "^\\*\\* TODO fix the door :social:ai_gen:\n" tasks))
+      ;; the inbox first, then the tasks heading
       (should (< (string-match "^\\* Inbox" tasks) (string-match "copy room keys" tasks)
-                 (string-match "call the bank" tasks) (string-match "^\\* Errands" tasks)
-                 (string-match "socks" tasks) (string-match "^\\* Events" tasks)
-                 (string-match "\\*\\* barber" tasks)))
-      (should-not (string-match-p "APPT" tasks)))))
+                 (string-match "call the bank" tasks) (string-match "^\\* tasks" tasks)
+                 (string-match "socks" tasks) (string-match "fix the door" tasks))))))
+
+(ert-deftest +endgame-capture-refuses-what-it-cant-make ()
+  (+endgame-test--with-vault
+    (should-error (+endgame-capture "task" '((title . "x") (area . "knitting"))) :type 'error)
+    (should-error (+endgame-capture "session" '((area . "piano"))))      ; a session needs a time
+    (should-error (+endgame-capture "inbox" '((title . "")))) 
+    (should-error (+endgame-capture "event" '((title . "x"))))
+    (should-error (+endgame-capture "inbox" '((title . "x") (body . "* a heading"))))
+    (should-error (+endgame-capture "task" '((title . "x") (props . ((ID . "forced"))))))
+    (should (string-match-p "\\[invalid\\]" (condition-case e (+endgame-capture "task" '((title . "x") (area . "knitting")))
+                                              (error (error-message-string e)))))))
+
+(ert-deftest +endgame-capture-session-with-a-template ()
+  (+endgame-test--with-vault
+    ;; the area's default template is offered by the menu; the server passes the name
+    (should (equal (+endgame-template-names) '("deep session" "piano session")))
+    (let ((a (+endgame-capture "session" `((area . "learning") (date . ,+endgame-test-future) (time . "10:00") (end . "12:00")
+                                           (template . "Deep Session")))))
+      (should (equal (alist-get 'where a) "upcoming"))
+      (should (alist-get 'uid a)))
+    (should (string-match-p
+             (concat "^\\* learning session <" +endgame-test-future " Wed 10:00-12:00> \\[0/3\\] :learning:\n:PROPERTIES:\n"
+                     ":AREA: learning\n:CALDAV_UID: [-0-9a-f]+\n:END:\n"
+                     "- \\[ \\] Start\n  - \\[ \\] Clock in\n- \\[ \\] During\n- \\[ \\] End\n")
+             (+endgame-test--read +endgame-upcoming-file)))
+    ;; no template: a plain block; the calendar's own uid and properties kept
+    (+endgame-capture "session" `((area . "social") (title . "dentist") (date . ,+endgame-test-future) (time . "9:30")
+                                  (props . (("CALDAV_UID" . "uid-9@vault") ("ALERT" . "15m") ("LOCATION" . "Main St")))))
+    (should (string-match-p
+             (concat "^\\* dentist <" +endgame-test-future " Wed 09:30> :social:\n:PROPERTIES:\n:AREA: social\n"
+                     ":CALDAV_UID: uid-9@vault\n:ALERT: 15m\n:LOCATION: Main St\n:END:\n")
+             (+endgame-test--read +endgame-upcoming-file)))
+    (should-error (+endgame-capture "session" `((area . "piano") (time . "10:00") (template . "no such one"))))))
+
+(ert-deftest +endgame-capture-json-saves-and-answers ()
+  (+endgame-test--with-vault
+    (let ((out (json-parse-string
+                (+endgame-capture-json "{\"kind\":\"task\",\"title\":\"buy bread\",\"area\":\"piano\",\"props\":{\"CALDAV_UID\":\"u-1\"}}")
+                :object-type 'alist)))
+      (should (equal (alist-get 'where out) "tasks"))
+      (should (equal (alist-get 'uid out) "u-1"))
+      (should (equal (append (alist-get 'files out) nil) '("roam/tasks.org")))
+      (should-not (buffer-modified-p (find-buffer-visiting +endgame-tasks-file))))
+    (should-error (+endgame-capture-json "{\"kind\":\"task\",\"title\":\"x\",\"area\":\"nope\"}"))))
+
+(ert-deftest +endgame-session-p-no-keyword-or-a-session-state ()
+  (+endgame-test--with-vault
+    (with-temp-buffer
+      (org-mode)
+      (insert "* dentist <2031-01-08 Wed 09:30>\n"
+              "* TODO call <2031-01-08 Wed 09:30>\n"
+              "* PLANNED Lesson 3\nSCHEDULED: <2031-01-08 Wed 17:00-18:00>\n"
+              "* walk <2031-01-08 Wed>\n")
+      (goto-char (point-min))
+      (should (+endgame-session-p))
+      (forward-line 1) (should-not (+endgame-session-p))
+      (forward-line 1) (should (+endgame-session-p))
+      (forward-line 2) (should-not (+endgame-session-p)))))
 
 ;;; Areas
 
 (ert-deftest +endgame-areas-registry ()
   (+endgame-test--with-vault
     (let ((areas (+endgame-areas)))
-      (should (equal (mapcar (lambda (a) (alist-get 'tag a)) areas) '("learning" "piano")))
+      (should (equal (mapcar (lambda (a) (alist-get 'tag a)) areas) '("learning" "piano" "social" "tutoring")))
+      (should (equal (alist-get 'template (car areas)) "deep session"))
+      (should-not (alist-get 'template (cadr areas)))
+      (should (eq (alist-get 'fallback (nth 2 areas)) t))
+      (should (equal (alist-get 'sessionStates (nth 3 areas)) '("NOPLAN" "PLANNED")))
+      (should (equal (+endgame-session-states) '("NOPLAN" "PLANNED")))
       (should (equal (alist-get 'category (car areas)) "Pursuits"))
       (should (equal (alist-get 'baselineWeek (car areas)) 240))
       (should (equal (alist-get 'baselineDay (cadr areas)) 25))
@@ -256,7 +318,7 @@ a file: source beats any tag, and of two topic tags the narrower wins."
         (should (equal (files "first") '("tie1.org")))
         (should-not (files "second"))))))
 
-;;; Sessions, routines, days
+;;; Sessions, days
 
 (ert-deftest +endgame-session-into-upcoming-then-day ()
   (+endgame-test--with-vault
@@ -264,16 +326,15 @@ a file: source beats any tag, and of two topic tags the narrower wins."
     (should (eq (+endgame-session-add "learning" (concat +endgame-test-future " 10:00-12:00")) 'upcoming))
     (let ((up (+endgame-test--read +endgame-upcoming-file)))
       (should (string-match-p
-               (concat "^\\* TODO learning session \\[0/3\\] :learning:\n:PROPERTIES:\n"
-                       ":ROUTINE:  Session routine\n:AREA:     learning\n:CALDAV_UID: [-0-9a-f]+\n:END:\n"
-                       "<" +endgame-test-future " Wed 10:00-12:00>\n- \\[ \\] Start")
+               (concat "^\\* learning session <" +endgame-test-future " Wed 10:00-12:00> :learning:\n:PROPERTIES:\n"
+                       ":AREA: learning\n:CALDAV_UID: [-0-9a-f]+\n:END:\n")
                up)))
     ;; a staged item from the calendar keeps its UID through the move
     (with-current-buffer (find-file-noselect +endgame-upcoming-file)
       (goto-char (point-max))
-      (insert "* APPT not staged, other day <2031-01-09 Thu>\n"
-              "* TODO piano session <" +endgame-test-future " Wed 18:00-18:30> :piano:\n"
-              ":PROPERTIES:\n:ROUTINE:  Session routine\n:CALDAV_UID: uid-1@vault\n:END:\n- [ ] Start\n")
+      (insert "* not staged, other day <2031-01-09 Thu>\n"
+              "* piano session <" +endgame-test-future " Wed 18:00-18:30> :piano:\n"
+              ":PROPERTIES:\n:AREA: piano\n:CALDAV_UID: uid-1@vault\n:END:\n- [ ] Start\n")
       (save-buffer))
     (should (equal (+endgame-area-planned "learning" +endgame-test-future) 120))
     (should (equal (+endgame-area-planned "piano" +endgame-test-future) 30))
@@ -284,8 +345,8 @@ a file: source beats any tag, and of two topic tags the narrower wins."
       (let ((week (+endgame-test--read (gethash "file" out))))
         (should (string-match-p "^\\* Wednesday, 2031-01-08 :daily:\n:PROPERTIES:\n:CREATED:  20310108\n:ID: " week))
         (should (string-match-p (concat "#\\+BEGIN: clocktable .*:block " +endgame-test-future) week))
-        (should (string-match-p "^\\*\\* DO list \\[0/2\\]" week))
-        (should (string-match-p "^\\*\\*\\* TODO learning session \\[0/3\\] :learning:" week))
+        (should (string-match-p "^\\*\\* DO list \\[0/0\\]" week))
+        (should (string-match-p "^\\*\\*\\* learning session <" week))
         (should (string-match-p ":CALDAV_UID: uid-1@vault" week)))
       (let ((up (+endgame-test--read +endgame-upcoming-file)))
         (should-not (string-match-p "session" up))
@@ -309,44 +370,8 @@ a file: source beats any tag, and of two topic tags the narrower wins."
     (let ((today (+endgame--today)))
       (should-not (+endgame--day-marker today))
       (should (eq (+endgame-session-add "learning" (concat today " 10:00-12:00")) 'upcoming))
-      (should (eq (+endgame-routine-add "Morning routine" today "9:00") 'upcoming))
       (should-not (+endgame--day-marker today))
       (should (string-match-p "learning session" (+endgame-test--read +endgame-upcoming-file))))))
-
-(ert-deftest +endgame-routine-copy-gets-its-days-stamp ()
-  (+endgame-test--with-vault
-    (should (eq (+endgame-routine-add "Morning routine" +endgame-test-future "7am+0:15") 'upcoming))
-    (should (string-match-p (concat "^\\* TODO Morning routine \\[0/2\\]\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:CALDAV_UID: [-0-9a-f]+\n:END:\n"
-                                    "<" +endgame-test-future " Wed 07:00-07:15>\n- \\[ \\] water")
-                            (+endgame-test--read +endgame-upcoming-file)))
-    (+endgame-day-ensure +endgame-test-future)
-    (should (eq (+endgame-routine-add "Session routine" +endgame-test-future nil) 'day))
-    (let ((week (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
-      (should (string-match-p (concat "^\\*\\*\\* TODO Morning routine \\[0/2\\]\n:PROPERTIES:\n:ROUTINE:  Morning routine\n:CALDAV_UID: [-0-9a-f]+\n:END:\n<"
-                                      +endgame-test-future " Wed 07:00-07:15>")
-                              week))
-      (should (string-match-p (concat ":ROUTINE:  Session routine\n:END:\n<" +endgame-test-future " Wed>\n")
-                              week)))))
-
-(ert-deftest +endgame-weekly-reset-copy-is-scheduled ()
-  (+endgame-test--with-vault
-    ;; staged: SCHEDULED under the heading, the UID still in the drawer
-    (should (eq (+endgame-routine-add "Weekly reset routine" +endgame-test-future "15:30-16:30") 'upcoming))
-    (should (string-match-p (concat "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <" +endgame-test-future
-                                    " Wed 15:30-16:30>\n:PROPERTIES:\n:ROUTINE:  Weekly reset routine\n:CALDAV_UID: [-0-9a-f]+\n:END:\n- \\[ \\] do the laundry")
-                            (+endgame-test--read +endgame-upcoming-file)))
-    ;; making the day moves it in by its SCHEDULED date
-    (+endgame-day-ensure +endgame-test-future)
-    (should-not (string-match-p "Weekly reset" (+endgame-test--read +endgame-upcoming-file)))
-    (let ((week (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
-      (should (string-match-p (concat "^\\*\\*\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <" +endgame-test-future " Wed 15:30-16:30>\n:PROPERTIES:")
-                              week)))
-    ;; untimed, into an existing day: SCHEDULED, no UID
-    (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
-      (let ((text (let ((+endgame--routine-day (+endgame--date-time +endgame-test-future))
-                        (+endgame--routine-time nil))
-                    (+routines--copy "Morning routine" 3))))
-        (should (string-match-p (concat ":END:\n<" +endgame-test-future " Wed>\n") text))))))
 
 (ert-deftest +endgame-interactive-day-gets-staged-items ()
   (+endgame-test--with-vault
@@ -360,7 +385,7 @@ a file: source beats any tag, and of two topic tags the narrower wins."
       (remove-hook 'org-journal-after-entry-create-hook #'+org-journal-init-day))
     (should-not (string-match-p "learning session" (+endgame-test--read +endgame-upcoming-file)))
     (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
-      (should (string-match-p "^\\*\\*\\* TODO learning session" (buffer-string))))))
+      (should (string-match-p "^\\*\\*\\* learning session" (buffer-string))))))
 
 (ert-deftest +endgame-carried-over-do-list-merges-into-the-days ()
   (+endgame-test--with-vault
@@ -426,7 +451,7 @@ a file: source beats any tag, and of two topic tags the narrower wins."
     (let* ((week (lambda () (+endgame-test--read (buffer-file-name (marker-buffer (+endgame--day-marker +endgame-test-future))))))
            (m (with-current-buffer (marker-buffer (+endgame--day-marker +endgame-test-future))
                 (goto-char (point-min))
-                (re-search-forward "^\\*\\*\\* TODO learning session")
+                (re-search-forward "^\\*\\*\\* learning session")
                 (point-marker))))
       (should (+endgame-day-item-p m))
       ;; what the old path left: a SCHEDULED next to the timestamp
@@ -442,8 +467,8 @@ a file: source beats any tag, and of two topic tags the narrower wins."
       (should-not (string-match-p "learning session" (funcall week)))
       (should (string-match-p "^\\*\\* DO list \\[[0-9]+/[0-9]+\\]" (funcall week)))
       (let ((up (+endgame-test--read +endgame-upcoming-file)))
-        (should (string-match-p (concat "^\\* TODO learning session \\[0/3\\] :learning:\n:PROPERTIES:\n"
-                                        "\\(?:.*\n\\)*?:END:\n<2031-01-09 Thu 10:00-12:00>\n")
+        (should (string-match-p (concat "^\\* learning session <2031-01-09 Thu 10:00-12:00> :learning:\n:PROPERTIES:\n"
+                                        "\\(?:.*\n\\)*?:END:\n")
                                 up))
         (should-not (string-match-p "SCHEDULED" up)))
       ;; making that day moves it in
@@ -453,61 +478,25 @@ a file: source beats any tag, and of two topic tags the narrower wins."
       ;; and back into an existing day, with a new time
       (let ((back (with-current-buffer (marker-buffer (+endgame--day-marker "2031-01-09"))
                     (goto-char (point-min))
-                    (re-search-forward "^\\*\\*\\* TODO learning session")
+                    (re-search-forward "^\\*\\*\\* learning session")
                     (point-marker))))
         (+endgame--saving (+endgame-move-to-day back +endgame-test-future "14:00" "15:30")))
       (should (string-match-p "<2031-01-08 Wed 14:00-15:30>" (funcall week))))))
 
-(ert-deftest +endgame-move-to-day-appointment-and-weekly-reset ()
+(ert-deftest +endgame-move-to-day-a-plain-event ()
   (+endgame-test--with-vault
     ;; an event, a plain heading with a stamp: only its timestamp moves
     (with-current-buffer (find-file-noselect +endgame-tasks-file)
       (goto-char (point-max))
       (insert "** barber\n<2031-01-08 Wed 14:00-14:45>\n** TODO call bank\nSCHEDULED: <2031-01-08 Wed>\n")
       (save-buffer))
-    (let ((json (json-parse-string (+endgame-move-to-day-json +endgame-tasks-file 7 nil "2031-01-10") :object-type 'alist)))
+    (let ((json (json-parse-string (+endgame-move-to-day-json +endgame-tasks-file 6 nil "2031-01-10") :object-type 'alist)))
       (should (equal (alist-get 'where json) "same")))
     (should (string-match-p "^\\*\\* barber\n:PROPERTIES:\n:ID: .*\n:END:\n<2031-01-10 Fri 14:00-14:45>"
                             (+endgame-test--read +endgame-tasks-file)))
     ;; a plain task isn't a day item: refused, SCHEDULED is its path
-    (should-error (+endgame-move-to-day-json +endgame-tasks-file 9 nil "2031-01-10"))
-    ;; the weekly reset is dated by its SCHEDULED, which moves
-    (should (eq (+endgame-routine-add "Weekly reset routine" +endgame-test-future "15:30-16:30") 'upcoming))
-    (with-current-buffer (+endgame--buffer +endgame-upcoming-file)
-      (goto-char (point-min))
-      (re-search-forward "^\\* TODO Weekly reset")
-      (+endgame--saving (+endgame-move-to-day (point-marker) "2031-01-11")))
-    (should (string-match-p "^\\* TODO Weekly reset routine \\[0/1\\]\nSCHEDULED: <2031-01-11 Sat 15:30-16:30>\n"
-                            (+endgame-test--read +endgame-upcoming-file)))))
-
-(ert-deftest +endgame-move-to-day-dates-a-copy-with-no-date ()
-  ;; a routine copy in the DO list: :ROUTINE: but no timestamp, no SCHEDULED
-  (+endgame-test--with-vault
-    (+endgame-day-ensure +endgame-test-future)
-    (let* ((day (+endgame--day-marker +endgame-test-future))
-           (week (lambda () (+endgame-test--read (buffer-file-name (marker-buffer day)))))
-           (find (lambda (buf)
-                   (with-current-buffer buf
-                     (goto-char (point-min))
-                     (re-search-forward "^\\*+ TODO piano session")
-                     (point-marker)))))
-      (+endgame--append-to-do-list
-       day (list (concat "* TODO piano session [0/1] :piano:\n:PROPERTIES:\n"
-                         ":ROUTINE: Session routine\n:END:\n"
-                         "- [ ] Start\n")))
-      (let ((m (funcall find (marker-buffer day))))
-        (should (+endgame-day-item-p m))
-        (should-not (+endgame-entry-stamp m))
-        ;; same day, a time typed (s, 3:00+0:15): stays, gets a stamp after the drawer
-        (+endgame--saving (+endgame-move-to-day m +endgame-test-future "03:00" "03:15")))
-      (should (string-match-p (concat "^\\*\\*\\* TODO piano session \\[0/1\\] :piano:\n:PROPERTIES:\n"
-                                      "\\(?:.*\n\\)*?:END:\n<2031-01-08 Wed 03:00-03:15>\n- \\[ \\] Start")
-                              (funcall week)))
-      ;; and on to a day with no note: into upcoming, time kept
-      (+endgame--saving (+endgame-move-to-day (funcall find (marker-buffer day)) "2031-01-09"))
-      (should-not (string-match-p "piano session" (funcall week)))
-      (should (string-match-p ":END:\n<2031-01-09 Thu 03:00-03:15>\n"
-                              (+endgame-test--read +endgame-upcoming-file))))))
+    (should-error (+endgame-move-to-day-json +endgame-tasks-file 8 nil "2031-01-10"))
+    ))
 
 (ert-deftest +endgame-area-planned-counts-timed-entries-in-sources ()
   ;; lessons in a tutoring lesson plan count as planned, like sessions;
