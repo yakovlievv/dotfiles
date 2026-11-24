@@ -111,7 +111,7 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
                     "** Piano\n:PROPERTIES:\n:AREA_TAG:      piano\n:STRATEGY:      filler\n"
                     ":BASELINE_DAY:  0:25\n:SOURCES:\n:END:\n"
                     "* Life category\n"
-                    "** Social\n:PROPERTIES:\n:AREA_TAG:      social\n:FALLBACK:      yes\n:SOURCES:\n:END:\n"
+                    "** Social\n:PROPERTIES:\n:AREA_TAG:      social\n:FALLBACK:      yes\n:TRACK:         no\n:SOURCES:\n:END:\n"
                     "** Tutoring\n:PROPERTIES:\n:AREA_TAG:      tutoring\n:SESSION_STATES: NOPLAN PLANNED\n:SOURCES:\n:END:\n"
                     "*** TODO not an area\n")))
           (+endgame-upcoming-file (+endgame-test--file "roam/upcoming.org" "#+title: upcoming\n\nstaging.\n"))
@@ -276,6 +276,11 @@ journal, the sleep system note. The day ends at 05:00, as in the config."
       (should (equal (alist-get 'template (car areas)) "deep session"))
       (should-not (alist-get 'template (cadr areas)))
       (should (eq (alist-get 'fallback (nth 2 areas)) t))
+      ;; TRACK: no keeps an area out of the time report; the others are in it
+      (should (eq (alist-get 'track (nth 2 areas)) :json-false))
+      (should (eq (alist-get 'track (car areas)) t))
+      (should-not (member "social" (mapcar (lambda (r) (alist-get 'tag r)) (+endgame-areas-report "2031-01-08"))))
+      (should (member "tutoring" (mapcar (lambda (r) (alist-get 'tag r)) (+endgame-areas-report "2031-01-08"))))
       (should (equal (alist-get 'sessionStates (nth 3 areas)) '("NOPLAN" "PLANNED")))
       (should (equal (+endgame-session-states) '("NOPLAN" "PLANNED")))
       (should (equal (alist-get 'category (car areas)) "Pursuits"))

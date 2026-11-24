@@ -892,6 +892,7 @@ copy (`+sleep-ensure-night') after the staging move."
                      (template . ,(org-entry-get nil "SESSION_TEMPLATE" t))
                      (sessionStates . ,(split-string (or (org-entry-get nil "SESSION_STATES") "") nil t))
                      (fallback . ,(if (equal (org-entry-get nil "FALLBACK") "yes") t :json-false))
+                     (track . ,(if (member (downcase (or (org-entry-get nil "TRACK") "yes")) '("no" "false" "nil" "0")) :json-false t))
                      (id . ,(org-entry-get nil "ID")))
                    areas))))))
     (nreverse areas)))
@@ -1407,10 +1408,15 @@ when given, is a `+endgame-sessions' list to count from."
                      mine)
              (+endgame-area-timed area from to)))))
 
+(defun +endgame--area-tracked-p (area)
+  "Non-nil unless AREA says TRACK: no, which keeps it out of the time report."
+  (not (eq :json-false (alist-get 'track area))))
+
 (defun +endgame-areas-report (from &optional to)
   "Planned vs clocked per area for the days FROM..TO: a list of alists.
 Keys: tag, name, category, planned and clocked (minutes; clocked is nil
-for an area with no SOURCES), baselineWeek, baselineDay."
+for an area with no SOURCES), baselineWeek, baselineDay. An area with
+TRACK: no isn't in it."
   (let* ((to (or to from))
          (sessions (+endgame-sessions from to)))
     (mapcar (lambda (a)
@@ -1421,7 +1427,7 @@ for an area with no SOURCES), baselineWeek, baselineDay."
                 (clocked . ,(+endgame-area-clocked a from to))
                 (baselineWeek . ,(alist-get 'baselineWeek a))
                 (baselineDay . ,(alist-get 'baselineDay a))))
-            (+endgame-areas))))
+            (seq-filter #'+endgame--area-tracked-p (+endgame-areas)))))
 
 (defun +endgame-areas-json ()
   "The areas registry as JSON: `+endgame-areas', plus each area's source files."
@@ -1473,7 +1479,7 @@ without SOURCES are left out."
                   (list (plist-get params :tstart) (plist-get params :tend))))
          (params (org-combine-plists params (list :block nil :tstart (car range) :tend (nth 1 range))))
          out)
-    (dolist (area (+endgame-areas))
+    (dolist (area (seq-filter #'+endgame--area-tracked-p (+endgame-areas)))
       (when-let* ((sources (+endgame-area-sources area)))
         (let* ((tables (+endgame--area-tables sources params))
                (total (apply #'+ (mapcar #'cadr tables)))

@@ -11,7 +11,7 @@ heading with a timestamp, no keyword), optionally with the steps of a session
 template; a habit is a task with `:STYLE: habit`. There is no appointment, event,
 errand or routine: a dentist is a session of an area, a morning routine is a habit.
 The vault note "areas" is the registry (colour, sources, `SESSION_TEMPLATE`,
-`SESSION_STATES`, calendar rules); everything else reads it.
+`SESSION_STATES`, `TRACK: no` to keep an area out of the time report, calendar rules); everything else reads it.
 
 ## Layout
 
