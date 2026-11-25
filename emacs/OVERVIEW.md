@@ -23,6 +23,7 @@ The vault note "areas" is the registry (colour, sources, `SESSION_TEMPLATE`,
 | `packages.el` | Extra packages. |
 | `+book-gallery.el` | Standalone book-tracker module, `load!`ed at the end of config. |
 | `+endgame-capture.el` | Capture (`SPC SPC`: `i` inbox with an optional date, `t` task with an area picker, `s` session), session templates, day creation, upcoming→day staging, the areas registry. One implementation, `+endgame-capture`, that the menu, the phone and the calendar all use (`+endgame-capture-json`). An area's clocked files (`SOURCES`): one file, one area, the narrowest source wins (`+endgame--files-of-others`: `file:` over a tag, a topic tag over a node-type tag in `+endgame-node-type-tags`, then fewer files, then the area listed first), same ladder as the calendar in vault-backend. |
+| `+endgame-todo.el` | What the phone, the calendar and Claude do to a task, done by org itself: `+endgame-todo-json` (a state change: CLOSED, logbook, repeaters, blockers, notes), `+endgame-plan-json` (SCHEDULED/DEADLINE), `+endgame-priority-json`, `+endgame-keywords-json` (for `/meta`). Never prompt; refusals are `[invalid]` errors. vault-backend has no copy of this logic. |
 | `+sleep.el` | Sleep scheduling: each night's `Sleep` heading, clocked in/out through vault-api. Loaded after `+endgame-capture`. |
 | `tests/` | ERT suites, run in batch without Doom (see each file's header). |
 | `.hunspell_personal` | Personal word list, version-controlled. |
