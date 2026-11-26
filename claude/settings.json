@@ -1,0 +1,119 @@
+{
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(supabase db push)"
+    ]
+  },
+  "model": "sonnet",
+  "skillOverrides": {
+    "vercel:access-protected-vercel-deployment": "off",
+    "vercel:ai-gateway": "off",
+    "vercel:ai-sdk": "off",
+    "vercel:auth": "off",
+    "vercel:bootstrap": "off",
+    "vercel:build-agents": "off",
+    "vercel:cdn-caching": "off",
+    "vercel:chat-sdk": "off",
+    "vercel:create-a-backend": "off",
+    "vercel:custom-metrics": "off",
+    "vercel:deploy": "off",
+    "vercel:deployments-cicd": "off",
+    "vercel:env": "off",
+    "vercel:env-vars": "off",
+    "vercel:eve": "off",
+    "vercel:flags-sdk": "off",
+    "vercel:marketplace": "off",
+    "vercel:microfrontends": "off",
+    "vercel:next-cache-components": "off",
+    "vercel:next-forge": "off",
+    "vercel:next-upgrade": "off",
+    "vercel:nextjs": "off",
+    "vercel:queues": "off",
+    "vercel:react-best-practices": "off",
+    "vercel:routing-middleware": "off",
+    "vercel:runtime-cache": "off",
+    "vercel:shadcn": "off",
+    "vercel:status": "off",
+    "vercel:turbopack": "off",
+    "vercel:vercel-agent": "off",
+    "vercel:vercel-cli": "off",
+    "vercel:vercel-connect": "off",
+    "vercel:vercel-firewall": "off",
+    "vercel:vercel-functions": "off",
+    "vercel:vercel-sandbox": "off",
+    "vercel:vercel-services": "off",
+    "vercel:verification": "off",
+    "vercel:workflow": "off",
+    "anthropic-skills:built-in-browser": "off",
+    "anthropic-skills:chrome-browser": "off",
+    "anthropic-skills:computer-use": "off",
+    "anthropic-skills:deep-research": "off",
+    "anthropic-skills:docs": "off",
+    "anthropic-skills:docx": "off",
+    "anthropic-skills:google-workspace": "off",
+    "anthropic-skills:import-memory": "off",
+    "anthropic-skills:learn": "off",
+    "anthropic-skills:morning": "off",
+    "anthropic-skills:pdf": "off",
+    "anthropic-skills:pptx": "off",
+    "anthropic-skills:skill-creator": "off",
+    "anthropic-skills:xlsx": "off"
+  },
+  "enabledPlugins": {
+    "lua-lsp@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "vercel@claude-plugins-official": true,
+    "superpowers@anthropic-plugin-directory": true,
+    "claude-md-management@anthropic-plugin-directory": false,
+    "swift-lsp@claude-plugins-official": true,
+    "ponytail@ponytail": true,
+    "figma@synced": false,
+    "searchfit-seo@synced": false,
+    "engineering@synced": false,
+    "marketing@synced": false,
+    "design@synced": false,
+    "pdf-viewer@synced": false,
+    "cowork-plugin-management@synced": false,
+    "mattpocock-skills@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
+    "workmux": {
+      "source": {
+        "source": "github",
+        "repo": "raine/workmux"
+      }
+    }
+  },
+  "syntaxHighlightingDisabled": false,
+  "modelSettings": {
+    "claude-opus-5": {
+      "effortLevel": "medium"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "medium"
+    }
+  },
+  "pluginConfigs": {
+    "ponytail@ponytail": {
+      "options": {
+        "ledger": true,
+        "sendNames": true
+      }
+    }
+  },
+  "tui": "fullscreen",
+  "theme": "auto",
+  "editorMode": "vim",
+  "autoCompactEnabled": true,
+  "agentPushNotifEnabled": true,
+  "voiceEnabled": true
+}

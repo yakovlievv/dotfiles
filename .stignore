@@ -1,2 +1,4 @@
 .git
 emacs/doom-config.org
+
+zsh/.config/zsh/.zshrc.local
