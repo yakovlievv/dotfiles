@@ -22,4 +22,3 @@ done
 
 - claude.ai connectors (including the vault) follow the account.
 - Plugins are declared in `settings.json`. Auto-install on a fresh machine is untested.
-- The `task` CLI must be installed separately.

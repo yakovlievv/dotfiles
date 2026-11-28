@@ -8,17 +8,8 @@ My whole life lives in an org-roam vault (projects, businesses, systems, knowled
 - One git worktree per task, from a fresh origin/main, so you don't clash with background agents.
 - Routine changes: once checks pass, merge into main and push yourself. No PR unless the change is risky or I ask.
   If you do open one, watch it until CI is green with no conflicts; fix and push if not.
-- **TICKETS ARE MANDATORY FOR REAL WORK. Use the `task` CLI.** A feature, a fix or anything that changes a
-  project and is more than a quick one-off needs a ticket BEFORE you edit. Questions and tiny one-offs don't;
-  you decide, and when in doubt, create one.
-  - New work: make the worktree, then inside it `task new "short title" --body "the full task as I described it"`
-    (`--note NAME` if the repo name isn't the note's title; `--under HEADING` for the current version heading).
-    Run `task list` first: if the ticket already exists, join it instead.
-  - I gave a ticket ID, or you're helping on an existing ticket: `task join ID` inside your worktree.
-  - A watcher sets PROPEN and DONE from the branch's PR or merge. Don't set those by hand.
-  - No branch (vault, server, config work) or a squash merge without a PR: run `task done` when it's finished.
-  - Never create or change ticket states any other way. Running `task` needs no extra permission from me.
-    No vault note for the project → propose one. `task` missing on this machine → say so.
+- Every task gets a ticket in the project's vault note (format: vault note "Project management").
+  STRT when you start, PROPEN when a PR is open, DONE when it's merged or finished. No note for the project → propose one.
 - Every change updates the docs (README, CLAUDE.md, docs/, the project's vault note) so they mirror the project as it is now.
 
 ## This machine
